@@ -64,9 +64,8 @@ const VirtualizedTable = ({
   return (
     <div
       ref={containerRef}
-      className={`relative overflow-auto ${className}`}
+      className={`h-full relative overflow-auto ${className}`}
       onScroll={handleScroll}
-      className="h-full"
     >
       {/* Header */}
       <div

@@ -1,4 +1,5 @@
 import PropTypes from 'prop-types';
+import './Loader.css';
 
 /**
  * Custom animated loading spinner
@@ -9,11 +10,11 @@ import PropTypes from 'prop-types';
 const Loader = ({ size = 48, className = '', color = '#fff' }) => {
   return (
     <div 
-      className={`loader ${className}`}
+      className={`custom-loader ${className}`}
       style={{
-        width: `${size}px`,
-        height: `${size}px`,
-        color: color
+        // Drive Loader.css via CSS variables
+        '--loader-size': `${size}px`,
+        '--loader-color': color,
       }}
     />
   );

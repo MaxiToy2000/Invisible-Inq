@@ -254,7 +254,7 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
         let formattedGraphData;
 
         if (rawGraphData && rawGraphData.nodes && rawGraphData.nodes.length > 100) {
-          const limitedNodes = rawGraphData.nodes.slice(0, 300);
+          const limitedNodes = rawGraphData.nodes.slice(0, 2000);
 
           const nodeIds = new Set(limitedNodes.map(node => node.id));
 
@@ -263,7 +263,7 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
             const targetId = link.targetId;
 
             return sourceId && targetId && nodeIds.has(sourceId) && nodeIds.has(targetId);
-          }).slice(0, 500);
+          }).slice(0, 5000);
 
           formattedGraphData = formatGraphData({
             nodes: limitedNodes,
