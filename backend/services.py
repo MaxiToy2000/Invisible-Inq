@@ -483,8 +483,18 @@ def search_with_ai(user_query: str) -> Tuple[GraphData, str]:
         logger.info(f"Processing AI search query: {user_query[:100]}...")
 
         if is_cypher_query(user_query):
+            # Validate user-provided Cypher query
+            from cypher_security import validate_cypher_query, QuerySecurityLevel
+            is_valid, error_msg = validate_cypher_query(
+                user_query,
+                security_level=QuerySecurityLevel.READ_ONLY,
+                allow_write=False
+            )
+            if not is_valid:
+                raise ValueError(f"Query validation failed: {error_msg}")
+            
             try:
-                results = db.execute_query(user_query)
+                results = db.execute_query(user_query, validate=True, allow_write=False)
             except Exception as db_error:
                 error_msg = str(db_error)
                 raise ValueError(f"Cypher query execution failed: {error_msg}")
@@ -510,14 +520,25 @@ def search_with_ai(user_query: str) -> Tuple[GraphData, str]:
         if not cypher_query:
             raise ValueError("Failed to generate Cypher query from user query. Please try rephrasing your search.")
 
+        # Validate AI-generated query with additional guardrails
+        from cypher_security import validate_ai_generated_query
+        is_valid, error_msg, metadata = validate_ai_generated_query(cypher_query)
+        if not is_valid:
+            raise ValueError(f"AI-generated query validation failed: {error_msg}")
+
         try:
             if "$search_term" in cypher_query or "$param" in cypher_query.lower():
                 try:
-                    results = db.execute_query(cypher_query, {"search_term": user_query})
+                    results = db.execute_query(
+                        cypher_query,
+                        {"search_term": user_query},
+                        validate=True,
+                        allow_write=False
+                    )
                 except Exception as param_error:
-                    results = db.execute_query(cypher_query)
+                    results = db.execute_query(cypher_query, validate=True, allow_write=False)
             else:
-                results = db.execute_query(cypher_query)
+                results = db.execute_query(cypher_query, validate=True, allow_write=False)
         except Exception as db_error:
             error_msg = str(db_error)
             raise ValueError(f"Query execution failed: {error_msg}")
