@@ -1701,31 +1701,35 @@ const RightSidebar = ({
                       }}
                     >
                       <option value="">Select A Node Category</option>
-                      {[
-                        'Action',
-                        'Agency',
-                        'Amount',
-                        'Chapter',
-                        'Country',
-                        'Description',
-                        'Entity',
-                        'Location',
-                        'Place Of Performance',
-                        'Process',
-                        'Purpose',
-                        'Recipient',
-                        'Region',
-                        'Relationship',
-                        'Result',
-                        'Section',
-                        'Story',
-                        'Sub Agency',
-                        'Transaction',
-                      ].map((label) => (
-                        <option key={label} value={label.toLowerCase().replace(/\s+/g, '_')}>
-                          {label}
-                        </option>
-                      ))}
+                      {(() => {
+                        // Get unique node types from the connected Neo4j DB
+                        if (!nodeTypesWithPropertyKeys || nodeTypesWithPropertyKeys.length === 0) {
+                          return null;
+                        }
+
+                        // Extract unique node types and convert to display format
+                        const nodeTypes = Array.from(
+                          new Set(
+                            nodeTypesWithPropertyKeys
+                              .map(item => item.nodeType)
+                              .filter(type => type && typeof type === 'string')
+                          )
+                        ).sort((a, b) => a.localeCompare(b));
+
+                        // Helper function to convert 'entity_gen' to 'Entity Gen'
+                        const toDisplayName = (nodeType) => {
+                          return nodeType
+                            .split('_')
+                            .map(word => word)
+                            .join(' ');
+                        };
+
+                        return nodeTypes.map((nodeType) => (
+                          <option key={nodeType} value={nodeType}>
+                            {toDisplayName(nodeType)}
+                          </option>
+                        ));
+                      })()}
                     </select>
                     <select 
                       value={clusterProperty}

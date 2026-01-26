@@ -55,22 +55,16 @@ const GlobalActivity = ({ graphData, currentSubstory, onSectionClick, onHighligh
 
   // Find highlighted countries based on selected section from LeftSidebar (currentSubstory)
   const highlightedCountries = useMemo(() => {
-    // Use section_query from currentSubstory (selected in LeftSidebar)
-    const sectionQuery = currentSubstory?.section_query || null;
-    
-    if (!sectionQuery || !graphData || !graphData.nodes || !graphData.links) {
+    // Check if we have graph data
+    if (!graphData || !graphData.nodes || !graphData.links) {
       return new Set();
     }
 
-
-    // Find all nodes that belong to the selected section
-    const sectionNodes = graphData.nodes.filter(node => {
-      const nodeSection = node.section || node.section_query;
-      return nodeSection === sectionQuery || 
-             (typeof nodeSection === 'string' && nodeSection.includes(sectionQuery)) ||
-             (typeof sectionQuery === 'string' && sectionQuery.includes(nodeSection));
-    });
-
+    // IMPORTANT: graphData is already filtered by the backend to only include nodes
+    // where node.gr_id == section.graph_name (for the currently selected section).
+    // Therefore, ALL nodes in graphData.nodes belong to the current section.
+    // No additional filtering is needed.
+    const sectionNodes = graphData.nodes;
 
     if (sectionNodes.length === 0) {
       return new Set();
@@ -98,7 +92,8 @@ const GlobalActivity = ({ graphData, currentSubstory, onSectionClick, onHighligh
 
         if (otherNode) {
           const nodeType = otherNode.node_type || otherNode.type;
-          const isCountry = nodeType === 'Country';
+          // Make case-insensitive check for country nodes
+          const isCountry = nodeType && String(nodeType).toLowerCase() === 'country';
           const countryId = String(otherNode.id || otherNode.gid);
 
           if (isCountry && countryId && !processedCountryIds.has(countryId)) {
@@ -112,7 +107,8 @@ const GlobalActivity = ({ graphData, currentSubstory, onSectionClick, onHighligh
     // Also check if any section nodes are country nodes themselves
     sectionNodes.forEach(node => {
       const nodeType = node.node_type || node.type;
-      if (nodeType === 'Country') {
+      // Make case-insensitive check for country nodes
+      if (nodeType && String(nodeType).toLowerCase() === 'country') {
         const countryId = String(node.id || node.gid);
         if (countryId && !processedCountryIds.has(countryId)) {
           connectedCountryNodes.push(node);
@@ -126,10 +122,9 @@ const GlobalActivity = ({ graphData, currentSubstory, onSectionClick, onHighligh
       .map(countryNode => countryNode.country_name || countryNode.name || countryNode['Country Name'] || '')
       .filter(name => name && name.trim() !== '');
 
-
     // Return country names instead of codes - will be matched against geographies during render
     return new Set(countryNamesToMatch);
-  }, [currentSubstory?.section_query, graphData]);
+  }, [graphData]);
 
   // Get country node information for a given country name
   const getCountryNodeInfo = (countryName) => {
@@ -140,7 +135,8 @@ const GlobalActivity = ({ graphData, currentSubstory, onSectionClick, onHighligh
     // Find matching country node
     const countryNode = graphData.nodes.find(node => {
       const nodeType = node.node_type || node.type;
-      if (nodeType !== 'Country') return false;
+      // Make case-insensitive check for country nodes
+      if (!nodeType || String(nodeType).toLowerCase() !== 'country') return false;
       
       const nodeCountryName = node.country_name || node.name || node['Country Name'] || '';
       const normalizedNodeName = normalizeCountryName(nodeCountryName);
@@ -242,13 +238,10 @@ const GlobalActivity = ({ graphData, currentSubstory, onSectionClick, onHighligh
       return;
     }
 
-    // Find all nodes that belong to this section
-    const sectionNodes = graphData.nodes.filter(node => {
-      const nodeSection = node.section || node.section_query;
-      return nodeSection === sectionQuery || 
-             (typeof nodeSection === 'string' && nodeSection.includes(sectionQuery)) ||
-             (typeof sectionQuery === 'string' && sectionQuery.includes(nodeSection));
-    });
+    // IMPORTANT: graphData is already filtered by the backend to only include nodes
+    // where node.gr_id == section.graph_name (for the currently selected section).
+    // Therefore, ALL nodes in graphData.nodes belong to the current section.
+    const sectionNodes = graphData.nodes;
 
     if (sectionNodes.length === 0) {
       return;
@@ -278,7 +271,8 @@ const GlobalActivity = ({ graphData, currentSubstory, onSectionClick, onHighligh
 
         if (otherNode) {
           const nodeType = otherNode.node_type || otherNode.type;
-          const isCountry = nodeType === 'Country';
+          // Make case-insensitive check for country nodes
+          const isCountry = nodeType && String(nodeType).toLowerCase() === 'country';
           const countryId = otherNode.id || otherNode.gid;
 
           if (isCountry && countryId && !processedCountryIds.has(countryId)) {

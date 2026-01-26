@@ -2,7 +2,7 @@
 import platform_fix
 
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Form
+from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional, List
 import time
@@ -14,11 +14,13 @@ from services import get_all_stories, get_graph_data, get_graph_data_by_section_
 from models import GraphData, UserCreate, UserLogin, Token, UserResponse, GoogleAuthRequest, UserActivityCreate, UserActivityResponse, AdminLoginRequest, SubmissionCreate, SubmissionResponse, UserSubscriptionResponse, SubmissionUpdateRequest
 from pydantic import BaseModel
 from auth import create_access_token, verify_google_token, get_current_user, get_current_admin_user
+from auth_middleware import AuthenticationMiddleware, get_user_from_request
 from user_service import create_user, authenticate_user, get_user_by_email, create_or_update_google_user, get_user_by_id, get_all_users, get_user_statistics
 from activity_service import create_activity, get_activities, get_activity_statistics, get_user_activity_summary
 from submission_service import create_submission, process_submission, get_submission, get_user_submissions, get_all_submissions
 from subscription_service import get_user_subscription, update_user_subscription, get_subscription_plan, SUBSCRIPTION_PLANS
 from rate_limit_service import check_rate_limit, record_request
+from audit_service import log_action  # User Identity Model: audit logging
 from datetime import timedelta, datetime
 
 # Configure logging
@@ -80,12 +82,33 @@ app = FastAPI(
 # Or set environment variable: UVICORN_LIMIT_MAX_REQUESTS=10000
 # The default limit is usually sufficient, but for very large graphs,
 # you may need to increase it at the server level
+
+# CORS middleware (should be first)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=Config.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+)
+
+# Authentication middleware (runs after CORS)
+# Requires authentication for write operations (POST, PUT, PATCH, DELETE)
+# and admin routes. Read-only endpoints remain public.
+app.add_middleware(
+    AuthenticationMiddleware,
+    exclude_paths=[
+        '/api/auth/',  # Auth endpoints (login, register, etc.)
+        '/health',     # Health check
+        '/docs',       # API documentation
+        '/openapi.json',
+        '/redoc',
+        '/'            # Root endpoint
+    ],
+    require_auth_paths=[
+        '/api/admin/',  # All admin routes require authentication
+        '/api/auth/me', # User profile endpoint
+    ]
 )
 
 @app.get("/")
@@ -154,14 +177,16 @@ async def register_user(user_data: UserCreate):
                 detail="Failed to create user"
             )
         
-        # Create access token
+        # Create access token (User Identity Model: include role and status)
         access_token = create_access_token(
             data={
                 "sub": new_user.id,
                 "email": new_user.email,
                 "full_name": new_user.full_name,
                 "profile_picture": new_user.profile_picture,
-                "auth_provider": new_user.auth_provider
+                "auth_provider": new_user.auth_provider,
+                "role": new_user.role or "user",
+                "status": new_user.status or "active"
             }
         )
         
@@ -215,14 +240,16 @@ async def login_user(user_credentials: UserLogin):
                 detail="User account is disabled"
             )
         
-        # Create access token
+        # Create access token (User Identity Model: include role and status)
         access_token = create_access_token(
             data={
                 "sub": user['id'],
                 "email": user['email'],
                 "full_name": user.get('full_name'),
                 "profile_picture": user.get('profile_picture'),
-                "auth_provider": user.get('auth_provider', 'local')
+                "auth_provider": user.get('auth_provider', 'local'),
+                "role": user.get('role', 'user'),
+                "status": user.get('status', 'active')
             }
         )
         
@@ -234,6 +261,9 @@ async def login_user(user_credentials: UserLogin):
             full_name=user.get('full_name'),
             profile_picture=user.get('profile_picture'),
             is_active=user.get('is_active', True),
+            is_admin=user.get('is_admin', False),
+            role=user.get('role', 'user'),
+            status=user.get('status', 'active'),
             created_at=user.get('created_at'),
             auth_provider=user.get('auth_provider', 'local')
         )
@@ -283,14 +313,16 @@ async def google_auth(auth_request: GoogleAuthRequest):
                 detail="Failed to create/update user from Google account"
             )
         
-        # Create access token
+        # Create access token (User Identity Model: include role and status)
         access_token = create_access_token(
             data={
                 "sub": user.id,
                 "email": user.email,
                 "full_name": user.full_name,
                 "profile_picture": user.profile_picture,
-                "auth_provider": "google"
+                "auth_provider": "google",
+                "role": user.role or "user",
+                "status": user.status or "active"
             }
         )
         
@@ -331,6 +363,9 @@ async def get_current_user_info(current_user: dict = Depends(get_current_user)):
             full_name=user.get('full_name'),
             profile_picture=user.get('profile_picture'),
             is_active=user.get('is_active', True),
+            is_admin=user.get('is_admin', False),
+            role=user.get('role', 'user'),
+            status=user.get('status', 'active'),
             created_at=user.get('created_at'),
             auth_provider=user.get('auth_provider', 'local')
         )
@@ -372,7 +407,7 @@ async def admin_login(credentials: AdminLoginRequest):
                 detail="Admin privileges required"
             )
         
-        # Create access token with admin flag
+        # Create access token with admin flag (User Identity Model: include role and status)
         access_token = create_access_token(
             data={
                 "sub": user['id'],
@@ -380,7 +415,9 @@ async def admin_login(credentials: AdminLoginRequest):
                 "full_name": user.get('full_name'),
                 "profile_picture": user.get('profile_picture'),
                 "auth_provider": user.get('auth_provider', 'local'),
-                "is_admin": True
+                "is_admin": True,
+                "role": user.get('role', 'admin'),
+                "status": user.get('status', 'active')
             }
         )
         
@@ -414,13 +451,23 @@ async def admin_login(credentials: AdminLoginRequest):
 # ============== Activity Tracking Endpoints ==============
 
 @app.post("/api/activity/track", response_model=UserActivityResponse)
-async def track_activity(activity: UserActivityCreate):
+async def track_activity(
+    activity: UserActivityCreate,
+    request: Request
+):
     """
     Track user activity (page views, section views, etc.)
-    Can be called by authenticated or anonymous users
+    Requires authentication (user injected by middleware)
     """
+    # Get user from request state (injected by middleware)
+    user = get_user_from_request(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
     try:
         try:
+            # Use user ID from authenticated user if available
+            if user and user.get('id'):
+                activity.user_id = user['id']
             result = create_activity(activity)
         except Exception as e:
             error_msg = str(e)
@@ -526,6 +573,7 @@ async def get_user_activity(
 
 @app.post("/api/submissions", response_model=SubmissionResponse)
 async def create_submission_endpoint(
+    request: Request,
     submission_type: str = Form(...),
     input_data: Optional[str] = Form(None),
     input_url: Optional[str] = Form(None),
@@ -606,6 +654,18 @@ async def create_submission_endpoint(
         
         # Record request for rate limiting
         record_request(user_id, int(submission.id), "submission")
+        
+        # User Identity Model: Log submission creation (ingestion)
+        log_action(
+            user_id=int(user_id),
+            user_email=current_user.get('email'),
+            action_type="create_submission",
+            source="ingestion",
+            resource_type="submission",
+            resource_id=str(submission.id),
+            details={"submission_type": submission_type, "has_file": bool(file_path)},
+            request=request
+        )
         
         # Process submission asynchronously (in production, use a task queue)
         # For now, process synchronously
@@ -1029,13 +1089,21 @@ class SummaryRequest(BaseModel):
     graphData: dict  # The current graph data with nodes and links
 
 @app.post("/api/ai/summary", response_model=dict)
-async def generate_ai_summary(request: SummaryRequest):
+async def generate_ai_summary(
+    request: SummaryRequest,
+    http_request: Request
+):
     """
     Generate an AI summary of graph data with embedded entity markers.
     
     The summary will use [[Entity Name]] markers for entities that exist in the graph,
     allowing the frontend to render them as clickable buttons.
+    Requires authentication.
     """
+    # Get user from request state (injected by middleware)
+    user = get_user_from_request(http_request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
     try:
         if not request.query or not request.query.strip():
             raise HTTPException(status_code=400, detail="Query is required")
@@ -1050,6 +1118,18 @@ async def generate_ai_summary(request: SummaryRequest):
             graph_data=request.graphData
         )
         
+        # User Identity Model: Log AI summary action
+        log_action(
+            user_id=int(user['id']) if user.get('id') else None,
+            user_email=user.get('email'),
+            action_type="ai_summary",
+            source="query",
+            resource_type="graph",
+            resource_id=None,
+            details={"query": request.query.strip()[:200]},
+            request=http_request
+        )
+        
         return summary_data
         
     except ValueError as e:
@@ -1062,12 +1142,37 @@ async def generate_ai_summary(request: SummaryRequest):
         )
 
 @app.post("/api/ai/search", response_model=dict)
-async def ai_search(search_query: SearchQuery):
+async def ai_search(
+    search_query: SearchQuery,
+    request: Request
+):
+    """
+    AI-powered search endpoint (write operation - creates search activity).
+    Requires authentication.
+    """
+    # Get user from request state (injected by middleware)
+    user = get_user_from_request(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    
     try:
         if not search_query.query or not search_query.query.strip():
             raise HTTPException(status_code=400, detail="Query parameter is required")
 
         graph_data, generated_query = search_with_ai(search_query.query.strip())
+        
+        # User Identity Model: Log AI search action
+        log_action(
+            user_id=int(user['id']) if user.get('id') else None,
+            user_email=user.get('email'),
+            action_type="ai_search",
+            source="query",
+            resource_type="graph",
+            resource_id=None,
+            details={"query": search_query.query.strip()[:200], "generated_query": generated_query[:200] if generated_query else None},
+            request=request
+        )
+        
         return {
             "graphData": graph_data.model_dump(),
             "generatedQuery": generated_query
@@ -1105,9 +1210,23 @@ class CypherQuery(BaseModel):
 class CreateNodeRequest(BaseModel):
     category: str  # Node label/type
     properties: dict  # Node properties
+    # Optional: attach this new node to the currently selected section (new DB uses :section gid -> gr_id).
+    section_gid: Optional[str] = None
 
 @app.post("/api/cypher/execute", response_model=dict)
-async def execute_cypher_query(cypher_query: CypherQuery):
+async def execute_cypher_query(
+    cypher_query: CypherQuery,
+    request: Request
+):
+    """
+    Execute a Cypher query (write operation - can modify graph data).
+    Requires authentication.
+    """
+    # Get user from request state (injected by middleware)
+    user = get_user_from_request(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    
     try:
         if not cypher_query.query or not cypher_query.query.strip():
             raise HTTPException(status_code=400, detail="Cypher query is required")
@@ -1219,6 +1338,34 @@ async def execute_cypher_query(cypher_query: CypherQuery):
         logger.info(f"[BACKEND]   - graphData nodes: {len(response['graphData']['nodes']) if response['graphData'].get('nodes') else 0}")
         logger.info(f"[BACKEND]   - graphData links: {len(response['graphData']['links']) if response['graphData'].get('links') else 0}")
         logger.info(f"[BACKEND]   - rawResults: {response['rawResults']}")
+        
+        # User Identity Model: Log Cypher query execution (write operations)
+        # Check if query contains write operations (CREATE, SET, DELETE, MERGE, etc.)
+        query_upper = query.upper()
+        is_write_operation = any(op in query_upper for op in ['CREATE', 'SET', 'DELETE', 'MERGE', 'DETACH', 'REMOVE', 'UPDATE'])
+        if is_write_operation:
+            log_action(
+                user_id=int(user['id']) if user.get('id') else None,
+                user_email=user.get('email'),
+                action_type="execute_cypher_write",
+                source="editor",
+                resource_type="cypher_query",
+                resource_id=None,
+                details={"query_preview": query[:200], "is_write": True, "result_count": len(results) if results else 0},
+                request=request
+            )
+        else:
+            log_action(
+                user_id=int(user['id']) if user.get('id') else None,
+                user_email=user.get('email'),
+                action_type="execute_cypher_read",
+                source="query",
+                resource_type="cypher_query",
+                resource_id=None,
+                details={"query_preview": query[:200], "is_write": False, "result_count": len(results) if results else 0},
+                request=request
+            )
+        
         return response
     except HTTPException:
         raise
@@ -1235,9 +1382,13 @@ async def execute_cypher_query(cypher_query: CypherQuery):
         )
 
 @app.post("/api/nodes/create")
-async def create_node(node_request: CreateNodeRequest):
+async def create_node(
+    node_request: CreateNodeRequest,
+    request: Request
+):
     """
     Create a new node in Neo4j with the specified label and properties.
+    Requires authentication.
     
     Args:
         node_request: Contains category (node label) and properties (dict of property key-value pairs)
@@ -1245,6 +1396,10 @@ async def create_node(node_request: CreateNodeRequest):
     Returns:
         Created node data with generated ID
     """
+    # Get user from request state (injected by middleware)
+    user = get_user_from_request(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
     try:
         from database import db
         
@@ -1254,6 +1409,32 @@ async def create_node(node_request: CreateNodeRequest):
         
         category = node_request.category.strip()
         properties = node_request.properties or {}
+
+        # If a section_gid was provided, resolve the section's `graph name` and assign it to node's gr_id.
+        # New DB: Cross-property matching - section.`graph name` matches node.gr_id
+        section_gid = (node_request.section_gid or "").strip() if node_request.section_gid else None
+        if section_gid:
+            try:
+                section_lookup = db.execute_query(
+                    """
+                    MATCH (s:section)
+                    WHERE toString(s.gid) = toString($gid)
+                    RETURN s.`graph name` AS graph_name
+                    LIMIT 1
+                    """,
+                    {"gid": section_gid},
+                )
+                if section_lookup and section_lookup[0].get("graph_name") is not None:
+                    graph_name = section_lookup[0].get("graph_name")
+                    # Primary membership field - node.gr_id = section.`graph name`
+                    properties.setdefault("gr_id", graph_name)
+            except Exception as e:
+                logger.warning(f"[BACKEND] Could not resolve section `graph name` for section_gid={section_gid}: {e}")
+
+        # Ensure every created node has a stable gid (new DB relies on gid heavily)
+        if "gid" not in properties or properties.get("gid") in [None, ""]:
+            import uuid
+            properties["gid"] = uuid.uuid4().hex
         
         # Clean category label - remove backticks if present, we'll add them properly
         clean_category = category
@@ -1311,16 +1492,27 @@ async def create_node(node_request: CreateNodeRequest):
                     detail="Node creation failed: No result returned"
                 )
             
+            logger.info(f"[BACKEND] Raw results from Neo4j: {results}")
+            logger.info(f"[BACKEND] Result type: {type(results[0]) if results else 'None'}")
+            
             # Extract created node data
             # Neo4j returns records as dicts via record.data(), but 'n' might still be a Node object
             result_record = results[0]
+            logger.info(f"[BACKEND] Result record keys: {list(result_record.keys()) if isinstance(result_record, dict) else 'Not a dict'}")
+            logger.info(f"[BACKEND] Result record: {result_record}")
+            
             created_node = result_record.get('n', {})
+            logger.info(f"[BACKEND] Created node type: {type(created_node)}")
+            logger.info(f"[BACKEND] Created node: {created_node}")
             
             # Convert Neo4j Node object to dict
-            # Neo4j Node objects have a _properties attribute
+            node_data = {}
+            
+            # Try different methods to extract node properties
             if hasattr(created_node, '_properties'):
-                # It's a Neo4j Node object, extract properties
+                # Neo4j Node object with _properties attribute
                 node_data = dict(created_node._properties)
+                logger.info(f"[BACKEND] Extracted from _properties: {node_data}")
                 # Add element_id if available (Neo4j 5.x+)
                 if hasattr(created_node, 'element_id'):
                     node_data['element_id'] = created_node.element_id
@@ -1329,16 +1521,51 @@ async def create_node(node_request: CreateNodeRequest):
                     node_data['id'] = created_node.id
             elif isinstance(created_node, dict):
                 # It's already a dict
-                node_data = created_node
+                node_data = created_node.copy()
+                logger.info(f"[BACKEND] Node is already a dict: {node_data}")
+            elif hasattr(created_node, 'items'):
+                # It's a dict-like object
+                node_data = dict(created_node.items())
+                logger.info(f"[BACKEND] Extracted from items(): {node_data}")
             else:
                 # Fallback: try to convert to dict
                 try:
                     node_data = dict(created_node) if created_node else {}
-                except (TypeError, ValueError):
-                    # If conversion fails, create empty dict
-                    node_data = {}
+                    logger.info(f"[BACKEND] Converted to dict: {node_data}")
+                except (TypeError, ValueError) as e:
+                    logger.warning(f"[BACKEND] Could not convert node to dict: {e}, using original properties")
+                    # If conversion fails, use the properties we sent
+                    node_data = properties.copy()
+            
+            # Ensure gid and name are preserved from what we sent
+            # Neo4j might not return all properties, so we merge with what we sent
+            if 'gid' in properties:
+                node_data['gid'] = properties['gid']
+                logger.info(f"[BACKEND] Preserved gid from request: {properties['gid']}")
+            if 'name' in properties:
+                node_data['name'] = properties['name']
+                logger.info(f"[BACKEND] Preserved name from request: {properties['name']}")
+            
+            # Merge any other properties that might be missing
+            for key, value in properties.items():
+                if key not in node_data and value is not None:
+                    node_data[key] = value
+                    logger.info(f"[BACKEND] Added missing property {key}: {value}")
             
             logger.info(f"[BACKEND] ✅ Node created successfully: {node_data}")
+            
+            # User Identity Model: Log node creation action
+            node_gid = node_data.get('gid') or node_data.get('id')
+            log_action(
+                user_id=int(user['id']) if user.get('id') else None,
+                user_email=user.get('email'),
+                action_type="create_node",
+                source="editor",
+                resource_type="node",
+                resource_id=str(node_gid) if node_gid else None,
+                details={"category": category, "properties": list(properties.keys())},
+                request=request
+            )
             
             return {
                 "success": True,
@@ -1367,9 +1594,13 @@ class DeleteNodeRequest(BaseModel):
     node_id: str  # Node ID (gid) to delete
 
 @app.delete("/api/nodes/delete")
-async def delete_node(node_request: DeleteNodeRequest):
+async def delete_node(
+    node_request: DeleteNodeRequest,
+    request: Request
+):
     """
     Delete a node and all its relationships from Neo4j.
+    Requires authentication.
     
     Args:
         node_request: Contains node_id (gid) of the node to delete
@@ -1377,6 +1608,10 @@ async def delete_node(node_request: DeleteNodeRequest):
     Returns:
         Success response with deletion details
     """
+    # Get user from request state (injected by middleware)
+    user = get_user_from_request(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
     try:
         from database import db
         
@@ -1403,6 +1638,7 @@ async def delete_node(node_request: DeleteNodeRequest):
            OR (toInteger($node_id) IS NOT NULL AND n.gid = toInteger($node_id))
            OR toString(id(n)) = $node_id
            OR (toFloat($node_id) IS NOT NULL AND id(n) = toInteger(toFloat($node_id)))
+           OR elementId(n) = $node_id
         RETURN n, id(n) as internal_id, n.gid as gid_value, toString(n.gid) as gid_string, labels(n) as node_labels
         LIMIT 1
         """
@@ -1438,6 +1674,7 @@ async def delete_node(node_request: DeleteNodeRequest):
            OR (toInteger($node_id) IS NOT NULL AND n.gid = toInteger($node_id))
            OR toString(id(n)) = $node_id
            OR (toFloat($node_id) IS NOT NULL AND id(n) = toInteger(toFloat($node_id)))
+           OR elementId(n) = $node_id
         DETACH DELETE n
         RETURN count(n) as deleted_count
         """
@@ -1470,6 +1707,18 @@ async def delete_node(node_request: DeleteNodeRequest):
                 )
             
             logger.info(f"[BACKEND] ✅ Node deleted successfully. Count: {deleted_count}")
+            
+            # User Identity Model: Log node deletion action
+            log_action(
+                user_id=int(user['id']) if user.get('id') else None,
+                user_email=user.get('email'),
+                action_type="delete_node",
+                source="editor",
+                resource_type="node",
+                resource_id=node_id_str,
+                details={"deleted_count": deleted_count},
+                request=request
+            )
             
             return {
                 "success": True,

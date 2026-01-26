@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useToast } from '../../contexts/ToastContext';
+import Loader from './Loader';
 
 const ClusterContainer = ({
   selectedCluster,

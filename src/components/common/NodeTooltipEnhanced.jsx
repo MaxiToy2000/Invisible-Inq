@@ -69,12 +69,40 @@ const getNodeColor = (nodeType) => {
 };
 
 // Base tooltip layout - Same style as Amount tooltip with dynamic accent bar color
-const BaseTooltipLayout = ({ node, color }) => {
-  const name = node.name || node.id || 'Unknown';
+const BaseTooltipLayout = ({ node, color, graphData }) => {
+  const name = node.name || node.label || node.title || node.id || 'Unknown';
   const nodeType = node.node_type || node.type || node.category || '';
   const subtype = node.subtype || node.sub_type || '';
-  const description = node.description || node.desc || node.summary || node.properties?.description || '';
-  const relatedCount = node.degree || node.related_count || node.count || node.properties?.related_count || null;
+  const description = node.text || node.description || node.desc || node.summary || node.properties?.description || node.properties?.text || '';
+  
+  // Calculate actual number of connected nodes from graph data
+  let relatedCount = 0;
+  if (graphData?.links && graphData?.nodes) {
+    const nodeId = node.id;
+    const connectedNodeIds = new Set();
+    
+    // Find all links connected to this node
+    graphData.links.forEach(link => {
+      const sourceId = link.source?.id || link.sourceId || link.source;
+      const targetId = link.target?.id || link.targetId || link.target;
+      
+      // If this node is the source, add the target
+      if (sourceId === nodeId) {
+        connectedNodeIds.add(targetId);
+      }
+      // If this node is the target, add the source
+      if (targetId === nodeId) {
+        connectedNodeIds.add(sourceId);
+      }
+    });
+    
+    relatedCount = connectedNodeIds.size;
+  }
+  
+  // Fallback to node properties if graph data not available
+  if (relatedCount === 0) {
+    relatedCount = node.degree || node.related_count || node.count || node.properties?.related_count || 0;
+  }
   
   // Format type display
   const typeDisplay = subtype ? `${nodeType} / ${subtype}` : nodeType;
@@ -166,7 +194,7 @@ const BaseTooltipLayout = ({ node, color }) => {
             letterSpacing: '-0.025em',
             color: '#D7D7D7'
           }}>
-            {Math.floor(Math.random() * 1000)}
+            {relatedCount}
           </span>
         </div>
       </div>
@@ -523,18 +551,18 @@ const EntityTooltipLayout = ({ node, color }) => {
 };
 
 // Agency-specific layout (placeholder for future customization)
-const AgencyTooltipLayout = ({ node, color }) => {
-  return <BaseTooltipLayout node={node} color={color} />;
+const AgencyTooltipLayout = ({ node, color, graphData }) => {
+  return <BaseTooltipLayout node={node} color={color} graphData={graphData} />;
 };
 
 // Country-specific layout (placeholder for future customization)
-const CountryTooltipLayout = ({ node, color }) => {
-  return <BaseTooltipLayout node={node} color={color} />;
+const CountryTooltipLayout = ({ node, color, graphData }) => {
+  return <BaseTooltipLayout node={node} color={color} graphData={graphData} />;
 };
 
 // Location-specific layout (placeholder for future customization)
-const LocationTooltipLayout = ({ node, color }) => {
-  return <BaseTooltipLayout node={node} color={color} />;
+const LocationTooltipLayout = ({ node, color, graphData }) => {
+  return <BaseTooltipLayout node={node} color={color} graphData={graphData} />;
 };
 
 // Amount/Transaction-specific layout - Custom flow design
@@ -610,7 +638,8 @@ const AmountTooltipLayout = ({ node, color, graphData }) => {
                    'Entity Target';
   }
   
-  const entityType = node.section || node.entity_type || node.subtype || node.node_type || node.type || node.properties?.type || 'Type';
+  // NOTE: `node.section` is section membership (Section Name key), not the node's type.
+  const entityType = node.entity_type || node.subtype || node.node_type || node.type || node.properties?.type || 'Type';
   const relatedCount = node.degree || node.related_count || node.count || node.properties?.related_count || null;
 
   // Format amount with currency
@@ -740,14 +769,25 @@ const AmountTooltipLayout = ({ node, color, graphData }) => {
 };
 
 // Relationship-specific layout (placeholder for future customization)
-const RelationshipTooltipLayout = ({ node, color }) => {
-  return <BaseTooltipLayout node={node} color={color} />;
+const RelationshipTooltipLayout = ({ node, color, graphData }) => {
+  return <BaseTooltipLayout node={node} color={color} graphData={graphData} />;
 };
 
 // Action-specific layout - Shows Source → ProcessName → Target flow
 const ActionTooltipLayout = ({ node, color, graphData }) => {
-  // Process/Action name (the node's name displayed in the middle)
-  const processName = node.category || 'Action';
+  // Process/Action name (the node's actual action value/name)
+  const processName = node.name || 
+                      node.action_text || 
+                      node.action_name || 
+                      node.label || 
+                      node.title ||
+                      node.action ||
+                      node.properties?.name ||
+                      node.properties?.action_text ||
+                      node.properties?.action_name ||
+                      node.properties?.label ||
+                      node.category || 
+                      'Action';
   
   // Find connected source and target from graph links
   let sourceEntity = 'Entity Source';
@@ -820,11 +860,40 @@ const ActionTooltipLayout = ({ node, color, graphData }) => {
                    'Entity Target';
   }
 
-  const entityType = node.section || node.action_type || node.subtype || node.type || node.properties?.type || 'Type';
-  const relatedCount = node.degree || node.related_count || node.count || node.properties?.related_count || 857;
+  // NOTE: `node.section` is section membership (Section Name key), not the node's type.
+  const entityType = node.action_type || node.subtype || node.node_type || node.type || node.properties?.type || 'Type';
+  
+  // Calculate actual number of connected nodes from graph data
+  let relatedCount = 0;
+  if (graphData?.links && graphData?.nodes) {
+    const nodeId = node.id;
+    const connectedNodeIds = new Set();
+    
+    // Find all links connected to this node
+    graphData.links.forEach(link => {
+      const sourceId = link.source?.id || link.sourceId || link.source;
+      const targetId = link.target?.id || link.targetId || link.target;
+      
+      // If this node is the source, add the target
+      if (sourceId === nodeId) {
+        connectedNodeIds.add(targetId);
+      }
+      // If this node is the target, add the source
+      if (targetId === nodeId) {
+        connectedNodeIds.add(sourceId);
+      }
+    });
+    
+    relatedCount = connectedNodeIds.size;
+  }
+  
+  // Fallback to node properties if graph data not available
+  if (relatedCount === 0) {
+    relatedCount = node.degree || node.related_count || node.count || node.properties?.related_count || 0;
+  }
 
   // Description text
-  const description = node.description || node.desc || node.summary || node.properties?.description || '';
+  const description = node.text || node.description || node.desc || node.summary || node.properties?.description || '';
 
   return (
     <div 
@@ -877,14 +946,14 @@ const ActionTooltipLayout = ({ node, color, graphData }) => {
         {/* Type Information */}
         <div className="flex items-center mb-3">
           <span className="text-[#707070] text-xs">
-            Type: <span style={{ color }}>Action</span>
+            Type: <span style={{ color }}>{node.type}</span>
           </span>
         </div>
 
         {/* Description */}
         {node.name && (
           <p className="text-[#606060] text-sm leading-relaxed line-clamp-3">
-            {node.name}
+            {node.text}
           </p>
         )}
       </div> 
@@ -944,13 +1013,13 @@ const ActionTooltipLayout = ({ node, color, graphData }) => {
 };
 
 // Result-specific layout (placeholder for future customization)
-const ResultTooltipLayout = ({ node, color }) => {
-  return <BaseTooltipLayout node={node} color={color} />;
+const ResultTooltipLayout = ({ node, color, graphData }) => {
+  return <BaseTooltipLayout node={node} color={color} graphData={graphData} />;
 };
 
 // Process-specific layout (placeholder for future customization)
-const ProcessTooltipLayout = ({ node, color }) => {
-  return <BaseTooltipLayout node={node} color={color} />;
+const ProcessTooltipLayout = ({ node, color, graphData }) => {
+  return <BaseTooltipLayout node={node} color={color} graphData={graphData} />;
 };
 
 // Get the appropriate layout component based on node type

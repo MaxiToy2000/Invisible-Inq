@@ -49,8 +49,8 @@ const Header = ({
         <div className={`h-full flex items-center ${showStoryDropdown ? 'ml-4' : 'ml-4 pl-2'}`}>
           <Link to="/" className="h-full flex items-center">
             <img
-              src='/logo/logo-with-text.png'
-              alt="Invisible Injury Logo"
+              src='/images/logo-with-text.png'
+              alt="Invisible Inqury Logo"
               className="h-6 object-contain ml-2"
               onError={(e) => {
                 console.error("Image failed to load");

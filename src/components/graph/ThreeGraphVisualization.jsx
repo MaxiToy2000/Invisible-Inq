@@ -1810,6 +1810,10 @@ const ThreeGraphVisualization = React.memo(({
     // Note: Axis arrows are now only displayed when a node is clicked
     // See the selectedNode useEffect for axis arrow implementation
 
+    // *** CRITICAL: Load the graph data into ForceGraph3D ***
+    // This must be done AFTER all configuration but BEFORE setting camera position
+    graphRef.current.graphData({ nodes: data.nodes, links: data.links });
+
     // Set camera position based on number of nodes
     if (data.nodes.length > 0) {
       const nodeCount = data.nodes.length;
@@ -4730,8 +4734,7 @@ const ThreeGraphVisualization = React.memo(({
     <>
       <div
         ref={containerRef}
-        className="w-full h-full relative"
-        className={selectionMode === 'individual' ? 'cursor-default' : ''}
+        className={`w-full h-full relative ${selectionMode === 'individual' ? 'cursor-default' : ''}`}
         style={selectionMode !== 'individual' ? { cursor: cursorStyle } : undefined}
       >
         {/* Box selection visual overlay */}
