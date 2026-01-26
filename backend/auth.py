@@ -86,14 +86,16 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         if user_id is None or email is None:
             raise credentials_exception
         
-        # Return user data from token
+        # Return user data from token (User Identity Model: include role and status)
         return {
             "id": user_id,
             "email": email,
             "full_name": payload.get("full_name"),
             "profile_picture": payload.get("profile_picture"),
             "auth_provider": payload.get("auth_provider", "local"),
-            "is_admin": payload.get("is_admin", False)
+            "is_admin": payload.get("is_admin", False),
+            "role": payload.get("role", "user"),  # User Identity Model: role
+            "status": payload.get("status", "active")  # User Identity Model: status
         }
     except Exception as e:
         logger.error(f"Authentication error: {e}")
@@ -141,9 +143,14 @@ async def get_current_active_user(current_user: dict = Depends(get_current_user)
 
 async def get_current_admin_user(current_user: dict = Depends(get_current_user)):
     """Dependency to ensure user is an admin"""
-    if not current_user.get('is_admin', False):
+    # Check both is_admin (backward compatibility) and role
+    is_admin = current_user.get('is_admin', False) or current_user.get('role') == 'admin'
+    if not is_admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin privileges required"
         )
     return current_user
+
+# Note: get_user_from_request is available from auth_middleware
+# Import it directly in files that need it: from auth_middleware import get_user_from_request

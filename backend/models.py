@@ -3,6 +3,16 @@ from pydantic import BaseModel, EmailStr, Field
 from datetime import datetime
 from enum import Enum
 
+# User Identity Model Enums
+class UserRole(str, Enum):
+    ADMIN = "admin"
+    TESTER = "tester"
+    USER = "user"
+
+class UserStatus(str, Enum):
+    ACTIVE = "active"
+    SUSPENDED = "suspended"
+
 class Substory(BaseModel):
     id: str
     title: str
@@ -79,7 +89,9 @@ class UserResponse(BaseModel):
     full_name: Optional[str] = None
     profile_picture: Optional[str] = None
     is_active: bool = True
-    is_admin: bool = False
+    is_admin: bool = False  # Deprecated: use role instead, kept for backward compatibility
+    role: Optional[str] = "user"  # admin, tester, user
+    status: Optional[str] = "active"  # active, suspended
     created_at: Optional[datetime] = None
     auth_provider: Optional[str] = "local"  # local, google
 

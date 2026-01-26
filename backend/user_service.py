@@ -28,11 +28,14 @@ def create_user(user_data: UserCreate, auth_provider: str = "local", is_admin: b
         if user_data.password:
             hashed_password = get_password_hash(user_data.password)
         
-        # Insert user into PostgreSQL
+        # Determine role based on is_admin flag (User Identity Model)
+        role = "admin" if is_admin else "user"
+        
+        # Insert user into PostgreSQL (User Identity Model: include role and status)
         query = """
-        INSERT INTO users (email, full_name, hashed_password, auth_provider, is_active, is_admin, created_at, updated_at)
-        VALUES (%s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-        RETURNING id, email, full_name, profile_picture, auth_provider, is_active, is_admin, created_at, updated_at
+        INSERT INTO users (email, full_name, hashed_password, auth_provider, is_active, is_admin, role, status, created_at, updated_at)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        RETURNING id, email, full_name, profile_picture, auth_provider, is_active, is_admin, role, status, created_at, updated_at
         """
         
         params = (
@@ -41,7 +44,9 @@ def create_user(user_data: UserCreate, auth_provider: str = "local", is_admin: b
             hashed_password,
             auth_provider,
             True,  # is_active
-            is_admin
+            is_admin,
+            role,  # User Identity Model: role
+            "active"  # User Identity Model: status (default to active)
         )
         
         result = neon_db.execute_write_query(query, params)
@@ -56,6 +61,8 @@ def create_user(user_data: UserCreate, auth_provider: str = "local", is_admin: b
                 profile_picture=user_row.get('profile_picture'),
                 is_active=user_row.get('is_active', True),
                 is_admin=user_row.get('is_admin', False),
+                role=user_row.get('role', 'user'),  # User Identity Model: role
+                status=user_row.get('status', 'active'),  # User Identity Model: status
                 created_at=user_row.get('created_at'),
                 auth_provider=user_row.get('auth_provider', 'local')
             )
@@ -89,7 +96,7 @@ def get_user_by_email(email: str) -> Optional[Dict]:
     try:
         query = """
         SELECT id, email, full_name, hashed_password, profile_picture, 
-               is_active, is_admin, created_at, updated_at, auth_provider
+               is_active, is_admin, created_at, updated_at, auth_provider, role, status
         FROM users
         WHERE email = %s
         """
@@ -108,7 +115,9 @@ def get_user_by_email(email: str) -> Optional[Dict]:
                 "is_active": user_row.get('is_active', True),
                 "is_admin": user_row.get('is_admin', False),
                 "created_at": user_row.get('created_at'),
-                "auth_provider": user_row.get('auth_provider', 'local')
+                "auth_provider": user_row.get('auth_provider', 'local'),
+                "role": user_row.get('role'),  # New User Identity Model field
+                "status": user_row.get('status')  # New User Identity Model field
             }
         
         return None
@@ -119,22 +128,25 @@ def get_user_by_email(email: str) -> Optional[Dict]:
 def get_user_by_id(user_id: str) -> Optional[Dict]:
     """
     Get user by ID from PostgreSQL database
+    Supports both UUID and integer IDs (for backward compatibility)
     
     Args:
-        user_id: User's ID
+        user_id: User's ID (UUID string or integer string)
     
     Returns:
         User data dict if found, None otherwise
     """
     try:
+        # Check if user_id looks like a UUID (contains hyphens) or is integer
+        # PostgreSQL will handle the type conversion
         query = """
         SELECT id, email, full_name, hashed_password, profile_picture, 
-               is_active, is_admin, created_at, updated_at, auth_provider
+               is_active, is_admin, created_at, updated_at, auth_provider, role, status
         FROM users
-        WHERE id = %s
+        WHERE id::text = %s
         """
         
-        result = neon_db.execute_query(query, (int(user_id),))
+        result = neon_db.execute_query(query, (str(user_id),))
         
         if result and len(result) > 0:
             user_row = result[0]
@@ -148,7 +160,9 @@ def get_user_by_id(user_id: str) -> Optional[Dict]:
                 "is_active": user_row.get('is_active', True),
                 "is_admin": user_row.get('is_admin', False),
                 "created_at": user_row.get('created_at'),
-                "auth_provider": user_row.get('auth_provider', 'local')
+                "auth_provider": user_row.get('auth_provider', 'local'),
+                "role": user_row.get('role'),  # New User Identity Model field
+                "status": user_row.get('status')  # New User Identity Model field
             }
         
         return None
@@ -222,7 +236,7 @@ def create_or_update_google_user(google_user_info: Dict) -> Optional[UserRespons
         existing_user = get_user_by_email(email)
         
         if existing_user:
-            # Update existing user with Google info
+            # Update existing user with Google info (User Identity Model: include role and status)
             query = """
             UPDATE users
             SET full_name = COALESCE(%s, full_name),
@@ -230,7 +244,7 @@ def create_or_update_google_user(google_user_info: Dict) -> Optional[UserRespons
                 auth_provider = 'google',
                 updated_at = CURRENT_TIMESTAMP
             WHERE email = %s
-            RETURNING id, email, full_name, profile_picture, auth_provider, is_active, is_admin, created_at, updated_at
+            RETURNING id, email, full_name, profile_picture, auth_provider, is_active, is_admin, role, status, created_at, updated_at
             """
             
             params = (
@@ -241,11 +255,11 @@ def create_or_update_google_user(google_user_info: Dict) -> Optional[UserRespons
             
             result = neon_db.execute_write_query(query, params)
         else:
-            # Create new user from Google info
+            # Create new user from Google info (User Identity Model: include role and status)
             query = """
-            INSERT INTO users (email, full_name, profile_picture, auth_provider, is_active, created_at, updated_at)
-            VALUES (%s, %s, %s, 'google', TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-            RETURNING id, email, full_name, profile_picture, auth_provider, is_active, is_admin, created_at, updated_at
+            INSERT INTO users (email, full_name, profile_picture, auth_provider, is_active, role, status, created_at, updated_at)
+            VALUES (%s, %s, %s, 'google', TRUE, 'user', 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            RETURNING id, email, full_name, profile_picture, auth_provider, is_active, is_admin, role, status, created_at, updated_at
             """
             
             params = (
@@ -266,6 +280,8 @@ def create_or_update_google_user(google_user_info: Dict) -> Optional[UserRespons
                 profile_picture=user_row.get('profile_picture'),
                 is_active=user_row.get('is_active', True),
                 is_admin=user_row.get('is_admin', False),
+                role=user_row.get('role', 'user'),
+                status=user_row.get('status', 'active'),
                 created_at=user_row.get('created_at'),
                 auth_provider='google'
             )
@@ -309,7 +325,7 @@ def update_user_profile(user_id: str, updates: Dict) -> Optional[UserResponse]:
         UPDATE users
         SET {set_clause}
         WHERE id = %s
-        RETURNING id, email, full_name, profile_picture, auth_provider, is_active, is_admin, created_at, updated_at
+        RETURNING id, email, full_name, profile_picture, auth_provider, is_active, is_admin, role, status, created_at, updated_at
         """
         
         result = neon_db.execute_write_query(query, tuple(params))
@@ -324,6 +340,8 @@ def update_user_profile(user_id: str, updates: Dict) -> Optional[UserResponse]:
                 profile_picture=user_row.get('profile_picture'),
                 is_active=user_row.get('is_active', True),
                 is_admin=user_row.get('is_admin', False),
+                role=user_row.get('role', 'user'),
+                status=user_row.get('status', 'active'),
                 created_at=user_row.get('created_at'),
                 auth_provider=user_row.get('auth_provider', 'local')
             )
