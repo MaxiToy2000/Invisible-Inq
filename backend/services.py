@@ -960,8 +960,17 @@ def search_entity_wikidata(search_term: str, limit: int = 10) -> Dict[str, Any]:
         Dict with 'results' list of matching entities
     """
     from neon_database import neon_db
+    from sql_security import validate_limit, validate_string_input
     
-    logger.info(f"Searching wikidata for: {search_term}")
+    # Validate inputs
+    validated_search_term = validate_string_input(search_term, max_length=1000, allow_empty=False)
+    if not validated_search_term:
+        logger.warning(f"Invalid search term: {search_term}")
+        return {"results": [], "error": "Invalid search term"}
+    
+    validated_limit = validate_limit(limit, default=10, max_limit=50)  # Cap at 50 for search
+    
+    logger.info(f"Searching wikidata for: {validated_search_term}")
     
     if not neon_db.is_configured():
         logger.warning("Neon database not configured")
@@ -983,12 +992,12 @@ def search_entity_wikidata(search_term: str, limit: int = 10) -> Dict[str, Any]:
             LIMIT %s
         """
         
-        search_pattern = f"%{search_term}%"
-        starts_with_pattern = f"{search_term}%"
+        search_pattern = f"%{validated_search_term}%"
+        starts_with_pattern = f"{validated_search_term}%"
         
         results = neon_db.execute_query(
             query, 
-            (search_pattern, search_pattern, search_term, starts_with_pattern, limit)
+            (search_pattern, search_pattern, validated_search_term, starts_with_pattern, validated_limit)
         )
         
         entities = []
@@ -1004,7 +1013,7 @@ def search_entity_wikidata(search_term: str, limit: int = 10) -> Dict[str, Any]:
                 "wikipedia_url": entity.get("wikipedia_url")
             })
         
-        logger.info(f"Found {len(entities)} wikidata matches for: {search_term}")
+        logger.info(f"Found {len(entities)} wikidata matches for: {validated_search_term}")
         return {"results": entities, "count": len(entities)}
         
     except Exception as e:

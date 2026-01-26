@@ -7,6 +7,7 @@ import logging
 from neon_database import neon_db
 from auth import get_password_hash, verify_password
 from models import UserCreate, UserResponse
+from sql_security import validate_limit, validate_offset, build_set_clause
 
 logger = logging.getLogger(__name__)
 
@@ -351,7 +352,7 @@ def update_user_profile(user_id: str, updates: Dict) -> Optional[UserResponse]:
         logger.error(f"Error updating user profile: {e}")
         return None
 
-def get_all_users(limit: int = 100, offset: int = 0) -> list:
+def get_all_users(limit: Optional[int] = 100, offset: Optional[int] = 0) -> list:
     """
     Get all users from PostgreSQL database (for admin)
     Includes both regular users and admin users
@@ -364,6 +365,10 @@ def get_all_users(limit: int = 100, offset: int = 0) -> list:
         List of user dictionaries with subscription info
     """
     try:
+        # Validate limit and offset
+        validated_limit = validate_limit(limit)
+        validated_offset = validate_offset(offset)
+        
         all_users = []
         
         # Query regular users table
@@ -428,7 +433,7 @@ def get_all_users(limit: int = 100, offset: int = 0) -> list:
         # Sort all users by created_at descending and apply limit/offset
         # Handle None values by putting them at the end
         all_users.sort(key=lambda x: x['created_at'] if x['created_at'] else '1970-01-01T00:00:00', reverse=True)
-        users = all_users[offset:offset + limit]
+        users = all_users[validated_offset:validated_offset + validated_limit]
         
         logger.info(f"Successfully retrieved {len(users)} users from database (total: {len(all_users)})")
         return users
