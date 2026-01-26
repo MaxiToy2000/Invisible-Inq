@@ -2,7 +2,8 @@ import { useState, useRef, useEffect } from 'react';
 import { FaTimes, FaPlus, FaChevronDown, FaArrowsAlt, FaWindowMaximize, FaWindowRestore, FaExpandArrowsAlt } from 'react-icons/fa';
 
 const AddNodeModal = ({ isOpen, onClose, onCreate, existingCategories = [], nodeTypesWithPropertyKeys = [] }) => {
-  const [category, setCategory] = useState('Entity');
+  // New DB uses lowercase labels (e.g. "entity", "relationship")
+  const [category, setCategory] = useState('entity');
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
   const [properties, setProperties] = useState([{ name: '', value: '' }]);
   const [isMaximized, setIsMaximized] = useState(false);
@@ -137,13 +138,13 @@ const AddNodeModal = ({ isOpen, onClose, onCreate, existingCategories = [], node
     }
     
     // Reset form
-    setCategory('Entity');
+    setCategory('entity');
     setProperties([{ name: '', value: '' }]);
     onClose();
   };
 
   const handleCancel = () => {
-    setCategory('Entity');
+    setCategory('entity');
     setProperties([{ name: '', value: '' }]);
     onClose();
   };

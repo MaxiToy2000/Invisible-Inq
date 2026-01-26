@@ -81,6 +81,12 @@ const generateRandomId = () => {
 };
 
 const determineEntityCategory = (node) => {
+  // New DB: prefer normalized Neo4j label
+  const nodeType = node.node_type || (Array.isArray(node.labels) ? node.labels[0] : null) || node.type;
+  if (nodeType) {
+    return String(nodeType).toLowerCase().replace(/\s+/g, '_');
+  }
+
   if (node.category) {
     return node.category;
   }
@@ -155,51 +161,63 @@ const determineEntityCategory = (node) => {
 export const formatGraphData = (rawData) => {
   const validRawData = rawData || { nodes: [], links: [] };
 
-  const entityNodes = [];
-  const relationshipNodes = {};
+  const normalizeType = (t) => (t ? String(t).toLowerCase().replace(/\s+/g, '_') : '');
+
+  const nodes = [];
 
   if (Array.isArray(validRawData.nodes)) {
-    validRawData.nodes.forEach(node => {
-      if (node.type === 'Relationship') {
-        relationshipNodes[node.id] = node;
-      } else {
-        const category = determineEntityCategory(node);
+    validRawData.nodes.forEach((node) => {
+      const id = String(
+        node.id ??
+          node.gid ??
+          node.elementId ??
+          node.element_id ??
+          generateRandomId(),
+      );
 
-        const nodeName = node.name || node['Entity Name'] || node.entity_name || node.relationship_name || node['Relationship NAME'] || node.id;
-        const nodeNameStr = String(nodeName || '');
+      const nodeType =
+        node.node_type ||
+        node.type ||
+        (Array.isArray(node.labels) && node.labels.length ? node.labels[0] : '');
 
-        entityNodes.push({
-          ...node,
-          id: node.id || nodeNameStr || generateRandomId(),
-          name: nodeNameStr,
-          category: category
-        });
-      }
+      const category = node.category || normalizeType(nodeType) || determineEntityCategory(node);
+
+      const nodeName =
+        node.name ||
+        node.title ||
+        node['Entity Name'] ||
+        node.entity_name ||
+        node.relationship_name ||
+        node['Relationship NAME'] ||
+        node.summary ||
+        node.Summary ||
+        id;
+      const nodeNameStr = String(nodeName || '');
+
+      nodes.push({
+        ...node,
+        id,
+        name: nodeNameStr,
+        node_type: normalizeType(nodeType) || node.node_type,
+        category,
+      });
     });
   }
 
   const nodeMap = {};
-  entityNodes.forEach(node => {
+  nodes.forEach((node) => {
     nodeMap[node.id] = node;
   });
 
   const links = [];
 
   if (Array.isArray(validRawData.links)) {
-    validRawData.links.forEach(link => {
-      const sourceId = link.sourceId;
-      const targetId = link.targetId;
+    validRawData.links.forEach((link) => {
+      const sourceId = String(link.sourceId ?? link.source ?? link.from_gid ?? '');
+      const targetId = String(link.targetId ?? link.target ?? link.to_gid ?? '');
 
       if (!sourceId || !targetId) {
         console.warn('Skipping link with missing sourceId or targetId:', link);
-        return;
-      }
-
-      if (relationshipNodes[sourceId]) {
-        return;
-      }
-
-      if (relationshipNodes[targetId]) {
         return;
       }
 
@@ -231,67 +249,38 @@ export const formatGraphData = (rawData) => {
         _originalData: { ...link }
       };
 
-      if (link['Relationship Summary'] && !newLink.label) {
-        newLink.label = link['Relationship Summary'];
+      // Provide reasonable defaults from the new DB structure
+      if (!newLink.label) {
+        newLink.label =
+          link.label ||
+          link.relationship_summary ||
+          link.summary ||
+          link['Relationship Summary'] ||
+          link.type ||
+          '';
       }
-      if (link['Source Title'] && !newLink.title) {
-        newLink.title = link['Source Title'];
+      if (!newLink.title) {
+        newLink.title =
+          link.title ||
+          link.article_title ||
+          link['Article Title'] ||
+          link['Source Title'] ||
+          '';
       }
-      if (link['Source URL'] && !newLink.url) {
-        newLink.url = link['Source URL'];
+      if (!newLink.url) {
+        newLink.url =
+          link.url ||
+          link.article_url ||
+          link['Article URL'] ||
+          link['Source URL'] ||
+          '';
       }
 
       links.push(newLink);
     });
   }
 
-  Object.values(relationshipNodes).forEach(relationshipNode => {
-    if (Array.isArray(validRawData.links)) {
-      const outgoingLinks = validRawData.links.filter(link =>
-        link.sourceId === relationshipNode.id
-      );
-
-      const incomingLinks = validRawData.links.filter(link =>
-        link.targetId === relationshipNode.id
-      );
-
-      incomingLinks.forEach(inLink => {
-        outgoingLinks.forEach(outLink => {
-          const sourceId = inLink.sourceId;
-          const targetId = outLink.targetId;
-
-          if (relationshipNodes[sourceId] || relationshipNodes[targetId]) {
-            return;
-          }
-
-          const sourceNode = nodeMap[sourceId];
-          const targetNode = nodeMap[targetId];
-
-          if (!sourceNode || !targetNode) {
-            return;
-          }
-
-          const newLink = {
-            id: `${relationshipNode.id}_link`,
-            source: sourceId,
-            target: targetId,
-            sourceId: sourceId,
-            targetId: targetId,
-            sourceName: String((sourceNode.name || sourceNode['Entity Name'] || sourceNode.entity_name || sourceNode.relationship_name || sourceNode['Relationship NAME'] || sourceId) || ''),
-            targetName: String((targetNode.name || targetNode['Entity Name'] || targetNode.entity_name || targetNode.relationship_name || targetNode['Relationship NAME'] || targetId) || ''),
-            label: relationshipNode['Relationship Summary'] || '',
-            title: relationshipNode['Article Title'] || '',
-            url: relationshipNode['Article URL'] || '',
-            _originalData: { ...relationshipNode }
-          };
-
-          links.push(newLink);
-        });
-      });
-    }
-  });
-
-  return { nodes: entityNodes, links };
+  return { nodes, links };
 };
 
 export const extractEntityHighlights = (graphData) => {
