@@ -19,6 +19,7 @@ from models import SubmissionCreate, SubmissionResponse, GraphData
 from services import search_with_ai, extract_graph_data_from_cypher_results
 from ai_service import generate_cypher_query
 from database import db
+from sql_security import validate_limit, validate_offset, validate_id
 
 logger = logging.getLogger(__name__)
 
@@ -158,13 +159,19 @@ def create_submission(user_id: str, submission_data: SubmissionCreate, file_path
 def process_submission(submission_id: str) -> Optional[SubmissionResponse]:
     """Process a submission and update its status"""
     try:
+        # Validate submission_id
+        validated_id = validate_id(submission_id)
+        if not validated_id:
+            logger.error(f"Invalid submission_id: {submission_id}")
+            return None
+        
         # Get submission
         query = """
         SELECT id, user_id, submission_type, input_data, input_url, file_path, file_name, tags
         FROM submissions
         WHERE id = %s
         """
-        result = neon_db.execute_query(query, (submission_id,))
+        result = neon_db.execute_query(query, (validated_id,))
         
         if not result or len(result) == 0:
             return None
@@ -177,7 +184,7 @@ def process_submission(submission_id: str) -> Optional[SubmissionResponse]:
         SET status = 'processing'
         WHERE id = %s
         """
-        neon_db.execute_write_query(update_status_query, (submission_id,))
+        neon_db.execute_write_query(update_status_query, (validated_id,))
         
         # Extract content based on type
         content = ""
@@ -218,7 +225,7 @@ def process_submission(submission_id: str) -> Optional[SubmissionResponse]:
         """
         
         result_json = json.dumps(processing_result)
-        update_result = neon_db.execute_write_query(update_complete_query, (result_json, submission_id))
+        update_result = neon_db.execute_write_query(update_complete_query, (result_json, validated_id))
         
         if update_result and len(update_result) > 0:
             row = update_result[0]
@@ -247,8 +254,11 @@ def process_submission(submission_id: str) -> Optional[SubmissionResponse]:
             SET status = 'failed', processing_result = %s, processed_at = CURRENT_TIMESTAMP
             WHERE id = %s
             """
-            error_result = json.dumps({"error": str(e)})
-            neon_db.execute_write_query(update_failed_query, (error_result, submission_id))
+            # Validate submission_id again in exception handler
+            validated_id = validate_id(submission_id)
+            if validated_id:
+                error_result = json.dumps({"error": str(e)})
+                neon_db.execute_write_query(update_failed_query, (error_result, validated_id))
         except:
             pass
         return None
@@ -256,12 +266,18 @@ def process_submission(submission_id: str) -> Optional[SubmissionResponse]:
 def get_submission(submission_id: str) -> Optional[SubmissionResponse]:
     """Get a submission by ID"""
     try:
+        # Validate submission_id
+        validated_id = validate_id(submission_id)
+        if not validated_id:
+            logger.error(f"Invalid submission_id: {submission_id}")
+            return None
+        
         query = """
         SELECT id, user_id, submission_type, input_data, input_url, file_path, file_name, file_size, status, processing_result, tags, created_at, processed_at
         FROM submissions
         WHERE id = %s
         """
-        result = neon_db.execute_query(query, (submission_id,))
+        result = neon_db.execute_query(query, (validated_id,))
         
         if result and len(result) > 0:
             row = result[0]
@@ -288,9 +304,18 @@ def get_submission(submission_id: str) -> Optional[SubmissionResponse]:
         logger.error(f"Error getting submission: {e}")
         return None
 
-def get_user_submissions(user_id: str, limit: int = 50, offset: int = 0) -> list:
+def get_user_submissions(user_id: str, limit: Optional[int] = 50, offset: Optional[int] = 0) -> list:
     """Get all submissions for a user"""
     try:
+        # Validate inputs
+        validated_user_id = validate_id(user_id)
+        if not validated_user_id:
+            logger.error(f"Invalid user_id: {user_id}")
+            return []
+        
+        validated_limit = validate_limit(limit, default=50)
+        validated_offset = validate_offset(offset)
+        
         query = """
         SELECT id, user_id, submission_type, input_data, input_url, file_path, file_name, file_size, status, processing_result, tags, created_at, processed_at
         FROM submissions
@@ -298,7 +323,7 @@ def get_user_submissions(user_id: str, limit: int = 50, offset: int = 0) -> list
         ORDER BY created_at DESC
         LIMIT %s OFFSET %s
         """
-        result = neon_db.execute_query(query, (user_id, limit, offset))
+        result = neon_db.execute_query(query, (validated_user_id, validated_limit, validated_offset))
         
         submissions = []
         for row in result:
@@ -329,9 +354,13 @@ def get_user_submissions(user_id: str, limit: int = 50, offset: int = 0) -> list
         logger.error(f"Error getting user submissions: {e}")
         return []
 
-def get_all_submissions(limit: int = 100, offset: int = 0) -> list:
+def get_all_submissions(limit: Optional[int] = 100, offset: Optional[int] = 0) -> list:
     """Get all submissions (for admin)"""
     try:
+        # Validate limit and offset
+        validated_limit = validate_limit(limit)
+        validated_offset = validate_offset(offset)
+        
         query = """
         SELECT s.id, s.user_id, s.submission_type, s.input_data, s.input_url, s.file_path, s.file_name, s.file_size, s.status, s.processing_result, s.tags, s.created_at, s.processed_at,
                u.email as user_email, u.full_name as user_name
@@ -340,7 +369,7 @@ def get_all_submissions(limit: int = 100, offset: int = 0) -> list:
         ORDER BY s.created_at DESC
         LIMIT %s OFFSET %s
         """
-        result = neon_db.execute_query(query, (limit, offset))
+        result = neon_db.execute_query(query, (validated_limit, validated_offset))
         
         submissions = []
         for row in result:

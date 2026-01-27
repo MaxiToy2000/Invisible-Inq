@@ -7,6 +7,7 @@ from datetime import datetime
 import logging
 from neon_database import neon_db
 from fastapi import Request
+from sql_security import validate_limit, validate_offset, build_where_clause
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +115,10 @@ def get_audit_logs(
         List of audit log records
     """
     try:
+        # Validate limit and offset
+        validated_limit = validate_limit(limit)
+        validated_offset = validate_offset(offset)
+        
         conditions = []
         params = []
         
@@ -149,18 +154,21 @@ def get_audit_logs(
             conditions.append("timestamp <= %s")
             params.append(end_date)
         
-        where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""
+        # Build WHERE clause safely
+        where_clause, params = build_where_clause(conditions, params)
+        if not where_clause:
+            where_clause = ""
         
-        query = f"""
+        query = """
         SELECT id, user_id, user_email, action_type, source, resource_type, resource_id,
                details, ip_address, user_agent, timestamp
         FROM audit_log
         {where_clause}
         ORDER BY timestamp DESC
         LIMIT %s OFFSET %s
-        """
+        """.format(where_clause=where_clause)
         
-        params.extend([limit, offset])
+        params.extend([validated_limit, validated_offset])
         
         results = neon_db.execute_query(query, tuple(params))
         

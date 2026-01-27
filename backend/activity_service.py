@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 import logging
 from neon_database import neon_db
 from models import UserActivityCreate, UserActivityResponse
+from sql_security import validate_limit, validate_offset, build_where_clause
 import json
 
 logger = logging.getLogger(__name__)
@@ -108,7 +109,11 @@ def get_activities(
         List of UserActivityResponse objects
     """
     try:
-        # Build query with filters
+        # Validate limit and offset
+        validated_limit = validate_limit(limit)
+        validated_offset = validate_offset(skip)
+        
+        # Build query with filters using safe parameterized approach
         where_clauses = []
         params = []
         
@@ -132,9 +137,12 @@ def get_activities(
             where_clauses.append("ua.timestamp <= %s")
             params.append(end_date)
         
-        where_clause = " AND ".join(where_clauses) if where_clauses else "1=1"
+        # Build WHERE clause safely
+        where_clause, params = build_where_clause(where_clauses, params)
+        if not where_clause:
+            where_clause = "WHERE 1=1"
         
-        query = f"""
+        query = """
         SELECT ua.id, ua.user_id, ua.session_id, ua.activity_type, ua.page_url,
                ua.section_id, ua.section_title, ua.duration_seconds, ua.metadata,
                ua.timestamp, 
@@ -143,12 +151,12 @@ def get_activities(
         FROM user_activities ua
         LEFT JOIN users u ON ua.user_id = CAST(u.id AS VARCHAR)
         LEFT JOIN admin_users au ON ua.user_id = CAST(au.id AS VARCHAR)
-        WHERE {where_clause}
+        {where_clause}
         ORDER BY ua.timestamp DESC
         LIMIT %s OFFSET %s
-        """
+        """.format(where_clause=where_clause)
         
-        params.extend([limit, skip])
+        params.extend([validated_limit, validated_offset])
         
         result = neon_db.execute_query(query, tuple(params))
         
