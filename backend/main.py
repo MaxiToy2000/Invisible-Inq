@@ -1233,11 +1233,39 @@ async def execute_cypher_query(
 
         query = cypher_query.query.strip()
 
-        from services import extract_graph_data_from_cypher_results
+        # Validate query for security
+        from cypher_security import (
+            validate_cypher_query, QuerySecurityLevel, detect_write_operations
+        )
         from database import db
+        
+        # Detect write operations
+        write_ops = detect_write_operations(query)
+        allow_write = len(write_ops) > 0
+        
+        # Validate query
+        is_valid, error_msg = validate_cypher_query(
+            query,
+            security_level=QuerySecurityLevel.READ_WRITE if allow_write else QuerySecurityLevel.READ_ONLY,
+            allow_write=allow_write
+        )
+        
+        if not is_valid:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Query validation failed: {error_msg}"
+            )
+
+        from services import extract_graph_data_from_cypher_results
 
         try:
-            results = db.execute_query(query)
+            # Execute with validation enabled
+            results = db.execute_query(
+                query,
+                validate=True,
+                security_level=QuerySecurityLevel.READ_WRITE if allow_write else QuerySecurityLevel.READ_ONLY,
+                allow_write=allow_write
+            )
             
             
             if results:
@@ -1410,6 +1438,17 @@ async def create_node(
         category = node_request.category.strip()
         properties = node_request.properties or {}
 
+        # Validate node label against whitelist
+        from cypher_security import validate_label, sanitize_label_for_query
+        is_valid, error_msg = validate_label(category)
+        if not is_valid:
+            raise HTTPException(status_code=400, detail=f"Invalid node label: {error_msg}")
+        
+        # Sanitize label for query
+        sanitized_label = sanitize_label_for_query(category)
+        if not sanitized_label:
+            raise HTTPException(status_code=400, detail="Failed to sanitize node label")
+
         # If a section_gid was provided, resolve the section's `graph name` and assign it to node's gr_id.
         # New DB: Cross-property matching - section.`graph name` matches node.gr_id
         section_gid = (node_request.section_gid or "").strip() if node_request.section_gid else None
@@ -1436,19 +1475,8 @@ async def create_node(
             import uuid
             properties["gid"] = uuid.uuid4().hex
         
-        # Clean category label - remove backticks if present, we'll add them properly
-        clean_category = category
-        if clean_category.startswith(':`'):
-            clean_category = clean_category[2:]
-        if clean_category.endswith('`'):
-            clean_category = clean_category[:-1]
-        
-        # Build Cypher CREATE query
-        # Handle node labels with spaces using backticks
-        if ' ' in clean_category or '-' in clean_category:
-            node_label = f"`{clean_category}`"
-        else:
-            node_label = clean_category
+        # Use sanitized label (already has backticks if needed)
+        node_label = sanitized_label
         
         # Build property assignments
         # Property names with spaces need backticks in Cypher

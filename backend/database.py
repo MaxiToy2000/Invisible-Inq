@@ -1,6 +1,10 @@
 from neo4j import GraphDatabase
 from neo4j.exceptions import ServiceUnavailable, TransientError, SessionExpired
 from config import Config
+from cypher_security import (
+    validate_cypher_query, QuerySecurityLevel, detect_write_operations,
+    validate_ai_generated_query, MAX_NODES_RETURNED, MAX_RELATIONSHIPS_RETURNED
+)
 import time
 import logging
 
@@ -93,8 +97,29 @@ class Neo4jDatabase:
             raise Exception("Database driver is not initialized")
         return self.driver.session()
 
-    def execute_query(self, query, parameters=None):
-        """Execute a read query with automatic retry and reconnection"""
+    def execute_query(self, query, parameters=None, security_level=QuerySecurityLevel.READ_ONLY, allow_write=False, validate=True):
+        """
+        Execute a read query with automatic retry and reconnection.
+        
+        Args:
+            query: Cypher query string
+            parameters: Query parameters dictionary
+            security_level: Security level for query execution
+            allow_write: Whether write operations are allowed
+            validate: Whether to validate the query for security issues
+        """
+        # Validate query if requested
+        if validate:
+            is_valid, error_msg = validate_cypher_query(
+                query,
+                security_level=security_level,
+                allow_write=allow_write,
+                max_nodes=MAX_NODES_RETURNED,
+                max_rels=MAX_RELATIONSHIPS_RETURNED
+            )
+            if not is_valid:
+                raise ValueError(f"Query validation failed: {error_msg}")
+        
         max_retries = 3
         last_error = None
         
@@ -127,8 +152,27 @@ class Neo4jDatabase:
         logger.error(error_msg)
         raise Exception(error_msg)
 
-    def execute_write_query(self, query, parameters=None):
-        """Execute a write query with automatic retry and reconnection"""
+    def execute_write_query(self, query, parameters=None, validate=True):
+        """
+        Execute a write query with automatic retry and reconnection.
+        
+        Args:
+            query: Cypher query string
+            parameters: Query parameters dictionary
+            validate: Whether to validate the query for security issues
+        """
+        # Validate query if requested
+        if validate:
+            is_valid, error_msg = validate_cypher_query(
+                query,
+                security_level=QuerySecurityLevel.READ_WRITE,
+                allow_write=True,
+                max_nodes=MAX_NODES_RETURNED,
+                max_rels=MAX_RELATIONSHIPS_RETURNED
+            )
+            if not is_valid:
+                raise ValueError(f"Query validation failed: {error_msg}")
+        
         max_retries = 3
         last_error = None
         
