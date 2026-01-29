@@ -538,7 +538,9 @@ def _build_graph_query_from_intent(intent: Dict[str, Any]) -> Tuple[str, Dict[st
 
 
 def search_with_ai(user_query: str) -> Tuple[GraphData, str]:
-    from ai_service import generate_agent_intent
+    from ai_service import 
+    
+    
 
     try:
         user_query = user_query.strip()
@@ -560,17 +562,25 @@ def search_with_ai(user_query: str) -> Tuple[GraphData, str]:
             else:
                 raise ValueError(f"Failed to extract intent: {error_msg}")
 
-        query, params = _build_graph_query_from_intent(intent)
+        # Validate AI-generated query with additional guardrails
+        from cypher_security import validate_ai_generated_query
+        is_valid, error_msg, metadata = validate_ai_generated_query(cypher_query)
+        if not is_valid:
+            raise ValueError(f"AI-generated query validation failed: {error_msg}")
+
         try:
-            results = db.execute_query(query, params)
-        except Exception as db_error:
-            error_msg = str(db_error)
-            raise ValueError(f"Query execution failed: {error_msg}")
-
-        if not results:
-            logger.info("AI search query returned no results")
-            return GraphData(nodes=[], links=[]), ""
-
+            if "$search_term" in cypher_query or "$param" in cypher_query.lower():
+                try:
+                    results = db.execute_query(
+                        cypher_query,
+                        {"search_term": user_query},
+                        validate=True,
+                        allow_write=False
+                    )
+                except Exception as param_error:
+                    results = db.execute_query(cypher_query, validate=True, allow_write=False)
+            else:
+                results = db.execute_query(cypher_query, validate=True, allow_write=False)
         graph_data = extract_graph_data_from_cypher_results(results)
         logger.info(f"AI search successful: {len(graph_data.nodes)} nodes, {len(graph_data.links)} links")
         return graph_data, ""
