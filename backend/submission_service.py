@@ -17,7 +17,6 @@ from io import BytesIO
 from neon_database import neon_db
 from models import SubmissionCreate, SubmissionResponse, GraphData
 from services import search_with_ai, extract_graph_data_from_cypher_results
-from ai_service import generate_cypher_query
 from database import db
 from sql_security import validate_limit, validate_offset, validate_id
 
