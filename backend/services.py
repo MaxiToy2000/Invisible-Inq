@@ -87,6 +87,25 @@ def format_link(link_data: Dict[str, Any]) -> Dict[str, Any]:
         "color": None,
     }
 
+    # text_id validation and resolution
+    text_id = (
+        link_data.get("text_id")
+        or link_data.get("textId")
+        or link_data.get("citation_text_id")
+        or link_data.get("source_text_id")
+    )
+    article_url = link_data.get("article_url") or link_data.get("Article URL") or link_data.get("Source URL")
+    if text_id:
+        from text_id_validation import resolve_text_id
+        resolution = resolve_text_id(str(text_id), article_url)
+        link["text_id"] = resolution.get("normalized_text_id") or str(text_id)
+        link["citation_status"] = "cited" if resolution.get("valid") else "invalid"
+        link["citation_error"] = resolution.get("error")
+        link["citation_text"] = resolution.get("sentence_text") or link_data.get("text")
+    else:
+        link["citation_status"] = "uncited"
+        link["citation_text"] = link_data.get("text")
+
     for key, value in link_data.items():
         if key not in ["id", "gid", "sourceId", "targetId", "from_gid", "to_gid", "title", "label", "category", "type"] and value is not None:
             link[key] = value
