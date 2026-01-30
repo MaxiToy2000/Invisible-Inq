@@ -157,12 +157,15 @@ const getLinkStyling = (link, selectedEdge, nodeColors = {}, linkColors = {}, ed
     targetColor = searchDimmedColor;
   }
 
-  // Calculate opacity - reduce for dimmed edges
+  // Calculate opacity - reduce for dimmed edges; also reduce for uncited/fallback edges (raw-text fallback)
+  const isUncitedOrInvalid = link?.citation_status === 'uncited' || link?.citation_status === 'invalid';
   let edgeOpacity = 0.9;
   if (isSelected) {
     edgeOpacity = 1.0;
   } else if (isEdgeDimmed) {
     edgeOpacity = 0.3; // Significantly reduce opacity for non-matching search results
+  } else if (isUncitedOrInvalid) {
+    edgeOpacity = 0.5; // Visually distinguish fallback relationships (no sentence-level citation)
   }
 
   return {
