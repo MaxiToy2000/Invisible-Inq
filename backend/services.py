@@ -502,8 +502,16 @@ def _build_graph_query_from_intent(intent: Dict[str, Any]) -> Tuple[str, Dict[st
     from cypher_security import sanitize_label_for_query
     from sql_security import validate_string_input, validate_limit
 
-    search_term = validate_string_input(intent.get("search_term") or "", max_length=200)
-    limit = validate_limit(intent.get("limit"), default=50, max_limit=200)
+    # Coerce search_term to string (AI may return other types)
+    raw_search = intent.get("search_term")
+    search_term = validate_string_input(
+        str(raw_search) if raw_search is not None else "",
+        max_length=200
+    ) or ""
+
+    # Coerce limit to int (AI may return string like "50")
+    raw_limit = intent.get("limit")
+    limit = validate_limit(raw_limit, default=50, max_limit=200)
 
     labels = intent.get("entity_types") or []
     sanitized_labels = []
@@ -551,6 +559,7 @@ def _build_graph_query_from_intent(intent: Dict[str, Any]) -> Tuple[str, Dict[st
         properties: properties(rd.rel)
       }}]
     }} AS graphData
+    LIMIT 1
     """
 
     params = {
@@ -561,13 +570,16 @@ def _build_graph_query_from_intent(intent: Dict[str, Any]) -> Tuple[str, Dict[st
 
 
 def search_with_ai(user_query: str) -> Tuple[GraphData, str]:
-    from ai_service import 
-    
-    
+    from ai_service import generate_agent_intent
+    from cypher_security import validate_ai_generated_query
+    from sql_security import contains_sql_injection_pattern
 
     try:
         user_query = user_query.strip()
         logger.info(f"Processing AI search query: {user_query[:100]}...")
+
+        if contains_sql_injection_pattern(user_query):
+            raise ValueError("Query contains disallowed patterns. Please use a natural language question.")
 
         if is_cypher_query(user_query):
             raise ValueError("Direct Cypher execution is disabled for AI search.")
@@ -585,25 +597,20 @@ def search_with_ai(user_query: str) -> Tuple[GraphData, str]:
             else:
                 raise ValueError(f"Failed to extract intent: {error_msg}")
 
+        # Build safe Cypher query from validated intent
+        cypher_query, params = _build_graph_query_from_intent(intent)
+
         # Validate AI-generated query with additional guardrails
-        from cypher_security import validate_ai_generated_query
         is_valid, error_msg, metadata = validate_ai_generated_query(cypher_query)
         if not is_valid:
             raise ValueError(f"AI-generated query validation failed: {error_msg}")
 
-        try:
-            if "$search_term" in cypher_query or "$param" in cypher_query.lower():
-                try:
-                    results = db.execute_query(
-                        cypher_query,
-                        {"search_term": user_query},
-                        validate=True,
-                        allow_write=False
-                    )
-                except Exception as param_error:
-                    results = db.execute_query(cypher_query, validate=True, allow_write=False)
-            else:
-                results = db.execute_query(cypher_query, validate=True, allow_write=False)
+        results = db.execute_query(
+            cypher_query,
+            parameters=params,
+            validate=True,
+            allow_write=False
+        )
         graph_data = extract_graph_data_from_cypher_results(results)
         logger.info(f"AI search successful: {len(graph_data.nodes)} nodes, {len(graph_data.links)} links")
         return graph_data, ""
@@ -1015,7 +1022,7 @@ def get_entity_wikidata(entity_name: str) -> Dict[str, Any]:
                     logger.info(f"Similar entities in database (searching for '{first_word}'):")
                     for row in debug_results:
                         logger.info(f"  - Name: '{row.get('name')}', Alias: '{row.get('alias')}', QID: {row.get('qid')}")
-            except Exception as debug_err:0
+            except Exception as debug_err:
                 logger.debug(f"Debug query failed: {debug_err}")
             
             return {"found": False, "data": None}

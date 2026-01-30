@@ -22,6 +22,30 @@ DEFAULT_OFFSET = 0
 # Maximum length for string inputs
 MAX_STRING_LENGTH = 10000
 
+# SQL injection patterns to reject in user queries (e.g. AI search input)
+SQL_INJECTION_PATTERNS = [
+    r'1\s*=\s*1',           # 1=1, 1 = 1
+    r'1\s*=\s*2',           # 1=2
+    r"'\s*or\s*'1'\s*=\s*'1",  # ' or '1'='1
+    r'"\s*or\s*"1"\s*=\s*"1',  # " or "1"="1
+    r'or\s+1\s*=\s*1\b',    # or 1=1
+    r'and\s+1\s*=\s*1\b',  # and 1=1
+    r';\s*drop\s+table',    # ; DROP TABLE
+    r';\s*delete\s+from',   # ; DELETE FROM
+    r'union\s+select',      # UNION SELECT
+]
+SQL_INJECTION_RE = re.compile('|'.join(f'({p})' for p in SQL_INJECTION_PATTERNS), re.IGNORECASE)
+
+
+def contains_sql_injection_pattern(text: str) -> bool:
+    """
+    Check if text contains common SQL injection patterns.
+    Used to reject malicious input before processing (e.g. AI search queries).
+    """
+    if not text or not isinstance(text, str):
+        return False
+    return bool(SQL_INJECTION_RE.search(text))
+
 
 def validate_limit(limit: Optional[int], default: int = DEFAULT_LIMIT, max_limit: int = MAX_LIMIT) -> int:
     """
