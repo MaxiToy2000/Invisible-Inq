@@ -77,41 +77,82 @@ def format_node(node_data: Dict[str, Any]) -> Dict[str, Any]:
     return node
 
 def format_link(link_data: Dict[str, Any]) -> Dict[str, Any]:
+    # Merge properties into top-level for resolution (Neo4j returns properties(rd.rel) nested)
+    props = link_data.get("properties") or {}
+    if isinstance(props, dict):
+        merged = {**link_data, **{k: v for k, v in props.items() if v is not None}}
+    else:
+        merged = link_data
+
     link = {
-        "id": str(link_data.get("gid", "")),
-        "sourceId": str(link_data.get("from_gid", "")),
-        "targetId": str(link_data.get("to_gid", "")),
-        "title": link_data.get("article_title") or link_data.get("Article Title"),
-        "label": link_data.get("relationship_summary") or link_data.get("Relationship Summary"),
-        "category": link_data.get("type") or "Entity_Relationship",
+        "id": str(merged.get("gid", "")),
+        "sourceId": str(merged.get("from_gid", "")),
+        "targetId": str(merged.get("to_gid", "")),
+        "title": merged.get("article_title") or merged.get("Article Title"),
+        "label": merged.get("relationship_summary") or merged.get("Relationship Summary"),
+        "category": merged.get("type") or "Entity_Relationship",
         "color": None,
     }
 
-    # text_id validation and resolution
-    text_id = (
-        link_data.get("text_id")
-        or link_data.get("textId")
-        or link_data.get("citation_text_id")
-        or link_data.get("source_text_id")
+    # Raw extracted text from agent (preserved for fallback when citation fails)
+    raw_extracted_text = (
+        merged.get("text")
+        or merged.get("raw_text")
+        or merged.get("summary")
+        or merged.get("Relationship Summary")
+        or merged.get("relationship_summary")
+        or merged.get("name")
     )
-    article_url = link_data.get("article_url") or link_data.get("Article URL") or link_data.get("Source URL")
-    article_id = link_data.get("article_id") or link_data.get("articleId")
+    if raw_extracted_text and isinstance(raw_extracted_text, str):
+        raw_extracted_text = raw_extracted_text.strip()
+    else:
+        raw_extracted_text = None
+
+    # text_id validation and resolution (Raw-text Fallback Logic)
+    text_id = (
+        merged.get("text_id")
+        or merged.get("textId")
+        or merged.get("citation_text_id")
+        or merged.get("source_text_id")
+    )
+    article_url = merged.get("article_url") or merged.get("Article URL") or merged.get("Source URL")
+    article_id = merged.get("article_id") or merged.get("articleId")
 
     if text_id:
         from text_id_resolution import resolve_sentence_reference
         resolution = resolve_sentence_reference(str(text_id), article_id=article_id, article_url=article_url)
-        link["text_id"] = resolution.get("normalized_text_id") or str(text_id)
-        link["citation_status"] = "cited" if resolution.get("valid") else "invalid"
-        link["citation_error"] = resolution.get("error")
-        link["citation_text"] = resolution.get("sentence_text") or link_data.get("text")
-        link["citation_paragraph"] = resolution.get("paragraph_text")
-    else:
-        link["citation_status"] = "uncited"
-        link["citation_text"] = link_data.get("text")
-        link["citation_paragraph"] = None
+        valid = resolution.get("valid", False)
+        sentence_text = resolution.get("sentence_text") if valid else None
 
-    for key, value in link_data.items():
-        if key not in ["id", "gid", "sourceId", "targetId", "from_gid", "to_gid", "title", "label", "category", "type"] and value is not None:
+        if valid and sentence_text:
+            # Cited: resolved sentence available
+            link["text_id"] = resolution.get("normalized_text_id") or str(text_id)
+            link["citation_status"] = "cited"
+            link["citation_score"] = 1.0
+            link["citation_error"] = None
+            link["citation_text"] = sentence_text
+            link["citation_paragraph"] = resolution.get("paragraph_text")
+            link["raw_text"] = raw_extracted_text  # Keep raw for reference
+        else:
+            # Invalid: text_id provided but resolution failed → raw-text fallback
+            link["text_id"] = resolution.get("normalized_text_id") or str(text_id)
+            link["citation_status"] = "invalid"
+            link["citation_score"] = 0.5
+            link["citation_error"] = resolution.get("error")
+            link["citation_text"] = raw_extracted_text  # Show raw extracted text
+            link["citation_paragraph"] = None
+            link["raw_text"] = raw_extracted_text
+    else:
+        # Uncited: no text_id provided → raw-text fallback
+        link["citation_status"] = "uncited"
+        link["citation_score"] = 0.3
+        link["citation_error"] = None
+        link["citation_text"] = raw_extracted_text
+        link["citation_paragraph"] = None
+        link["raw_text"] = raw_extracted_text
+
+    for key, value in merged.items():
+        if key not in ["id", "gid", "sourceId", "targetId", "from_gid", "to_gid", "title", "label", "category", "type", "properties"] and value is not None:
             link[key] = value
 
     return link
@@ -561,9 +602,9 @@ def _build_graph_query_from_intent(intent: Dict[str, Any]) -> Tuple[str, Dict[st
 
 
 def search_with_ai(user_query: str) -> Tuple[GraphData, str]:
-    from ai_service import 
-    
-    
+    from ai_service import generate_agent_intent
+    from cypher_security import validate_ai_generated_query
+    from sql_security import contains_sql_injection_pattern
 
     try:
         user_query = user_query.strip()
@@ -591,19 +632,12 @@ def search_with_ai(user_query: str) -> Tuple[GraphData, str]:
         if not is_valid:
             raise ValueError(f"AI-generated query validation failed: {error_msg}")
 
-        try:
-            if "$search_term" in cypher_query or "$param" in cypher_query.lower():
-                try:
-                    results = db.execute_query(
-                        cypher_query,
-                        {"search_term": user_query},
-                        validate=True,
-                        allow_write=False
-                    )
-                except Exception as param_error:
-                    results = db.execute_query(cypher_query, validate=True, allow_write=False)
-            else:
-                results = db.execute_query(cypher_query, validate=True, allow_write=False)
+        results = db.execute_query(
+            cypher_query,
+            parameters=params,
+            validate=True,
+            allow_write=False
+        )
         graph_data = extract_graph_data_from_cypher_results(results)
         logger.info(f"AI search successful: {len(graph_data.nodes)} nodes, {len(graph_data.links)} links")
         return graph_data, ""
@@ -1015,7 +1049,7 @@ def get_entity_wikidata(entity_name: str) -> Dict[str, Any]:
                     logger.info(f"Similar entities in database (searching for '{first_word}'):")
                     for row in debug_results:
                         logger.info(f"  - Name: '{row.get('name')}', Alias: '{row.get('alias')}', QID: {row.get('qid')}")
-            except Exception as debug_err:0
+            except Exception as debug_err:
                 logger.debug(f"Debug query failed: {debug_err}")
             
             return {"found": False, "data": None}

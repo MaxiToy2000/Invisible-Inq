@@ -408,7 +408,7 @@ const RightSidebar = ({
     ? Object.entries(displayEdge._originalData || displayEdge)
         .filter(([key, value]) => (
           !key.startsWith('__') &&
-          !['index', 'source', 'target', 'sourceId', 'targetId', '_originalData'].includes(key) &&
+          !['index', 'source', 'target', 'sourceId', 'targetId', '_originalData', 'citation_status', 'citation_text', 'citation_error', 'citation_paragraph', 'citation_score', 'raw_text'].includes(key) &&
           value !== null &&
           typeof value !== 'function' &&
           (typeof value !== 'object' || Array.isArray(value))
@@ -421,6 +421,12 @@ const RightSidebar = ({
           return a[0].localeCompare(b[0]);
         })
     : [];
+
+  // Citation info for edges (raw-text fallback: cited vs uncited/invalid)
+  const edgeCitationStatus = displayEdge?._originalData?.citation_status || displayEdge?.citation_status;
+  const edgeCitationText = displayEdge?._originalData?.citation_text || displayEdge?.citation_text;
+  const edgeCitationError = displayEdge?._originalData?.citation_error || displayEdge?.citation_error;
+  const isUncitedOrInvalid = edgeCitationStatus === 'uncited' || edgeCitationStatus === 'invalid';
 
   return (
     <div className="bg-[#09090B] flex flex-col h-full w-full sticky bottom-0 pb-2 pt-5 overflow-visible relative">
@@ -770,6 +776,38 @@ const RightSidebar = ({
                   </div>
                 )}
                 
+                {/* Edge Citation (raw-text fallback: cited vs uncited/invalid) */}
+                {displayEdge && (edgeCitationStatus || edgeCitationText) && (
+                  <div className="mb-3 flex flex-col space-y-2">
+                    {edgeCitationStatus && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-[#7D7D7D]">Citation:</span>
+                        <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${
+                          edgeCitationStatus === 'cited'
+                            ? 'bg-[#1a472a] text-[#51CF66]'
+                            : isUncitedOrInvalid
+                              ? 'bg-[#4a3520] text-[#FF922B]'
+                              : 'bg-[#24282F] text-[#B4B4B4]'
+                        }`}>
+                          {edgeCitationStatus === 'cited' ? 'Cited' : edgeCitationStatus === 'invalid' ? 'Invalid (raw text)' : 'Uncited (raw text)'}
+                        </span>
+                      </div>
+                    )}
+                    {edgeCitationText && (
+                      <div>
+                        <p className="text-xs text-[#7D7D7D] mb-1">
+                          {isUncitedOrInvalid ? 'Raw extracted text:' : 'Sentence:'}
+                        </p>
+                        <p className="text-sm text-[#F4F4F5] leading-relaxed">
+                          {edgeCitationText}
+                        </p>
+                      </div>
+                    )}
+                    {edgeCitationError && isUncitedOrInvalid && (
+                      <p className="text-xs text-[#FF922B]">{edgeCitationError}</p>
+                    )}
+                  </div>
+                )}
                 {/* Edge Properties */}
                 {displayEdge && filteredEdgeProperties.length > 0 && (
                   <div className="flex flex-col space-y-3">
@@ -1089,6 +1127,38 @@ const RightSidebar = ({
                     </div>
                   )}
                   
+                  {/* Edge Citation (raw-text fallback: cited vs uncited/invalid) */}
+                  {displayEdge && (edgeCitationStatus || edgeCitationText) && (
+                    <div className="w-full flex-shrink-0 mb-4 p-2 bg-[#09090B] rounded-md border border-[#404040]">
+                      {edgeCitationStatus && (
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-xs text-[#7D7D7D]">Citation:</span>
+                          <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${
+                            edgeCitationStatus === 'cited'
+                              ? 'bg-[#1a472a] text-[#51CF66]'
+                              : isUncitedOrInvalid
+                                ? 'bg-[#4a3520] text-[#FF922B]'
+                                : 'bg-[#24282F] text-[#B4B4B4]'
+                          }`}>
+                            {edgeCitationStatus === 'cited' ? 'Cited' : edgeCitationStatus === 'invalid' ? 'Invalid (raw text)' : 'Uncited (raw text)'}
+                          </span>
+                        </div>
+                      )}
+                      {edgeCitationText && (
+                        <div className="mb-2">
+                          <p className="text-xs text-[#7D7D7D] mb-1">
+                            {isUncitedOrInvalid ? 'Raw extracted text:' : 'Sentence:'}
+                          </p>
+                          <p className="text-sm text-[#F4F4F5] leading-relaxed">
+                            {edgeCitationText}
+                          </p>
+                        </div>
+                      )}
+                      {edgeCitationError && isUncitedOrInvalid && (
+                        <p className="text-xs text-[#FF922B]">{edgeCitationError}</p>
+                      )}
+                    </div>
+                  )}
                   {/* Edge Details */}
                   {displayEdge && filteredEdgeProperties.length > 0 && (
                     <div className="w-full flex-shrink-0 mb-4">
