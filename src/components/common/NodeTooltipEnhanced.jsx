@@ -215,9 +215,8 @@ const EntityTooltipLayout = ({ node, color }) => {
   const subtype = node.subtype || node.category || wikidataInfo?.instance_of_label || 'Subtype';
   const degree = node.degree || node.related_count || 857;
   
-  // Get description from wikidata or node
-  const description = wikidataInfo?.description || node.description || node.summary || 
-    'The purpose of lorem ipsum is to create a natural looking block of text (sentence, paragraph, page, etc.) that doesn\'t distract from the layout.';
+  // Get description: only when Neon DB (wikidata) data exists; otherwise show empty
+  const description = wikidataInfo ? (wikidataInfo.description || node.description || node.summary || '') : '';
   
   // Function to fetch direct image URL from Wikimedia Commons API
   const fetchDirectImageUrl = async (url) => {
@@ -505,10 +504,12 @@ const EntityTooltipLayout = ({ node, color }) => {
           </span>
         </div>
 
-        {/* Description */}
-        <p className="text-[#666] text-sm leading-relaxed line-clamp-4">
-          {description}
-        </p>
+        {/* Description - only show when Neon DB data exists and has content */}
+        {description ? (
+          <p className="text-[#666] text-sm leading-relaxed line-clamp-4">
+            {description}
+          </p>
+        ) : null}
       </div>
 
       {/* Right Side - Icons */}
