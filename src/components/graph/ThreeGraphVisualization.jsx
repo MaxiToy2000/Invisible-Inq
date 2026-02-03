@@ -3750,15 +3750,13 @@ const ThreeGraphVisualization = React.memo(({
     let endY = 0;
     
     const handleMouseDown = (e) => {
-      // Only handle left mouse button
       if (e.button !== 0) return;
-      
-      // Don't interfere with node/edge clicks
       if (nodeOrEdgeClickedRef.current) return;
       
       const rect = container.getBoundingClientRect();
       const mouseX = e.clientX - rect.left;
       const mouseY = e.clientY - rect.top;
+      if (mouseX < 0 || mouseY < 0 || mouseX > rect.width || mouseY > rect.height) return;
       
       // Check if clicking inside an existing selected region
       // If so, start region-based subgraph dragging
@@ -3773,33 +3771,31 @@ const ThreeGraphVisualization = React.memo(({
         }
         
         // If clicking inside selected region, start region-based subgraph dragging
+        // (Same behavior whether clicking on empty space OR on a node - move whole selection)
         if (isInsideRegion) {
-          // Check if clicking on a node (let the node drag handler handle it)
-          if (hoveredNodeRef.current && selectedNodesRef.current.has(hoveredNodeRef.current.id)) {
-            return; // Let the built-in node drag handler handle this
-          }
-          
-          // Start region-based dragging for the subgraph
+          // Start region-based dragging for the subgraph (moves all selected nodes together)
           const graph = graphRef.current;
           if (graph) {
             const graphData = graph.graphData();
             if (graphData && graphData.nodes) {
-              // Store initial positions of all selected nodes
               const initialPositions = new Map();
               graphData.nodes.forEach(node => {
                 if (selectedNodesRef.current.has(node.id)) {
                   initialPositions.set(node.id, { x: node.x, y: node.y, z: node.z || 0 });
                 }
               });
-              
+              if (initialPositions.size === 0) {
+                return;
+              }
               regionDragRef.current = {
                 isDragging: true,
                 startMouseX: e.clientX,
                 startMouseY: e.clientY,
                 initialNodePositions: initialPositions
               };
-              
-              // Disable controls during region drag
+              if (graph._simulation) {
+                graph._simulation.stop();
+              }
               const controls = graph.controls();
               if (controls) {
                 controls.enabled = false;
@@ -3807,11 +3803,9 @@ const ThreeGraphVisualization = React.memo(({
                 controls.enablePan = false;
                 controls.enableZoom = false;
               }
-              
               if (isMountedRef.current) {
                 setCursorStyle('grabbing');
               }
-              
               e.preventDefault();
               e.stopPropagation();
             }
@@ -3935,8 +3929,7 @@ const ThreeGraphVisualization = React.memo(({
           }
         });
         
-        // Trigger re-render
-        graph.graphData(graphData);
+        graph.refresh();
         
         e.preventDefault();
         e.stopPropagation();
@@ -4162,13 +4155,13 @@ const ThreeGraphVisualization = React.memo(({
       }
     };
 
-    // Use capture phase to intercept events before they reach the graph controls
-    container.addEventListener('mousedown', handleMouseDown, true);
+    // Use capture phase on document to intercept mousedown before the graph canvas
+    document.addEventListener('mousedown', handleMouseDown, true);
     window.addEventListener('mousemove', handleMouseMove, true);
     window.addEventListener('mouseup', handleMouseUp, true);
 
     return () => {
-      container.removeEventListener('mousedown', handleMouseDown, true);
+      document.removeEventListener('mousedown', handleMouseDown, true);
       window.removeEventListener('mousemove', handleMouseMove, true);
       window.removeEventListener('mouseup', handleMouseUp, true);
     };
@@ -4183,15 +4176,13 @@ const ThreeGraphVisualization = React.memo(({
     let path = [];
     
     const handleMouseDown = (e) => {
-      // Only handle left mouse button
       if (e.button !== 0) return;
-      
-      // Don't interfere with node/edge clicks
       if (nodeOrEdgeClickedRef.current) return;
       
       const rect = container.getBoundingClientRect();
       const mouseX = e.clientX - rect.left;
       const mouseY = e.clientY - rect.top;
+      if (mouseX < 0 || mouseY < 0 || mouseX > rect.width || mouseY > rect.height) return;
       
       // Check if clicking inside an existing selected region
       // If so, start region-based subgraph dragging
@@ -4204,33 +4195,31 @@ const ThreeGraphVisualization = React.memo(({
         }
         
         // If clicking inside selected region, start region-based subgraph dragging
+        // (Same behavior whether clicking on empty space OR on a node - move whole selection)
         if (isInsideRegion) {
-          // Check if clicking on a node (let the node drag handler handle it)
-          if (hoveredNodeRef.current && selectedNodesRef.current.has(hoveredNodeRef.current.id)) {
-            return; // Let the built-in node drag handler handle this
-          }
-          
-          // Start region-based dragging for the subgraph
+          // Start region-based dragging for the subgraph (moves all selected nodes together)
           const graph = graphRef.current;
           if (graph) {
             const graphData = graph.graphData();
             if (graphData && graphData.nodes) {
-              // Store initial positions of all selected nodes
               const initialPositions = new Map();
               graphData.nodes.forEach(node => {
                 if (selectedNodesRef.current.has(node.id)) {
                   initialPositions.set(node.id, { x: node.x, y: node.y, z: node.z || 0 });
                 }
               });
-              
+              if (initialPositions.size === 0) {
+                return;
+              }
               regionDragRef.current = {
                 isDragging: true,
                 startMouseX: e.clientX,
                 startMouseY: e.clientY,
                 initialNodePositions: initialPositions
               };
-              
-              // Disable controls during region drag
+              if (graph._simulation) {
+                graph._simulation.stop();
+              }
               const controls = graph.controls();
               if (controls) {
                 controls.enabled = false;
@@ -4238,11 +4227,9 @@ const ThreeGraphVisualization = React.memo(({
                 controls.enablePan = false;
                 controls.enableZoom = false;
               }
-              
               if (isMountedRef.current) {
                 setCursorStyle('grabbing');
               }
-              
               e.preventDefault();
               e.stopPropagation();
             }
@@ -4364,8 +4351,7 @@ const ThreeGraphVisualization = React.memo(({
           }
         });
         
-        // Trigger re-render
-        graph.graphData(graphData);
+        graph.refresh();
         
         e.preventDefault();
         e.stopPropagation();
@@ -4617,13 +4603,12 @@ const ThreeGraphVisualization = React.memo(({
       }
     };
 
-    // Use capture phase to intercept events before they reach the graph controls
-    container.addEventListener('mousedown', handleMouseDown, true);
+    document.addEventListener('mousedown', handleMouseDown, true);
     window.addEventListener('mousemove', handleMouseMove, true);
     window.addEventListener('mouseup', handleMouseUp, true);
 
     return () => {
-      container.removeEventListener('mousedown', handleMouseDown, true);
+      document.removeEventListener('mousedown', handleMouseDown, true);
       window.removeEventListener('mousemove', handleMouseMove, true);
       window.removeEventListener('mouseup', handleMouseUp, true);
     };
