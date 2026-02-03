@@ -337,6 +337,8 @@ const RightSidebar = ({
       }
       
       setWikidataLoading(true);
+      setWikidataInfo(null);
+      setWikidataImageUrl(null);
       
       try {
         const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
@@ -391,6 +393,31 @@ const RightSidebar = ({
   
   // Determine which image to display (prioritize wikidata image)
   const displayImageUrl = wikidataImageUrl || displayNode?.IMG_SRC || null;
+
+  const hasWikidataData = useMemo(() => {
+    if (!wikidataInfo) return false;
+
+    return Object.values(wikidataInfo).some((value) => {
+      if (value === null || value === undefined) return false;
+      if (typeof value === 'string') return value.trim() !== '';
+      if (typeof value === 'number') return true;
+      if (Array.isArray(value)) return value.length > 0;
+      if (typeof value === 'object') return Object.keys(value).length > 0;
+      return false;
+    });
+  }, [wikidataInfo]);
+
+  // Require both data and description for entity blocks to display
+  const hasWikidataDataWithDescription = useMemo(() => {
+    if (!hasWikidataData || !wikidataInfo?.description) return false;
+    return String(wikidataInfo.description).trim() !== '';
+  }, [hasWikidataData, wikidataInfo]);
+
+  const hasNodeDescription = useMemo(() => {
+    if (!displayNode) return false;
+    const desc = displayNode.description ?? displayNode.Description ?? displayNode.desc ?? displayNode['Entity Description'] ?? null;
+    return desc != null && String(desc).trim() !== '';
+  }, [displayNode]);
   
   const filteredNodeProperties = displayNode
     ? Object.entries(displayNode)
@@ -553,8 +580,8 @@ const RightSidebar = ({
                   </div>
                 )}
                 
-                {/* Wikidata Information Section (for Entity Nodes) */}
-                {displayNode && isEntityNode && wikidataInfo && (
+                {/* Wikidata Information Section (for Entity Nodes) - requires data and description */}
+                {displayNode && isEntityNode && hasWikidataDataWithDescription && (
                   <div className="mb-4 flex flex-col space-y-3 pb-4">
                     <div className="flex flex-row">
                       {/* Left Line */}
@@ -748,8 +775,8 @@ const RightSidebar = ({
                   </div>
                 )}
                 
-                {/* Node Properties - Only show for non-entity nodes, or for entity nodes when wikidata is not available */}
-                {displayNode && (!isEntityNode || (isEntityNode && !wikidataInfo)) && filteredNodeProperties.length > 0 && (
+                {/* Node Properties - Only show for non-entity nodes, or for entity nodes when wikidata is not available and node has description */}
+                {displayNode && (!isEntityNode || (isEntityNode && !hasWikidataData && hasNodeDescription)) && filteredNodeProperties.length > 0 && (
                   <div className="flex flex-col space-y-3">
                     {filteredNodeProperties.map(([key, value], index) => {
                       const isUrlProperty = key.toLowerCase().includes('url') || key.toLowerCase() === 'link' || key.toLowerCase().includes('website') || key.toLowerCase().includes('webpage');
@@ -902,8 +929,8 @@ const RightSidebar = ({
                   {/* Scrollable Content Container for Node Properties Tab */}
                   {activeTab === 'node-properties' && (
                     <div className="flex-1 overflow-y-auto pr-2 min-h-0">
-                  {/* Wikidata Information Section (for Entity Nodes) - Desktop */}
-                  {displayNode && isEntityNode && wikidataInfo && (
+                  {/* Wikidata Information Section (for Entity Nodes) - Desktop - requires data and description */}
+                  {displayNode && isEntityNode && hasWikidataDataWithDescription && (
                     <div className="w-full flex-shrink-0 mb-4 py-2 pr-2 bg-[#09090B] rounded-md border border-[#707070]">
                       <div className="flex flex-row">
                         {/* Left Line */}
@@ -1097,8 +1124,8 @@ const RightSidebar = ({
                     </div>
                   )}
                   
-                  {/* Node Details - Only show for non-entity nodes, or for entity nodes when wikidata is not available */}
-                  {displayNode && (!isEntityNode || (isEntityNode && !wikidataInfo)) && filteredNodeProperties.length > 0 && (
+                  {/* Node Details - Only show for non-entity nodes, or for entity nodes when wikidata is not available and node has description */}
+                  {displayNode && (!isEntityNode || (isEntityNode && !hasWikidataData && hasNodeDescription)) && filteredNodeProperties.length > 0 && (
                     <div className="w-full flex-shrink-0 mb-4">
                       <div className="flex flex-col space-y-3">
                         {filteredNodeProperties.map(([key, value], index) => {
@@ -1127,7 +1154,7 @@ const RightSidebar = ({
                     </div>
                   )}
                   
-                  {/* Edge Citation (raw-text fallback: cited vs uncited/invalid) */}
+                  {/* Edge Citation (raw-text fallback: cited vs uncited/invalid) - Desktop */}
                   {displayEdge && (edgeCitationStatus || edgeCitationText) && (
                     <div className="w-full flex-shrink-0 mb-4 p-2 bg-[#09090B] rounded-md border border-[#404040]">
                       {edgeCitationStatus && (
@@ -1159,7 +1186,7 @@ const RightSidebar = ({
                       )}
                     </div>
                   )}
-                  {/* Edge Details */}
+                  {/* Edge Details - Desktop */}
                   {displayEdge && filteredEdgeProperties.length > 0 && (
                     <div className="w-full flex-shrink-0 mb-4">
                       <div className="flex flex-col space-y-3">
@@ -1186,37 +1213,6 @@ const RightSidebar = ({
                           );
                         })}
                       </div>
-                    </div>
-                  )}
-
-                  {/* Pagination Controls - Only show in Multi-Select mode with multiple items */}
-                  {((selectedNodes?.size || 0) + (selectedEdges?.size || 0)) > 1 && (
-                    <div className="mb-3 flex items-center justify-center gap-3 px-2 py-1 flex-shrink-0 rounded-md">
-                      <button
-                        onClick={handlePrevious}
-                        disabled={currentPage === 0}
-                        className={`p-1 rounded transition-colors ${
-                          currentPage === 0
-                            ? 'text-gray-600 cursor-not-allowed'
-                            : 'text-white hover:bg-[#333333]'
-                        }`}
-                      >
-                        <FaChevronLeft size={12} />
-                      </button>
-                      <span className="text-sm font-medium text-[#F4F4F5]">
-                        {currentPage + 1} / {selectedItems.length > 0 ? selectedItems.length : (selectedNodes.size + selectedEdges.size)}
-                      </span>
-                      <button
-                        onClick={handleNext}
-                        disabled={currentPage === totalItems - 1}
-                        className={`p-1 rounded transition-colors ${
-                          currentPage === totalItems - 1
-                            ? 'text-gray-600 cursor-not-allowed'
-                            : 'text-white hover:bg-[#333333]'
-                        }`}
-                      >
-                        <FaChevronRight size={12} />
-                      </button>
                     </div>
                   )}
 
