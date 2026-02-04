@@ -165,13 +165,6 @@ const StoryCard = ({ story, onClick, onChapterSelect, totalNodes = 0, entityCoun
           >
             entities mentioned: <strong className="transition-colors text-[15px] font-['Archivo'] text-white duration-300 group-hover:text-[#ffffff]">{formatNumber(entityCount)}</strong>
           </div>
-          {updatedDate && (
-            <div 
-              className="transition-all duration-300 delay-125 group-hover:translate-x-1 mt-2 text-[#7D7D7D] text-xs"
-            >
-              updated: <strong className="transition-colors text-[13px] font-['Archivo'] text-[#9B9B9B] duration-300 group-hover:text-[#B4B4B4]">{formattedDate}</strong>
-            </div>
-          )}
         </div>
       </div>
     </div>

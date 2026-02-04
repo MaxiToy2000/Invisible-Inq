@@ -996,15 +996,6 @@ async def get_story_statistics_endpoint(story_id: str):
     """Get statistics for a story (total nodes, entity count, etc.)"""
     try:
         statistics = get_story_statistics(story_id)
-        print('statistics is:', statistics)
-        print('statistics type is:', type(statistics))
-        print('statistics keys are:', statistics.keys())
-        print('statistics values are:', statistics.values())
-        print('statistics items are:', statistics.items())
-        print('statistics len is:', len(statistics))
-        print('statistics type is:', type(statistics))
-        print('statistics keys are:', statistics.keys())
-        print('statistics values are:', statistics.values())
         return statistics
     except Exception as e:
         raise HTTPException(
