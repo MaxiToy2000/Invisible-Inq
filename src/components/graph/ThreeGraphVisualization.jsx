@@ -1421,7 +1421,7 @@ const ThreeGraphVisualization = React.memo(({
 
         if (node) {
           // Update cursor if in multi-select mode and hovering over a selected node
-          if ((selectionMode === 'box' || selectionMode === 'lasso') && selectedNodes.has(node.id)) {
+          if ((selectionMode === 'box' || selectionMode === 'lasso') && selectedNodesRef.current && selectedNodesRef.current.has(String(node.id))) {
             setCursorStyle('grab');
           } else if (selectionMode === 'box' || selectionMode === 'lasso') {
             setCursorStyle('default');
@@ -1607,14 +1607,16 @@ const ThreeGraphVisualization = React.memo(({
         }
         
         // Check if we're in multi-select mode and dragging a selected node
-        if ((selectionMode === 'box' || selectionMode === 'lasso') && selectedNodes.has(node.id)) {
+        // Use selectedNodesRef to avoid stale closure (ref is always current after box/lasso selection)
+        const currentSelected = selectedNodesRef.current;
+        if ((selectionMode === 'box' || selectionMode === 'lasso') && currentSelected && currentSelected.has(String(node.id))) {
           // Check if graphRef is still valid
           if (!graphRef.current) return;
           
           const graphData = graphRef.current.graphData();
           if (!graphData || !graphData.nodes) return;
           
-          const draggedNode = graphData.nodes.find(n => n.id === node.id);
+          const draggedNode = graphData.nodes.find(n => String(n.id) === String(node.id));
           
           if (isMountedRef.current) {
             setCursorStyle('grabbing');
@@ -1623,7 +1625,7 @@ const ThreeGraphVisualization = React.memo(({
           // Store initial positions if not already stored (first drag event)
           if (!draggedNode.__initialDragPos) {
             graphData.nodes.forEach(n => {
-              if (selectedNodes.has(n.id)) {
+              if (currentSelected.has(String(n.id))) {
                 n.__initialDragPos = { x: n.x, y: n.y, z: n.z };
               }
             });
@@ -1637,7 +1639,7 @@ const ThreeGraphVisualization = React.memo(({
             
             // Move all selected nodes by the same delta
             graphData.nodes.forEach(n => {
-              if (selectedNodes.has(n.id) && n.id !== node.id && n.__initialDragPos) {
+              if (currentSelected.has(String(n.id)) && String(n.id) !== String(node.id) && n.__initialDragPos) {
                 n.fx = n.__initialDragPos.x + deltaX;
                 n.fy = n.__initialDragPos.y + deltaY;
                 n.fz = n.__initialDragPos.z + deltaZ;
@@ -1688,16 +1690,17 @@ const ThreeGraphVisualization = React.memo(({
           // Mark the node as being manually dragged
           pinnedNodesRef.current.add(node.id);
 
-          // If group dragging in multi-select mode
-          if ((selectionMode === 'box' || selectionMode === 'lasso') && selectedNodes.has(node.id)) {
+          // If group dragging in multi-select mode (use ref to avoid stale closure)
+          const currentSelected = selectedNodesRef.current;
+          if ((selectionMode === 'box' || selectionMode === 'lasso') && currentSelected && currentSelected.has(String(node.id))) {
             // Check if graphRef is still valid
             if (graphRef.current) {
               const graphData = graphRef.current.graphData();
               if (graphData && graphData.nodes) {
                 // Mark all selected nodes as pinned and clear their initial positions
-                selectedNodes.forEach(nodeId => {
+                currentSelected.forEach(nodeId => {
                   pinnedNodesRef.current.add(nodeId);
-                  const selectedNode = graphData.nodes.find(n => n.id === nodeId);
+                  const selectedNode = graphData.nodes.find(n => String(n.id) === String(nodeId));
                   if (selectedNode) {
                     selectedNode.fx = selectedNode.x;
                     selectedNode.fy = selectedNode.y;

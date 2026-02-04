@@ -217,7 +217,7 @@ const EntityTooltipLayout = ({ node, color }) => {
   
   // Get description from wikidata or node
   const description = wikidataInfo?.description || node.description || node.summary || 
-    'The purpose of lorem ipsum is to create a natural looking block of text (sentence, paragraph, page, etc.) that doesn\'t distract from the layout.';
+    '';
   
   // Function to fetch direct image URL from Wikimedia Commons API
   const fetchDirectImageUrl = async (url) => {

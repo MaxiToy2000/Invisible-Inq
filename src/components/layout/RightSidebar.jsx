@@ -428,6 +428,14 @@ const RightSidebar = ({
   const edgeCitationError = displayEdge?._originalData?.citation_error || displayEdge?.citation_error;
   const isUncitedOrInvalid = edgeCitationStatus === 'uncited' || edgeCitationStatus === 'invalid';
 
+  const hasDescription = !!(
+    displayNode?.description ||
+    displayNode?.Description ||
+    displayNode?.summary ||
+    displayNode?.Summary ||
+    wikidataInfo?.description
+  );
+
   return (
     <div className="bg-[#09090B] flex flex-col h-full w-full sticky bottom-0 pb-2 pt-5 overflow-visible relative">
       {}
@@ -506,8 +514,8 @@ const RightSidebar = ({
           <div className="flex flex-row h-full">
           {}
           <div className="flex-shrink-0 w-1/3 pr-2 h-full flex items-center">
-            {/* Only show image at top for non-entity nodes */}
-            {displayNode && !isEntityNode && (
+            {/* Only show image at top for non-entity nodes when description exists */}
+            {displayNode && !isEntityNode && hasDescription && (
               <div className="p-2 bg-[#09090B] rounded shadow-sm flex justify-center border border-[#707070] w-full">
                 <div className="w-24 h-24 bg-gray-800 rounded-full overflow-hidden flex items-center justify-center">
                   {displayNode?.IMG_SRC ? (
@@ -748,8 +756,8 @@ const RightSidebar = ({
                   </div>
                 )}
                 
-                {/* Node Properties - Only show for non-entity nodes, or for entity nodes when wikidata is not available */}
-                {displayNode && (!isEntityNode || (isEntityNode && !wikidataInfo)) && filteredNodeProperties.length > 0 && (
+                {/* Node Properties - Only show when description exists (non-entity or entity without wikidata) */}
+                {displayNode && (!isEntityNode || (isEntityNode && !wikidataInfo)) && hasDescription && filteredNodeProperties.length > 0 && (
                   <div className="flex flex-col space-y-3">
                     {filteredNodeProperties.map(([key, value], index) => {
                       const isUrlProperty = key.toLowerCase().includes('url') || key.toLowerCase() === 'link' || key.toLowerCase().includes('website') || key.toLowerCase().includes('webpage');
@@ -878,8 +886,8 @@ const RightSidebar = ({
               {/* Show content when there's a selected node, edge, or multi-select items */}
               {((selectedNode || selectedEdge) || isMultiSelect) && (
                 <div className="flex flex-col h-full">
-                {/* Only show top image for non-entity nodes */}
-                {displayNode && !isEntityNode && (
+                {/* Only show top image for non-entity nodes when description exists */}
+                {displayNode && !isEntityNode && hasDescription && (
                   <div className="mb-4 p-2 bg-[#09090B] rounded shadow-sm flex justify-center w-full border border-[#707070] flex-shrink-0">
                     <div className="w-20 h-20 bg-gray-800 overflow-hidden flex items-center justify-center">
                       {displayNode?.IMG_SRC ? (
@@ -902,292 +910,7 @@ const RightSidebar = ({
                   {/* Scrollable Content Container for Node Properties Tab */}
                   {activeTab === 'node-properties' && (
                     <div className="flex-1 overflow-y-auto pr-2 min-h-0">
-                  {/* Wikidata Information Section (for Entity Nodes) - Desktop */}
-                  {displayNode && isEntityNode && wikidataInfo && (
-                    <div className="w-full flex-shrink-0 mb-4 py-2 pr-2 bg-[#09090B] rounded-md border border-[#707070]">
-                      <div className="flex flex-row">
-                        {/* Left Line */}
-                        <div className="w-1 rounded-full bg-[#358EE2] flex-shrink-0 mx-2 h-full"></div>
-                        
-                        {/* Content */}
-                        <div className="flex-1 flex flex-col">
-                          {/* Entity Name */}
-                          <h2 className="text-xl font-bold text-white mb-1">
-                            {wikidataInfo.name || entityName}
-                          </h2>
-                      
-                      {/* Alias and Type */}
-                      <div className="flex flex-col gap-1 mb-2">
-                        {wikidataInfo.alias && (
-                          <p className="text-sm text-[#B4B4B4]">
-                            Alias: <span className="text-white">{wikidataInfo.alias}</span>
-                          </p>
-                        )}
-                        {wikidataInfo.instance_of_label && (
-                          <p className="text-sm text-[#B4B4B4]">
-                            {wikidataInfo.sex_or_gender_label ? `${wikidataInfo.sex_or_gender_label} - ` : ''}
-                            {wikidataInfo.instance_of_label}
-                          </p>
-                        )}
-                      </div>
-                      
-                      {/* Image - Displayed after alias/type, before "Listed in" */}
-                      {displayImageUrl && (
-                        <div className="mb-3 flex justify-start">
-                          <div className="w-32 h-32 bg-gray-800 rounded-lg overflow-hidden flex items-center justify-center">
-                            {wikidataLoading ? (
-                              <div className="w-full h-full bg-gray-800 flex items-center justify-center">
-                                <svg className="animate-spin w-8 h-8 text-[#B4B4B4]" fill="none" viewBox="0 0 24 24">
-                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                </svg>
-                              </div>
-                            ) : (
-                              <img
-                                src={displayImageUrl}
-                                alt={wikidataInfo.name || entityName}
-                                className="w-full h-full object-cover"
-                                onError={(e) => {
-                                  console.error('Image failed to load in RightSidebar:', displayImageUrl);
-                                  e.target.style.display = 'none';
-                                }}
-                              />
-                            )}
-                          </div>
-                        </div>
-                      )}
-                      
-                      {/* Listed In / Category */}
-                      {wikidataInfo.instance_of_label && (
-                        <div className="mb-2">
-                          <p className="text-xs text-[#7D7D7D] mb-1">Listed in:</p>
-                          <div className="inline-block px-1 bg-[#1A1A1A] rounded-[4px]">
-                            <div className="text-[12px] text-white p-0.5">{wikidataInfo.instance_of_label}</div>
-                          </div>
-                        </div>
-                      )}
-                      
-                      {/* Description */}
-                      {wikidataInfo.description && (
-                        <p className="text-sm text-[#F4F4F5] leading-relaxed mb-3">
-                          {wikidataInfo.description}
-                        </p>
-                      )}
-                      
-                      {/* Key-Value Pairs */}
-                      <div className="flex flex-col space-y-2">
-                        {wikidataInfo.country_label && (
-                          <div className="grid grid-cols-[1fr_2fr] gap-2 items-start">
-                            <span className="text-xs text-[#7D7D7D]">Country Label:</span>
-                            <span className="text-sm text-[#F4F4F5]">{wikidataInfo.country_label}</span>
-                          </div>
-                        )}
-                        {wikidataInfo.headquarters_label && (
-                          <div className="grid grid-cols-[1fr_2fr] gap-2 items-start">
-                            <span className="text-xs text-[#7D7D7D]">Headquarters Label:</span>
-                            <span className="text-sm text-[#F4F4F5]">{wikidataInfo.headquarters_label}</span>
-                          </div>
-                        )}
-                        {wikidataInfo.place_of_birth_label && (
-                          <div className="grid grid-cols-[1fr_2fr] gap-2 items-start">
-                            <span className="text-xs text-[#7D7D7D]">Place of Birth:</span>
-                            <span className="text-sm text-[#F4F4F5]">{wikidataInfo.place_of_birth_label}</span>
-                          </div>
-                        )}
-                        {wikidataInfo.founded_by_label && (
-                          <div className="grid grid-cols-[1fr_2fr] gap-2 items-start">
-                            <span className="text-xs text-[#7D7D7D]">Founded By:</span>
-                            <span className="text-sm text-[#F4F4F5]">{wikidataInfo.founded_by_label}</span>
-                          </div>
-                        )}
-                        {wikidataInfo.industry_label && (
-                          <div className="grid grid-cols-[1fr_2fr] gap-2 items-start">
-                            <span className="text-xs text-[#7D7D7D]">Industry:</span>
-                            <span className="text-sm text-[#F4F4F5]">{wikidataInfo.industry_label}</span>
-                          </div>
-                        )}
-                        {wikidataInfo.end_time && (
-                          <div className="grid grid-cols-[1fr_2fr] gap-2 items-start">
-                            <span className="text-xs text-[#7D7D7D]">End Time:</span>
-                            <span className="text-sm text-[#F4F4F5]">
-                              {new Date(wikidataInfo.end_time).toLocaleDateString()}
-                            </span>
-                          </div>
-                        )}
-                        {wikidataInfo.award_received_label && (
-                          <div className="grid grid-cols-[1fr_2fr] gap-2 items-start">
-                            <span className="text-xs text-[#7D7D7D]">Awards Received:</span>
-                            <span className="text-sm text-[#F4F4F5]">{wikidataInfo.award_received_label}</span>
-                          </div>
-                        )}
-                        {wikidataInfo.occupation_label && (
-                          <div className="grid grid-cols-[1fr_2fr] gap-2 items-start">
-                            <span className="text-xs text-[#7D7D7D]">Occupation:</span>
-                            <span className="text-sm text-[#F4F4F5]">{wikidataInfo.occupation_label}</span>
-                          </div>
-                        )}
-                        {wikidataInfo.position_held_label && (
-                          <div className="grid grid-cols-[1fr_2fr] gap-2 items-start">
-                            <span className="text-xs text-[#7D7D7D]">Position:</span>
-                            <span className="text-sm text-[#F4F4F5]">{wikidataInfo.position_held_label}</span>
-                          </div>
-                        )}
-                        {wikidataInfo.educated_at_label && (
-                          <div className="grid grid-cols-[1fr_2fr] gap-2 items-start">
-                            <span className="text-xs text-[#7D7D7D]">Education:</span>
-                            <span className="text-sm text-[#F4F4F5]">{wikidataInfo.educated_at_label}</span>
-                          </div>
-                        )}
-                        {wikidataInfo.date_birth && (
-                          <div className="grid grid-cols-[1fr_2fr] gap-2 items-start">
-                            <span className="text-xs text-[#7D7D7D]">Date of Birth:</span>
-                            <span className="text-sm text-[#F4F4F5]">
-                              {new Date(wikidataInfo.date_birth).toLocaleDateString()}
-                            </span>
-                          </div>
-                        )}
-                        {wikidataInfo.citizenship_label && (
-                          <div className="grid grid-cols-[1fr_2fr] gap-2 items-start">
-                            <span className="text-xs text-[#7D7D7D]">Citizenship:</span>
-                            <span className="text-sm text-[#F4F4F5]">{wikidataInfo.citizenship_label}</span>
-                          </div>
-                        )}
-                      </div>
-                      
-                      {/* URL Links Section */}
-                      {(wikidataInfo.wikipedia_url || wikidataInfo.url || wikidataInfo.qid) && (
-                        <div className="mt-3 pt-3 ">
-                          <p className="text-xs text-[#7D7D7D] mb-2">URL</p>
-                          <div className="flex flex-col gap-2">
-                            {wikidataInfo.wikipedia_url && (
-                              <a
-                                href={wikidataInfo.wikipedia_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-[12px] text-[#6EA4F4] hover:underline"
-                              >
-                                Wikipedia Link
-                              </a>
-                            )}
-                            {wikidataInfo.url && (
-                              <a
-                                href={wikidataInfo.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-[12px] text-[#6EA4F4] hover:underline"
-                              >
-                                Social Link
-                              </a>
-                            )}
-                            {wikidataInfo.qid && (
-                              <a
-                                href={`https://www.wikidata.org/wiki/${wikidataInfo.qid}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-[12px] text-[#6EA4F4] hover:underline"
-                              >
-                                Wikidata Link
-                              </a>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                        </div>
-                      </div>
-                    </div>
-                  )}
                   
-                  {/* Node Details - Only show for non-entity nodes, or for entity nodes when wikidata is not available */}
-                  {displayNode && (!isEntityNode || (isEntityNode && !wikidataInfo)) && filteredNodeProperties.length > 0 && (
-                    <div className="w-full flex-shrink-0 mb-4">
-                      <div className="flex flex-col space-y-3">
-                        {filteredNodeProperties.map(([key, value], index) => {
-                          const isUrlProperty = key.toLowerCase().includes('url') || key.toLowerCase() === 'link' || key.toLowerCase().includes('website') || key.toLowerCase().includes('webpage');
-                          return (
-                            <div key={index} className="mb-1 flex-shrink-0">
-                              <h4 className="text-xs font-semibold text-[#7D7D7D] capitalize mb-1 leading-[14px]">{key}:</h4>
-                              {isUrlProperty && isValidUrl(String(value)) ? (
-                                <a
-                                  href={formatUrl(String(value))}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-sm text-[#6EA4F4] hover:underline break-words leading-[14px] font-normal"
-                                >
-                                  {formatValue(value)}
-                                </a>
-                              ) : (
-                                <p className="text-sm text-[#F4F4F5] break-words capitalize leading-[14px] font-normal">
-                                  {formatValue(value)}
-                                </p>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                  
-                  {/* Edge Citation (raw-text fallback: cited vs uncited/invalid) */}
-                  {displayEdge && (edgeCitationStatus || edgeCitationText) && (
-                    <div className="w-full flex-shrink-0 mb-4 p-2 bg-[#09090B] rounded-md border border-[#404040]">
-                      {edgeCitationStatus && (
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className="text-xs text-[#7D7D7D]">Citation:</span>
-                          <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${
-                            edgeCitationStatus === 'cited'
-                              ? 'bg-[#1a472a] text-[#51CF66]'
-                              : isUncitedOrInvalid
-                                ? 'bg-[#4a3520] text-[#FF922B]'
-                                : 'bg-[#24282F] text-[#B4B4B4]'
-                          }`}>
-                            {edgeCitationStatus === 'cited' ? 'Cited' : edgeCitationStatus === 'invalid' ? 'Invalid (raw text)' : 'Uncited (raw text)'}
-                          </span>
-                        </div>
-                      )}
-                      {edgeCitationText && (
-                        <div className="mb-2">
-                          <p className="text-xs text-[#7D7D7D] mb-1">
-                            {isUncitedOrInvalid ? 'Raw extracted text:' : 'Sentence:'}
-                          </p>
-                          <p className="text-sm text-[#F4F4F5] leading-relaxed">
-                            {edgeCitationText}
-                          </p>
-                        </div>
-                      )}
-                      {edgeCitationError && isUncitedOrInvalid && (
-                        <p className="text-xs text-[#FF922B]">{edgeCitationError}</p>
-                      )}
-                    </div>
-                  )}
-                  {/* Edge Details */}
-                  {displayEdge && filteredEdgeProperties.length > 0 && (
-                    <div className="w-full flex-shrink-0 mb-4">
-                      <div className="flex flex-col space-y-3">
-                        {filteredEdgeProperties.map(([key, value], index) => {
-                          const isUrlProperty = key.toLowerCase().includes('url') || key.toLowerCase() === 'link' || key.toLowerCase().includes('website') || key.toLowerCase().includes('webpage');
-                          return (
-                            <div key={index} className="mb-1 flex-shrink-0">
-                              <h4 className="text-xs font-semibold text-[#7D7D7D] capitalize mb-1 leading-[14px]">{key}:</h4>
-                              {isUrlProperty && isValidUrl(String(value)) ? (
-                                <a
-                                  href={formatUrl(String(value))}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-sm text-[#6EA4F4] hover:underline break-words leading-[14px] font-normal"
-                                >
-                                  {formatValue(value)}
-                                </a>
-                              ) : (
-                                <p className="text-sm text-[#F4F4F5] break-words capitalize leading-[14px] font-normal">
-                                  {formatValue(value)}
-                                </p>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
 
                   {/* Pagination Controls - Only show in Multi-Select mode with multiple items */}
                   {((selectedNodes?.size || 0) + (selectedEdges?.size || 0)) > 1 && (
