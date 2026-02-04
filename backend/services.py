@@ -20,15 +20,10 @@ def generate_id_from_title(title: str) -> str:
     return title.lower().replace(' ', '_').replace('&', 'and').replace('/', '_').replace("'", '').replace('-', '_')
 
 def format_node(node_data: Dict[str, Any]) -> Dict[str, Any]:
-    gid_value = node_data.get("gid")
-    element_id = node_data.get("elementId") or node_data.get("element_id")
-
-    raw_id = gid_value
+    # New DB uses id; legacy used gid. Prefer id.
+    raw_id = node_data.get("id") or node_data.get("g_id") or node_data.get("gid")
     if raw_id is None:
-        raw_id = node_data.get("id")
-    if raw_id is None:
-        raw_id = element_id
-
+        raw_id = node_data.get("elementId") or node_data.get("element_id")
     node_id = str(raw_id) if raw_id is not None else ""
 
     raw_node_type = node_data.get("node_type") or node_data.get("type")
@@ -53,9 +48,9 @@ def format_node(node_data: Dict[str, Any]) -> Dict[str, Any]:
         or node_data.get("Summary")
     )
 
+    element_id = node_data.get("elementId") or node_data.get("element_id")
     node = {
         "id": node_id,
-        "gid": gid_value,
         "elementId": element_id,
         # Keep node_type stable for frontend grouping/filtering
         "node_type": node_type,
@@ -85,9 +80,9 @@ def format_link(link_data: Dict[str, Any]) -> Dict[str, Any]:
         merged = link_data
 
     link = {
-        "id": str(merged.get("gid", "")),
-        "sourceId": str(merged.get("from_gid", "")),
-        "targetId": str(merged.get("to_gid", "")),
+        "id": str(merged.get("id") or merged.get("gid", "")),
+        "sourceId": str(merged.get("from_id") or merged.get("from_gid", "")),
+        "targetId": str(merged.get("to_id") or merged.get("to_gid", "")),
         "title": merged.get("article_title") or merged.get("Article Title"),
         "label": merged.get("relationship_summary") or merged.get("Relationship Summary"),
         "category": merged.get("type") or "Entity_Relationship",
@@ -152,7 +147,7 @@ def format_link(link_data: Dict[str, Any]) -> Dict[str, Any]:
         link["raw_text"] = raw_extracted_text
 
     for key, value in merged.items():
-        if key not in ["id", "gid", "sourceId", "targetId", "from_gid", "to_gid", "title", "label", "category", "type", "properties"] and value is not None:
+        if key not in ["id", "gid", "sourceId", "targetId", "from_id", "to_id", "from_gid", "to_gid", "title", "label", "category", "type", "properties"] and value is not None:
             link[key] = value
 
     return link
@@ -259,47 +254,35 @@ def get_all_stories() -> List[Story]:
                 continue
 
             story_title = story_data.get("story_title", "")
-            story_gid = story_data.get("story_gid", "")
+            story_id_val = story_data.get("story_id") or story_data.get("story_gid", "")
             story_brief = story_data.get("story_brief", "")
-            
-            # Convert to string and strip whitespace
+
             if story_brief is not None:
                 story_brief = str(story_brief).strip()
             else:
                 story_brief = ""
-            
-            # Log story processing (debug level to avoid spam)
-            logger.debug(f"Processing story: {story_title} (gid: {story_gid}, brief length: {len(story_brief)})")
 
-            # Use Neo4j gid for stable, globally-unique story IDs.
-            # (Frontend uses title for URL sync; it uses id for selection and /statistics.)
-            story_id = str(story_gid) if story_gid else generate_id_from_title(story_title)
+            logger.debug(f"Processing story: {story_title} (id: {story_id_val}, brief length: {len(story_brief)})")
+            story_id = str(story_id_val) if story_id_val else generate_id_from_title(story_title)
 
             chapters = []
             for chapter_data in story_data.get("chapters", []):
-                if not chapter_data or not chapter_data.get("gid"):
+                chapter_id_val = chapter_data.get("id") or chapter_data.get("gid") if chapter_data else None
+                if not chapter_data or not chapter_id_val:
                     continue
-
-                chapter_gid = chapter_data.get("gid", "")
                 chapter_number = chapter_data.get("chapter_number", 0)
                 chapter_title = chapter_data.get("chapter_title", "")
                 chapter_total_nodes = chapter_data.get("total_nodes", 0) or 0
-
-                # Use Neo4j gid for stable, globally-unique chapter IDs (titles are used for URL sync).
-                chapter_id = str(chapter_gid)
+                chapter_id = str(chapter_id_val)
 
                 substories = []
                 for section_data in chapter_data.get("sections", []):
-                    if not section_data or not section_data.get("gid"):
+                    section_id_val = section_data.get("id") or section_data.get("gid") if section_data else None
+                    if not section_data or not section_id_val:
                         continue
-
-                    section_gid = section_data.get("gid", "")
                     section_title = section_data.get("section_title", "")
                     section_num = section_data.get("section_num", 0)
-
-                    # Use Neo4j gid for stable, globally-unique section IDs.
-                    # This also allows the frontend to pass a numeric identifier to /api/graph/{substory_id}.
-                    substory_id = str(section_gid)
+                    substory_id = str(section_id_val)
 
                     substories.append(Substory(
                         id=substory_id,
@@ -580,11 +563,11 @@ def _build_graph_query_from_intent(intent: Dict[str, Any]) -> Tuple[str, Dict[st
         node_type: head(labels(n))
       }}],
       links: [rd IN rels | {{
-        gid: coalesce(toString(rd.rel.gid), elementId(rd.rel)),
+        id: coalesce(toString(rd.rel.id), elementId(rd.rel)),
         elementId: elementId(rd.rel),
         type: rd.type,
-        from_gid: coalesce(toString(rd.from.gid), elementId(rd.from)),
-        to_gid: coalesce(toString(rd.to.gid), elementId(rd.to)),
+        from_id: coalesce(toString(rd.from.id), toString(rd.from.g_id), elementId(rd.from)),
+        to_id: coalesce(toString(rd.to.id), toString(rd.to.g_id), elementId(rd.to)),
         relationship_summary: coalesce(rd.rel.summary, rd.rel.`Relationship Summary`, rd.rel.name, rd.rel.text),
         article_title: coalesce(rd.rel.title, rd.rel.`Article Title`),
         article_url: coalesce(rd.rel.url, rd.rel.`Article URL`, rd.rel.`article URL`),

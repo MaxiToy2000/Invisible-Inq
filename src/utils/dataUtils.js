@@ -168,11 +168,7 @@ export const formatGraphData = (rawData) => {
   if (Array.isArray(validRawData.nodes)) {
     validRawData.nodes.forEach((node) => {
       const id = String(
-        node.id ??
-          node.gid ??
-          node.elementId ??
-          node.element_id ??
-          generateRandomId(),
+        node.id ?? node.g_id ?? node.gid ?? node.elementId ?? node.element_id ?? generateRandomId(),
       );
 
       const nodeType =
@@ -213,8 +209,8 @@ export const formatGraphData = (rawData) => {
 
   if (Array.isArray(validRawData.links)) {
     validRawData.links.forEach((link) => {
-      const sourceId = String(link.sourceId ?? link.source ?? link.from_gid ?? '');
-      const targetId = String(link.targetId ?? link.target ?? link.to_gid ?? '');
+      const sourceId = String(link.sourceId ?? link.source ?? link.from_id ?? link.from_gid ?? '');
+      const targetId = String(link.targetId ?? link.target ?? link.to_id ?? link.to_gid ?? '');
 
       if (!sourceId || !targetId) {
         console.warn('Skipping link with missing sourceId or targetId:', link);

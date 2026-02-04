@@ -35,3 +35,31 @@ dist-ssr
 
 # Cursor IDE
 .cursor/
+backend/venv_new/pyvenv.cfg
+backend/venv_new/Scripts/activate
+backend/venv_new/Scripts/activate.bat
+backend/venv_new/Scripts/Activate.ps1
+backend/venv_new/Scripts/deactivate.bat
+backend/venv_new/Scripts/dotenv.exe
+backend/venv_new/Scripts/dumppdf.py
+backend/venv_new/Scripts/email_validator.exe
+backend/venv_new/Scripts/google-oauthlib-tool.exe
+backend/venv_new/Scripts/normalizer.exe
+backend/venv_new/Scripts/pdf2txt.py
+backend/venv_new/Scripts/pdfplumber.exe
+backend/venv_new/Scripts/pip.exe
+backend/venv_new/Scripts/pip3.12.exe
+backend/venv_new/Scripts/pip3.exe
+backend/venv_new/Scripts/pypdfium2.exe
+backend/venv_new/Scripts/pyrsa-decrypt.exe
+backend/venv_new/Scripts/pyrsa-encrypt.exe
+backend/venv_new/Scripts/pyrsa-keygen.exe
+backend/venv_new/Scripts/pyrsa-priv2pub.exe
+backend/venv_new/Scripts/pyrsa-sign.exe
+backend/venv_new/Scripts/pyrsa-verify.exe
+backend/venv_new/Scripts/python.exe
+backend/venv_new/Scripts/pythonw.exe
+backend/venv_new/Scripts/uvicorn.exe
+backend/venv_new/Scripts/watchfiles.exe
+backend/venv_new/Scripts/websockets.exe
+.gitignore
