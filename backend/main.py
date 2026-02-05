@@ -10,7 +10,7 @@ import logging
 import os
 import aiofiles
 from config import Config
-from services import get_all_stories, get_graph_data, get_graph_data_by_section_and_country, search_with_ai, get_story_statistics, get_all_node_types, get_calendar_data, get_cluster_data, get_entity_wikidata, search_entity_wikidata
+from services import get_all_stories, get_graph_data, get_graph_data_by_section_and_country, search_with_ai, get_story_statistics, get_all_node_types, get_calendar_data, get_cluster_data, get_entity_wikidata, search_entity_wikidata, get_gr_id_description
 from models import GraphData, UserCreate, UserLogin, Token, UserResponse, GoogleAuthRequest, UserActivityCreate, UserActivityResponse, AdminLoginRequest, SubmissionCreate, SubmissionResponse, UserSubscriptionResponse, SubmissionUpdateRequest
 from pydantic import BaseModel
 from auth import create_access_token, verify_google_token, get_current_user, get_current_admin_user
@@ -889,6 +889,19 @@ async def get_stories():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching stories: {str(e)}")
 
+
+@app.get("/api/sections/{gr_id}/description", response_model=dict)
+async def get_section_description(gr_id: str):
+    """
+    Get section description from Neon gr_id table.
+    gr_id is the same id used as graph_path (e.g. gra7zcmodmlq) - foreign key to Neo4j SECTION / gr_id node.
+    """
+    description = get_gr_id_description(gr_id)
+    if description is None:
+        raise HTTPException(status_code=404, detail="Section description not found")
+    return {"section_id": gr_id, "description": description}
+
+
 @app.get("/api/graph/{substory_id}", response_model=dict)
 async def get_graph_by_substory_id(substory_id: str):
     try:
@@ -896,7 +909,11 @@ async def get_graph_by_substory_id(substory_id: str):
             graph_data = get_graph_data(section_gid=substory_id)
         else:
             graph_data = get_graph_data(section_query=substory_id)
-        return graph_data.model_dump()
+        out = graph_data.model_dump()
+        description = get_gr_id_description(substory_id)
+        if description is not None:
+            out["description"] = description
+        return out
     except Exception as e:
         raise HTTPException(
             status_code=500,
@@ -910,7 +927,11 @@ async def get_graph_by_path(graph_path: Optional[str] = None):
 
     try:
         graph_data = get_graph_data(graph_path=graph_path)
-        return graph_data.model_dump()
+        out = graph_data.model_dump()
+        description = get_gr_id_description(graph_path)
+        if description is not None:
+            out["description"] = description
+        return out
     except Exception as e:
         raise HTTPException(
             status_code=500,

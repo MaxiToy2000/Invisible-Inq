@@ -29,6 +29,15 @@ const LeftSidebar = ({
   const [bottomQuery, setBottomQuery] = useState('');
   const sidebarRef = useRef(null);
   const [sidebarWidth, setSidebarWidth] = useState(320);
+  const [sectionDescription, setSectionDescription] = useState(null);
+  
+  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+
+  // Same id as graph_path (e.g. gra7zcmodmlq) - used for /api/graph (which now returns gr_id row description)
+  const grIdForSection = currentSubstory?.section_query ?? currentSubstory?.graphPath ?? currentSubstoryId;
+
+  // Description from graph response (backend gets gr_id row where id = graph_path in that request)
+  const descriptionFromGraph = graphData?.description;
 
   useEffect(() => {
     const checkMobile = () => {
@@ -45,6 +54,39 @@ const LeftSidebar = ({
   useEffect(() => {
     onCollapseChange(isCollapsed);
   }, [isCollapsed, onCollapseChange]);
+
+  // Fallback: fetch description from /api/sections/... only when not already in graph response
+  useEffect(() => {
+    if (!grIdForSection || descriptionFromGraph != null) {
+      if (!grIdForSection) setSectionDescription(null);
+      return;
+    }
+    let cancelled = false;
+    setDescriptionLoading(true);
+    setSectionDescription(null);
+    const url = `${apiBaseUrl}/api/sections/${encodeURIComponent(String(grIdForSection))}/description`;
+    fetch(url)
+      .then((res) => {
+        if (cancelled) return null;
+        if (!res.ok) {
+          if (res.status === 404) return null;
+          throw new Error(res.statusText);
+        }
+        return res.json();
+      })
+      .then((data) => {
+        if (!cancelled && data?.description != null) {
+          setSectionDescription(typeof data.description === 'string' ? data.description : String(data.description));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setSectionDescription(null);
+      })
+      .finally(() => {
+        if (!cancelled) setDescriptionLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [grIdForSection, descriptionFromGraph, apiBaseUrl]);
 
   useEffect(() => {
     const updateSidebarWidth = () => {
@@ -92,7 +134,7 @@ const LeftSidebar = ({
   }, [graphData, currentSubstoryId]);
 
   const importantEntities = useMemo(() => {
-    const brief = currentSubstory?.brief || '';
+    const brief = (descriptionFromGraph ?? sectionDescription ?? currentSubstory?.brief) || '';
     if (!brief) return [];
     
     const stopWords = new Set([
@@ -242,7 +284,7 @@ const LeftSidebar = ({
     }
     
     return finalPick;
-  }, [currentSubstory, graphData]);
+  }, [currentSubstory, graphData, sectionDescription, descriptionFromGraph]);
 
   const renderBriefWithBadges = (brief, terms) => {
     if (!brief) return null;
@@ -465,15 +507,21 @@ const LeftSidebar = ({
         </div>
 
         {}
-        {currentSubstory && (currentSubstory.title || currentSubstory.brief) && (
+        {(grIdForSection || currentSubstory) && (
           <div className="pb-4">
             <div>
-              {}
-              {currentSubstory.brief && (
-                <div
-                  className="text-[#B4B4B4] mb-3 font-[sans-serif] font-normal text-[14px] leading-[18px] tracking-[0px]"
-                >
-                  {renderBriefWithBadges(currentSubstory.brief, importantEntities)}
+              {(descriptionFromGraph ?? sectionDescription ?? currentSubstory?.brief) ? (
+                <>
+                  <div
+                    className="text-[#B4B4B4] mb-3 font-[sans-serif] font-normal text-[14px] leading-[18px] tracking-[0px]"
+                  >
+                    {renderBriefWithBadges(descriptionFromGraph ?? sectionDescription ?? currentSubstory?.brief ?? '', importantEntities)}
+                  </div>
+                </>
+              ) : null}
+              {!descriptionLoading && !(descriptionFromGraph ?? sectionDescription ?? currentSubstory?.brief) && (
+                <div className="text-[#707070] text-sm mb-3 font-[sans-serif] font-normal text-[14px] leading-[18px]">
+                  No description available for this section.
                 </div>
               )}
             </div>

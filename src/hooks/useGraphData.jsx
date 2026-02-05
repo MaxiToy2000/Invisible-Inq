@@ -277,7 +277,7 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
         const highlights = allHighlights.slice(0, 20);
 
         if (isMounted) {
-          setGraphData(formattedGraphData);
+          setGraphData(formattedGraphData); 
           setEntityHighlights(highlights);
           setLoading(false);
           hasLoggedError = false; // Reset error flag on success
