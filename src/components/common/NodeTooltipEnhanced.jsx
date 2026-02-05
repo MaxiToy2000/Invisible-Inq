@@ -210,9 +210,11 @@ const EntityTooltipLayout = ({ node, color }) => {
   const [imageError, setImageError] = useState(false);
   const [directImageUrl, setDirectImageUrl] = useState(null);
   
+  const entityId = node.id ?? node.g_id ?? null;
   const entityName = node.name || node['Entity Name'] || node.entity_name || node.id || 'Unknown';
+  const entityIdentifier = entityId || entityName;
   const nodeType = node.node_type || node.type || 'Type';
-  const subtype = node.subtype || node.category || wikidataInfo?.instance_of_label || 'Subtype';
+  const subtype = node.subtype || node.category || wikidataInfo?.instance_of_label || wikidataInfo?.type || wikidataInfo?.subtype || 'Subtype';
   const degree = node.degree || node.related_count || 857;
   
   // Get description from wikidata or node
@@ -381,15 +383,16 @@ const EntityTooltipLayout = ({ node, color }) => {
   // Fetch wikidata when component mounts
   useEffect(() => {
     const fetchWikidata = async () => {
-      if (!entityName || entityName === 'Unknown' || fetchAttempted) return;
+      if (!entityIdentifier || entityIdentifier === 'Unknown' || fetchAttempted) return;
       
       setLoading(true);
       setFetchAttempted(true);
       
       try {
         const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+        const url = `${apiBaseUrl}/api/entity/wikidata/${encodeURIComponent(entityIdentifier)}`;
         const response = await fetch(
-          `${apiBaseUrl}/api/entity/wikidata/${encodeURIComponent(entityName)}`,
+          url,
           { 
             method: 'GET',
             headers: { 'Content-Type': 'application/json' }
@@ -400,10 +403,10 @@ const EntityTooltipLayout = ({ node, color }) => {
           const result = await response.json();
           console.log('Wikidata API response:', result);
           if (result.found && result.data) {
-            console.log('Setting wikidata info:', result.data);
-            setWikidataInfo(result.data);
+            const entityData = Array.isArray(result.data) ? result.data[0] : result.data;
+            setWikidataInfo(entityData);
           } else {
-            console.log('No wikidata found for entity:', entityName);
+            console.log('No wikidata found for entity:', entityIdentifier);
           }
         } else {
           console.error('Wikidata API error:', response.status, response.statusText);
@@ -416,7 +419,7 @@ const EntityTooltipLayout = ({ node, color }) => {
     };
 
     fetchWikidata();
-  }, [entityName, fetchAttempted]);
+  }, [entityIdentifier, entityId, fetchAttempted]);
 
   return (
     <div 

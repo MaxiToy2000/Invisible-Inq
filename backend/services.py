@@ -937,75 +937,110 @@ Rules:
         logger.error(f"Error generating summary: {e}")
         raise
 
+def _safe_entity_table():
+    """Return validated entity wikidata table name (alphanumeric + underscore only)."""
+    import re
+    from config import Config
+    t = (Config.ENTITY_WIKIDATA_TABLE or "entity").strip()
+    return t if re.match(r"^[a-zA-Z0-9_]+$", t) else "entity"
 
-def get_entity_wikidata(entity_name: str) -> Dict[str, Any]:
+
+def get_entity_wikidata_by_id(entity_id: str) -> Dict[str, Any]:
+    """
+    Fetch entity from Neon entity table by id (matches graph node id).
+    Selects row where id field equals the given identifier.
+    """
+    from neon_database import neon_db
+
+    entity_id = (entity_id or "").strip()
+    if not entity_id:
+        return {"found": False, "data": None}
+
+    if not neon_db.is_configured():
+        return {"found": False, "data": None, "error": "Wikidata database not configured"}
+
+    table = _safe_entity_table()
+    try:
+        query = f"""
+            SELECT *
+            FROM {table}
+            WHERE id = %s
+            LIMIT 1
+        """
+        results = neon_db.execute_query(query, (entity_id,))
+        if results:
+            entity_data = dict(results[0])
+            for key, value in entity_data.items():
+                if hasattr(value, 'isoformat'):
+                    entity_data[key] = value.isoformat()
+            return {"found": True, "data": entity_data}
+        return {"found": False, "data": None}
+    except Exception as e:
+        logger.warning(f"Entity wikidata lookup by id failed: {e}")
+        return {"found": False, "data": None}
+
+
+def get_entity_wikidata(entity_name: str, lookup_by: str = "auto") -> Dict[str, Any]:
     """
     Fetch detailed entity information from Neon PostgreSQL wikidata table.
-    Searches by name (case-insensitive partial match).
-    
-    Args:
-        entity_name: The name of the entity to search for
-        
+    lookup_by: 'id' = only by id/qid, 'name' = only by name, 'auto' = try id then name.
+
     Returns:
         Dict with 'found' boolean and 'data' containing entity details if found
     """
     from neon_database import neon_db
     from urllib.parse import unquote
-    
-    # Decode URL-encoded entity name and clean it
-    entity_name = unquote(entity_name).strip()
-    
-    logger.info(f"Fetching wikidata for entity: '{entity_name}'")
-    
-    # Check if Neon database is configured
+
+    identifier = unquote(entity_name or "").strip()
+    if not identifier:
+        return {"found": False, "data": None}
+
+    logger.info(f"Fetching wikidata for entity: '{identifier}' (lookup_by={lookup_by})")
+
     if not neon_db.is_configured():
-        logger.warning("Neon database not configured, returning empty result")
         return {"found": False, "data": None, "error": "Wikidata database not configured"}
-    
+
+    table = _safe_entity_table()
+
+    if lookup_by == "id":
+        return get_entity_wikidata_by_id(identifier)
+
     try:
-        # Verify we're querying the correct table in the wuhan database
-        # The query explicitly targets entity_wikidata table
-        query = """
-            SELECT 
-                qid, name, alias, description,
-                sex_or_gender, sex_or_gender_label, 
-                wikipedia_url, image_url, logo_url, url,
-                father, father_label, mother, mother_label, 
-                spouse, spouse_label, children, children_label,
-                country, country_label, headquarters, headquarters_label, 
-                place_of_birth, place_of_birth_label, location, location_label,
-                citizenship, citizenship_label,
-                date_birth, date_death,
-                occupation, occupation_label, educated_at, educated_at_label,
-                position_held, position_held_label, field_of_work, field_of_work_label,
-                significant_event, significant_event_label, residence, residence_label,
-                founded_by, founded_by_label, industry, industry_label,
-                start_time, end_time,
-                instance_of, instance_of_label, award_received, award_reeived_label,
-                viafid, locid, worldcat_id, locator_map, coordinates
-            FROM entity_wikidata
-            WHERE LOWER(TRIM(name)) = LOWER(TRIM(%s))
-               OR LOWER(TRIM(name)) LIKE LOWER(%s)
-               OR (alias IS NOT NULL AND LOWER(TRIM(alias)) LIKE LOWER(%s))
-            ORDER BY 
-                CASE 
-                    WHEN LOWER(TRIM(name)) = LOWER(TRIM(%s)) THEN 0
-                    WHEN LOWER(TRIM(name)) LIKE LOWER(%s) THEN 1
-                    ELSE 2
-                END,
-                LENGTH(name)
-            LIMIT 1
-        """
-         
-        search_pattern = f"%{entity_name}%"
-        
-        logger.debug(f"Querying entity_wikidata table for: '{entity_name}'")
-        logger.debug(f"Search pattern: '{search_pattern}'")
-        
-        results = neon_db.execute_query(
-            query, 
-            (entity_name, search_pattern, search_pattern, entity_name, search_pattern)
-        )
+        if lookup_by == "auto":
+            by_id_result = get_entity_wikidata_by_id(identifier)
+            if by_id_result.get("found") and by_id_result.get("data"):
+                return by_id_result
+        # name lookup: exact match on name field (entity_name param)
+        # When lookup_by='name', only exact match; when 'auto' fallback, try exact then LIKE
+        if lookup_by == "name":
+            query = f"""
+                SELECT *
+                FROM {table}
+                WHERE LOWER(TRIM(name)) = LOWER(TRIM(%s))
+                LIMIT 1
+            """
+            results = neon_db.execute_query(query, (identifier,))
+        else:
+            query = f"""
+                SELECT *
+                FROM {table}
+                WHERE LOWER(TRIM(name)) = LOWER(TRIM(%s))
+                   OR LOWER(TRIM(name)) LIKE LOWER(%s)
+                   OR (alias IS NOT NULL AND LOWER(TRIM(alias)) LIKE LOWER(%s))
+                ORDER BY
+                    CASE
+                        WHEN LOWER(TRIM(name)) = LOWER(TRIM(%s)) THEN 0
+                        WHEN LOWER(TRIM(name)) LIKE LOWER(%s) THEN 1
+                        ELSE 2
+                    END,
+                    LENGTH(name)
+                LIMIT 1
+            """
+            search_pattern = f"%{identifier}%"
+            results = neon_db.execute_query(
+                query,
+                (identifier, search_pattern, search_pattern, identifier, search_pattern)
+            )
         
         logger.info(f"Query returned {len(results) if results else 0} result(s)")
         
@@ -1032,23 +1067,18 @@ def get_entity_wikidata(entity_name: str) -> Dict[str, Any]:
                     entity_data[key] = None
                     logger.debug(f"Converted empty {key} to None")
             
-            logger.info(f"Successfully retrieved wikidata for entity: '{entity_name}' (matched to DB name: '{db_name}')")
             return {"found": True, "data": entity_data}
         else:
-            logger.warning(f"No wikidata found in entity_wikidata table for entity: '{entity_name}'")
-            
-            # Debug: Try to find what's actually in the database
             try:
-                debug_query = """
-                    SELECT name, alias, qid
-                    FROM entity_wikidata 
+                debug_query = f"""
+                    SELECT *
+                    FROM {table}
                     WHERE LOWER(TRIM(name)) LIKE LOWER(%s)
                        OR (alias IS NOT NULL AND LOWER(TRIM(alias)) LIKE LOWER(%s))
                     LIMIT 10
                 """
-                # Try with first significant word
-                words = [w for w in entity_name.split() if len(w) > 2]
-                first_word = words[0] if words else entity_name[:10]
+                words = [w for w in identifier.split() if len(w) > 2]
+                first_word = words[0] if words else identifier[:10]
                 debug_pattern = f"%{first_word}%"
                 debug_results = neon_db.execute_query(debug_query, (debug_pattern, debug_pattern))
                 if debug_results:
@@ -1061,7 +1091,7 @@ def get_entity_wikidata(entity_name: str) -> Dict[str, Any]:
             return {"found": False, "data": None}
             
     except Exception as e:
-        logger.error(f"Error fetching entity wikidata for '{entity_name}': {e}")
+        logger.error(f"Error fetching entity wikidata for '{identifier}': {e}")
         logger.exception(e)  # Log full traceback
         raise
 
@@ -1095,12 +1125,12 @@ def search_entity_wikidata(search_term: str, limit: int = 10) -> Dict[str, Any]:
         logger.warning("Neon database not configured")
         return {"results": [], "error": "Wikidata database not configured"}
     
+    table = _safe_entity_table()
     try:
-        query = """
-            SELECT 
-                qid, name, alias, description, instance_of_label,
-                image_url, wikipedia_url
-            FROM entity_wikidata
+        query = f"""
+            SELECT
+                *
+            FROM {table}
             WHERE LOWER(name) LIKE LOWER(%s)
                OR LOWER(alias) LIKE LOWER(%s)
             ORDER BY 

@@ -24,6 +24,8 @@ class Config:
 
     # Neon PostgreSQL Configuration
     NEON_DATABASE_URL = os.getenv("NEON_DATABASE_URL", "")
+    # Entity/wikidata table (Neon). Override if DB structure changed.
+    ENTITY_WIKIDATA_TABLE = os.getenv("ENTITY_WIKIDATA_TABLE", "entity")
 
     BACKEND_HOST = os.getenv("BACKEND_HOST", "0.0.0.0")
     BACKEND_PORT = int(os.getenv("BACKEND_PORT", "8000"))

@@ -1039,32 +1039,26 @@ async def get_node_types():
 
 # ============== Entity Wikidata Endpoints ==============
 
-@app.get("/api/entity/wikidata/{entity_name}")
-async def get_entity_wikidata_by_name(entity_name: str):
+@app.get("/api/entity/wikidata/{identifier}")
+async def get_entity_wikidata_by_identifier(identifier: str):
     """
-    Get detailed wikidata information for an entity by name.
-    Returns comprehensive information from the entity_wikidata table in the wuhan database.
+    Get detailed entity information from Neon entity table.
+    identifier: graph node id (e.g. enhxa36vviao) - selects row where id field matches.
+    Uses ENTITY_WIKIDATA_TABLE from config (default entity_wikidata).
     """
     try:
         from urllib.parse import unquote
-        
-        # Decode URL-encoded entity name
-        entity_name = unquote(entity_name)
-        
-        if not entity_name or not entity_name.strip():
-            raise HTTPException(status_code=400, detail="Entity name is required")
-        
-        logger.info(f"API endpoint called - entity_name: '{entity_name}'")
-        
-        result = get_entity_wikidata(entity_name.strip())
-        
-        logger.info(f"API response - found: {result.get('found')}, has_data: {bool(result.get('data'))}")
-        
+        identifier = unquote(identifier or "").strip()
+
+        if not identifier:
+            raise HTTPException(status_code=400, detail="Entity identifier is required")
+        result = get_entity_wikidata(identifier, lookup_by="id")
+
         return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logger.exception(f"Error fetching entity wikidata for '{entity_name}': {e}")
+        logger.exception(f"Error fetching entity wikidata for '{identifier}': {e}")
         raise HTTPException(
             status_code=500,
             detail=f"Error fetching entity wikidata: {str(e)}"
