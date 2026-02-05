@@ -62,7 +62,6 @@ const LeftSidebar = ({
       return;
     }
     let cancelled = false;
-    setDescriptionLoading(true);
     setSectionDescription(null);
     const url = `${apiBaseUrl}/api/sections/${encodeURIComponent(String(grIdForSection))}/description`;
     fetch(url)
@@ -81,9 +80,6 @@ const LeftSidebar = ({
       })
       .catch(() => {
         if (!cancelled) setSectionDescription(null);
-      })
-      .finally(() => {
-        if (!cancelled) setDescriptionLoading(false);
       });
     return () => { cancelled = true; };
   }, [grIdForSection, descriptionFromGraph, apiBaseUrl]);
@@ -519,11 +515,6 @@ const LeftSidebar = ({
                   </div>
                 </>
               ) : null}
-              {!descriptionLoading && !(descriptionFromGraph ?? sectionDescription ?? currentSubstory?.brief) && (
-                <div className="text-[#707070] text-sm mb-3 font-[sans-serif] font-normal text-[14px] leading-[18px]">
-                  No description available for this section.
-                </div>
-              )}
             </div>
           </div>
         )}
