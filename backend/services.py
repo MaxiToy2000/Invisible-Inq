@@ -21,185 +21,58 @@ def generate_id_from_title(title: str) -> str:
 
 def format_node(node_data: Dict[str, Any]) -> Dict[str, Any]:
     gid_value = node_data.get("gid")
-    node_id = str(gid_value) if gid_value is not None else ""
+    element_id = node_data.get("elementId") or node_data.get("element_id")
 
-    node_type = node_data.get("node_type", "")
+    raw_id = gid_value
+    if raw_id is None:
+        raw_id = node_data.get("id")
+    if raw_id is None:
+        raw_id = element_id
+
+    node_id = str(raw_id) if raw_id is not None else ""
+
+    raw_node_type = node_data.get("node_type") or node_data.get("type")
+    if not raw_node_type and isinstance(node_data.get("labels"), list) and node_data.get("labels"):
+        raw_node_type = node_data["labels"][0]
+
+    def normalize_label(label: str) -> str:
+        # Normalize labels to match frontend filtering/grouping conventions
+        # e.g. "USAID Program Region" -> "usaid_program_region"
+        return str(label).strip().lower().replace(" ", "_")
+
+    node_type_raw = str(raw_node_type) if raw_node_type is not None else ""
+    node_type = normalize_label(node_type_raw) if node_type_raw else ""
+
+    name_val = (
+        node_data.get("name")
+        or node_data.get("title")
+        or node_data.get("entity_name")
+        or node_data.get("relationship_name")
+        or node_data.get("country_name")
+        or node_data.get("summary")
+        or node_data.get("Summary")
+    )
 
     node = {
         "id": node_id,
         "gid": gid_value,
+        "elementId": element_id,
+        # Keep node_type stable for frontend grouping/filtering
         "node_type": node_type,
+        "name": str(name_val) if name_val is not None else node_id,
         "section": node_data.get("section"),
         "category": None,
         "color": None,
-        "highlight": False,
+        "highlight": bool(node_data.get("highlight")) if node_data.get("highlight") is not None else False,
     }
 
-    if node_type == "Entity":
-        entity_name = node_data.get("entity_name")
-        gid_fallback = str(gid_value) if gid_value is not None else ""
-        node["name"] = str(entity_name) if entity_name is not None else gid_fallback
-        node["entity_name"] = node_data.get("entity_name")
-        node["entity_acronym"] = node_data.get("entity_acronym")
-        node["relationship_name"] = node_data.get("relationship_name")
-        node["amount"] = node_data.get("amount")
-        node["receiver_name"] = node_data.get("receiver_name")
-        node["article_url"] = node_data.get("article_url")
-        node["degree"] = node_data.get("degree")
-        node["purpose"] = node_data.get("purpose")
-        node["url"] = node_data.get("url")
-        node["relationship_summary"] = node_data.get("relationship_summary")
-        node["entity_2_name"] = node_data.get("entity_2_name")
-        node["date"] = node_data.get("date")
-        node["action_summary"] = node_data.get("action_summary")
-        node["article_url_full"] = node_data.get("article_url_full")
-        node["article_text"] = node_data.get("article_text")
-        node["article_title"] = node_data.get("article_title")
-        node["distributor_full_name"] = node_data.get("distributor_full_name")
-        node["summary"] = node_data.get("summary")
-        node["modifier_entity_name"] = node_data.get("modifier_entity_name")
-        node["relationship_date"] = node_data.get("relationship_date")
-        node["tag"] = node_data.get("tag")
-        node["action_text"] = node_data.get("action_text")
-    elif node_type == "Relationship":
-        rel_name = node_data.get("relationship_name")
-        rel_summary = node_data.get("relationship_summary")
-        gid_fallback = str(gid_value) if gid_value is not None else ""
-        node["name"] = str(rel_name) if rel_name is not None else (str(rel_summary) if rel_summary is not None else gid_fallback)
-        node["relationship_name"] = node_data.get("relationship_name")
-        node["article_text"] = node_data.get("article_text")
-        node["article_url"] = node_data.get("article_url")
-        node["degree"] = node_data.get("degree")
-        node["relationship_date"] = node_data.get("relationship_date")
-        node["tag"] = node_data.get("tag")
-        node["relationship_summary"] = node_data.get("relationship_summary")
-    elif node_type == "Funding":
-        desc = node_data.get("prime_award_base_transaction_description")
-        gid_fallback = str(gid_value) if gid_value is not None else ""
-        node["name"] = str(desc) if desc is not None else gid_fallback
-        for key in ["prime_award_obligated_amount_from_covid_19_supplementals", "prime_award_total_outlayed_amount",
-                    "prime_award_latest_action_date", "action_date", "initial_report_date", "last_modified_date",
-                    "generated_pragmatic_obligations", "prime_award_base_action_date",
-                    "prime_award_program_activities_funding_this_award", "total_outlayed_amount_for_overall_award",
-                    "subaward_description", "assistance_transaction_unique_key", "usaspending_permalink",
-                    "prime_award_outlayed_amount_from_covid_19_supplementals", "prime_award_base_transaction_description",
-                    "period_of_performance_start_date", "federal_action_obligation",
-                    "prime_award_period_of_performance_current_end_date", "prime_award_period_of_performance_start_date",
-                    "program_activities_funding_this_award", "total_obligated_amount", "cfda_title",
-                    "period_of_performance_current_end_date"]:
-            if node_data.get(key) is not None:
-                node[key] = node_data.get(key)
-    elif node_type == "Amount":
-        trans_desc = node_data.get("transaction_description")
-        gid_fallback = str(gid_value) if gid_value is not None else ""
-        node["name"] = str(trans_desc) if trans_desc is not None else gid_fallback
-        
-        # Include all Amount-specific fields from the database
-        for key in ["Amount", "Distributor Full Name", "Receiver Name", "Purpose", 
-                    "Disb Date", "End Date", "Project Number", "ID", "Summary", "URL",
-                    "federal_action_obligation", "awarding_office_name", "action_date_fiscal_year",
-                    "primary_place_of_performance_scope", "action_date", "initial_report_date", "last_modified_date",
-                    "awarding_agency_name", "transaction_description", "generated_pragmatic_obligations",
-                    "primary_place_of_performance_country_name", "object_classes_funding_this_award", "cfda_title",
-                    "awarding_sub_agency_name", "total_outlayed_amount_for_overall_award",
-                    "period_of_performance_current_end_date", "primary_place_of_performance_city_name",
-                    "usaspending_permalink", "prime_award_base_transaction_description", "period_of_performance_start_date"]:
-            if node_data.get(key) is not None:
-                node[key] = node_data.get(key)
-    elif node_type == "Agency":
-        agency_name = node_data.get("awarding_agency_name")
-        prime_agency = node_data.get("prime_award_awarding_agency_name")
-        gid_fallback = str(gid_value) if gid_value is not None else ""
-        node["name"] = str(agency_name) if agency_name is not None else (str(prime_agency) if prime_agency is not None else gid_fallback)
-        if node_data.get("prime_award_awarding_agency_name") is not None:
-            node["prime_award_awarding_agency_name"] = node_data.get("prime_award_awarding_agency_name")
-        if node_data.get("awarding_agency_name") is not None:
-            node["awarding_agency_name"] = node_data.get("awarding_agency_name")
-    elif node_type == "Action":
-        action_summary = node_data.get("action_summary")
-        article_title = node_data.get("article_title")
-        gid_fallback = str(gid_value) if gid_value is not None else ""
-        node["name"] = str(action_summary) if action_summary is not None else (str(article_title) if article_title is not None else gid_fallback)
-        for key in ["action_summary", "article_url", "article_title", "degree", "action_text"]:
-            if node_data.get(key) is not None:
-                node[key] = node_data.get(key)
-    elif node_type == "Country":
-        country_name = node_data.get("country_name")
-        gid_fallback = str(gid_value) if gid_value is not None else ""
-        node["name"] = str(country_name) if country_name is not None else gid_fallback
-        if node_data.get("country_name") is not None:
-            node["country_name"] = node_data.get("country_name")
-        if node_data.get("degree") is not None:
-            node["degree"] = node_data.get("degree")
-    elif node_type == "DBA":
-        recipient_name = node_data.get("recipient_name_raw")
-        gid_fallback = str(gid_value) if gid_value is not None else ""
-        node["name"] = str(recipient_name) if recipient_name is not None else gid_fallback
-        if node_data.get("recipient_name_raw") is not None:
-            node["recipient_name_raw"] = node_data.get("recipient_name_raw")
-        if node_data.get("subawardee_name") is not None:
-            node["subawardee_name"] = node_data.get("subawardee_name")
-    elif node_type == "Description":
-        title = node_data.get("title")
-        gid_fallback = str(gid_value) if gid_value is not None else ""
-        node["name"] = str(title) if title is not None else gid_fallback
-        for key in ["award_id", "title", "base_transaction_description", "program_activities"]:
-            if node_data.get(key) is not None:
-                node[key] = node_data.get(key)
-    elif node_type == "Location":
-        perf_location = node_data.get("performance_location")
-        gid_fallback = str(gid_value) if gid_value is not None else ""
-        node["name"] = str(perf_location) if perf_location is not None else gid_fallback
-        if node_data.get("performance_location") is not None:
-            node["performance_location"] = node_data.get("performance_location")
-    elif node_type == "Place Of Performance":
-        city_name = node_data.get("primary_place_of_performance_city_name")
-        country_name = node_data.get("primary_place_of_performance_country_name")
-        gid_fallback = str(gid_value) if gid_value is not None else ""
-        node["name"] = str(city_name) if city_name is not None else (str(country_name) if country_name is not None else gid_fallback)
-        for key in ["primary_place_of_performance_country_name", "recipient_country_name",
-                    "primary_place_of_performance_city_name", "primary_place_of_performance_country_code"]:
-            if node_data.get(key) is not None:
-                node[key] = node_data.get(key)
-    elif node_type == "Process":
-        process = node_data.get("process")
-        process_summary = node_data.get("process_summary")
-        gid_fallback = str(gid_value) if gid_value is not None else ""
-        node["name"] = str(process) if process is not None else (str(process_summary) if process_summary is not None else gid_fallback)
-        for key in ["process_date", "article_url", "article_text", "process_category", "process_summary", "degree", "process"]:
-            if node_data.get(key) is not None:
-                node[key] = node_data.get(key)
-    elif node_type == "Recipient":
-        recipient_name = node_data.get("recipient_name")
-        prime_awardee = node_data.get("prime_awardee_name")
-        gid_fallback = str(gid_value) if gid_value is not None else ""
-        node["name"] = str(recipient_name) if recipient_name is not None else (str(prime_awardee) if prime_awardee is not None else gid_fallback)
-        if node_data.get("prime_awardee_name") is not None:
-            node["prime_awardee_name"] = node_data.get("prime_awardee_name")
-        if node_data.get("recipient_name") is not None:
-            node["recipient_name"] = node_data.get("recipient_name")
-    elif node_type == "Region":
-        global_region = node_data.get("global_region")
-        gid_fallback = str(gid_value) if gid_value is not None else ""
-        node["name"] = str(global_region) if global_region is not None else gid_fallback
-        if node_data.get("global_region") is not None:
-            node["global_region"] = node_data.get("global_region")
-    elif node_type == "Result":
-        process_result = node_data.get("process_result")
-        process_summary = node_data.get("process_summary")
-        gid_fallback = str(gid_value) if gid_value is not None else ""
-        node["name"] = str(process_result) if process_result is not None else (str(process_summary) if process_summary is not None else gid_fallback)
-        for key in ["process_date", "article_url", "article_text", "process_result", "process_summary", "process_target"]:
-            if node_data.get(key) is not None:
-                node[key] = node_data.get(key)
-    else:
-        gid_fallback = str(gid_value) if gid_value is not None else ""
-        node["name"] = gid_fallback
-
+    # Pass through all additional properties (keep original keys/casing from Neo4j)
     for key, value in node_data.items():
-        if key not in ["id", "gid", "node_type", "section", "name", "category", "color", "highlight"] and value is not None:
-            if key not in node:
-                node[key] = value
+        if value is None:
+            continue
+        if key in node:
+            continue
+        node[key] = value
 
     return node
 
@@ -334,7 +207,9 @@ def get_all_stories() -> List[Story]:
             # Log story processing (debug level to avoid spam)
             logger.debug(f"Processing story: {story_title} (gid: {story_gid}, brief length: {len(story_brief)})")
 
-            story_id = generate_id_from_title(story_title) if story_title else str(story_gid)
+            # Use Neo4j gid for stable, globally-unique story IDs.
+            # (Frontend uses title for URL sync; it uses id for selection and /statistics.)
+            story_id = str(story_gid) if story_gid else generate_id_from_title(story_title)
 
             chapters = []
             for chapter_data in story_data.get("chapters", []):
@@ -346,7 +221,8 @@ def get_all_stories() -> List[Story]:
                 chapter_title = chapter_data.get("chapter_title", "")
                 chapter_total_nodes = chapter_data.get("total_nodes", 0) or 0
 
-                chapter_id = f"chapter{int(chapter_number)}" if chapter_number is not None else str(chapter_gid)
+                # Use Neo4j gid for stable, globally-unique chapter IDs (titles are used for URL sync).
+                chapter_id = str(chapter_gid)
 
                 substories = []
                 for section_data in chapter_data.get("sections", []):
@@ -357,7 +233,9 @@ def get_all_stories() -> List[Story]:
                     section_title = section_data.get("section_title", "")
                     section_num = section_data.get("section_num", 0)
 
-                    substory_id = f"substory{int(section_num)}" if section_num is not None else str(section_gid)
+                    # Use Neo4j gid for stable, globally-unique section IDs.
+                    # This also allows the frontend to pass a numeric identifier to /api/graph/{substory_id}.
+                    substory_id = str(section_gid)
 
                     substories.append(Substory(
                         id=substory_id,
@@ -564,8 +442,11 @@ def get_cluster_data(
         raise ValueError("property_key is required")
 
     try:
+        # Normalize node_type coming from the UI (db.schema.nodeTypeProperties() returns labels with casing/spaces).
+        node_type_normalized = str(node_type).strip().lower().replace(" ", "_")
+
         query, params = get_cluster_data_query(
-            node_type=str(node_type).strip(),
+            node_type=node_type_normalized,
             property_key=str(property_key).strip(),
             section_query=section_query,
             cluster_limit=int(cluster_limit),
@@ -575,14 +456,14 @@ def get_cluster_data(
         results = db.execute_query(query, params)
         if not results:
             return {
-                "node_type": node_type,
+                "node_type": node_type_normalized,
                 "property_key": property_key,
                 "section_query": section_query,
                 "clusters": []
             }
 
         return results[0].get("clusterData", {
-            "node_type": node_type,
+            "node_type": node_type_normalized,
             "property_key": property_key,
             "section_query": section_query,
             "clusters": []
@@ -718,10 +599,21 @@ def get_all_node_types() -> List[str]:
             # Fallback: return hardcoded list if query fails
             logger.warning("Failed to fetch node types from database, using fallback list")
             return [
-                'Entity', 'Relationship', 'Amount', 'Agency', 'Action', 'Country', 
-                'DBA', 'Description', 'Location', 'Place Of Performance', 'Process', 
-                'Recipient', 'Region', 'Result', 'Purpose', 'Transaction', 
-                'Sub Agency', 'USAID Program Region'
+                # New DB normalized labels (lowercase, underscores)
+                # Primary entity types
+                'entity', 'entity_gen', 'relationship',
+                # Action/Process types
+                'action', 'process', 'result', 'event_attend',
+                # Financial types
+                'funding', 'amount', 'disb_or_trans',
+                # Organizational types
+                'agency', 'recipient', 'dba', 'organization', 'department',
+                'foundation', 'committee', 'council', 'institution', 'university',
+                # Location types
+                'country', 'location', 'place_of_performance', 'region', 'usaid_program_region',
+                # Other types
+                'description', 'publication', 'article', 'person', 'program',
+                'event', 'concept', 'framework', 'data'
             ]
         
         node_types = [result.get("node_type") for result in results if result.get("node_type")]
@@ -730,10 +622,21 @@ def get_all_node_types() -> List[str]:
         if not node_types:
             logger.warning("No node types found, using fallback list")
             return [
-                'Entity', 'Relationship', 'Amount', 'Agency', 'Action', 'Country', 
-                'DBA', 'Description', 'Location', 'Place Of Performance', 'Process', 
-                'Recipient', 'Region', 'Result', 'Purpose', 'Transaction', 
-                'Sub Agency', 'USAID Program Region'
+                # New DB normalized labels (lowercase, underscores)
+                # Primary entity types
+                'entity', 'entity_gen', 'relationship',
+                # Action/Process types
+                'action', 'process', 'result', 'event_attend',
+                # Financial types
+                'funding', 'amount', 'disb_or_trans',
+                # Organizational types
+                'agency', 'recipient', 'dba', 'organization', 'department',
+                'foundation', 'committee', 'council', 'institution', 'university',
+                # Location types
+                'country', 'location', 'place_of_performance', 'region', 'usaid_program_region',
+                # Other types
+                'description', 'publication', 'article', 'person', 'program',
+                'event', 'concept', 'framework', 'data'
             ]
         
         return node_types
@@ -741,10 +644,21 @@ def get_all_node_types() -> List[str]:
         logger.error(f"Error fetching node types: {str(e)}", exc_info=True)
         # Return fallback list on error
         return [
-            'Entity', 'Relationship', 'Amount', 'Agency', 'Action', 'Country', 
-            'DBA', 'Description', 'Location', 'Place Of Performance', 'Process', 
-            'Recipient', 'Region', 'Result', 'Purpose', 'Transaction', 
-            'Sub Agency', 'USAID Program Region'
+            # New DB normalized labels (lowercase, underscores)
+            # Primary entity types
+            'entity', 'entity_gen', 'relationship',
+            # Action/Process types
+            'action', 'process', 'result', 'event_attend',
+            # Financial types
+            'funding', 'amount', 'disb_or_trans',
+            # Organizational types
+            'agency', 'recipient', 'dba', 'organization', 'department',
+            'foundation', 'committee', 'council', 'institution', 'university',
+            # Location types
+            'country', 'location', 'place_of_performance', 'region', 'usaid_program_region',
+            # Other types
+            'description', 'publication', 'article', 'person', 'program',
+            'event', 'concept', 'framework', 'data'
         ]
 
 

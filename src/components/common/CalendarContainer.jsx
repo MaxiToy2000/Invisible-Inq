@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { useToast } from '../../contexts/ToastContext';
 import EmptyState from './EmptyState';
+import Loader from './Loader';
 
 // Calendar "Linear" layout with dynamic timeline + free-floating items
 // Timeline items (Milestone/Result/Action) are locked left-to-right in sequence

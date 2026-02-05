@@ -2,7 +2,18 @@ import os
 import logging
 from dotenv import load_dotenv
 
+#
+# Environment loading
+# - Default: `.env`
+# - Some deployments use `.ENV` (uppercase); load it as well if present.
+#
 load_dotenv()
+try:
+    if os.path.exists(".ENV"):
+        load_dotenv(".ENV")
+except Exception:
+    # Don't fail startup if dotenv loading has an issue; Config.validate() will catch missing vars.
+    pass
 
 logger = logging.getLogger(__name__)
 

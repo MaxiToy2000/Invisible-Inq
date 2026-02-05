@@ -855,8 +855,8 @@ const HomePage = () => {
         });
 
         if (otherNode) {
-          const nodeType = otherNode.node_type || otherNode.type;
-          const isCountry = nodeType === 'Country';
+          const nodeType = String(otherNode.node_type || otherNode.type || '').toLowerCase();
+          const isCountry = nodeType === 'country';
           const countryId = otherNode.id || otherNode.gid;
 
           if (isCountry && countryId && !processedCountryIds.has(countryId)) {
@@ -869,8 +869,8 @@ const HomePage = () => {
 
     // Also check if any section nodes are country nodes themselves
     sectionNodes.forEach(node => {
-      const nodeType = node.node_type || node.type;
-      if (nodeType === 'Country') {
+      const nodeType = String(node.node_type || node.type || '').toLowerCase();
+      if (nodeType === 'country') {
         const countryId = node.id || node.gid;
         if (countryId && !processedCountryIds.has(countryId)) {
           connectedCountryNodes.push(node);
@@ -1285,7 +1285,9 @@ const HomePage = () => {
         setSelectedSceneContainer(null);
       }
     }
-  }, [location.search, selectStory, selectChapter, selectSubstory, currentStoryId, currentChapterId, currentSubstoryId, currentStory, currentChapter, currentSubstory, stories, viewMode, selectedSceneContainer, findTitleByNormalized, normalizeTitleForURL]);
+  }, [location.search, selectStory, selectChapter, selectSubstory, currentStoryId, currentChapterId, currentSubstoryId, currentStory, currentChapter, currentSubstory, stories, findTitleByNormalized, normalizeTitleForURL]);
+  // Note: viewMode and selectedSceneContainer removed from deps to prevent race conditions
+  // This effect should only run when the URL changes, not when view state changes
 
   // Note: URL updates are now handled directly in the handlers (handleStorySelect, handleChapterSelect, handleSubstorySelect)
   // This useEffect is removed to prevent conflicts and race conditions
@@ -1398,11 +1400,12 @@ const HomePage = () => {
     }
   };
 
-  useEffect(() => {
-    if (graphData.nodes.length > 0) {
-      setViewMode('Graph');
-    }
-  }, [graphData]);
+  // REMOVED: This useEffect was forcing Graph view when data loads, interfering with user's view selection
+  // useEffect(() => {
+  //   if (graphData.nodes.length > 0) {
+  //     setViewMode('Graph');
+  //   }
+  // }, [graphData]);
 
   // Reset graph layout mode to 'force' when graph is redrawn with new data
   useEffect(() => {
@@ -1676,21 +1679,12 @@ const HomePage = () => {
       return { nodes: [], links: [] };
     }
 
-    // If a section is selected, filter by section_query first
-    let nodesToFilter = graphData.nodes;
-    const sectionQuery = currentSubstory?.section_query || null;
+    // REMOVED: Section filtering - backend already handles this correctly via gr_id matching
+    // The backend filters nodes where node.gr_id == section.graph_name
+    // No need for redundant frontend filtering that was eliminating all nodes
     
-    if (sectionQuery) {
-      nodesToFilter = graphData.nodes.filter(node => {
-        const nodeSection = node.section || node.section_query;
-        return nodeSection === sectionQuery || 
-               (typeof nodeSection === 'string' && nodeSection.includes(sectionQuery)) ||
-               (typeof sectionQuery === 'string' && sectionQuery.includes(nodeSection));
-      });
-    }
-
-    // Then, filter nodes based on all active filters
-    let filteredNodes = filterNodes(nodesToFilter);
+    // Apply user-defined filters (hide categories, search, etc.)
+    let filteredNodes = filterNodes(graphData.nodes);
 
     // Create a set of filtered node IDs for quick lookup
     const filteredNodeIds = new Set(filteredNodes.map(node => node.id || node.gid));
@@ -1710,7 +1704,7 @@ const HomePage = () => {
       nodes: filteredNodes,
       links: filteredLinks
     };
-  }, [graphData, filterNodes, currentSubstory?.section_query, hiddenCategories]);
+  }, [graphData, filterNodes, hiddenCategories]);
 
   // Memoize onZoomComplete callback to prevent unnecessary re-renders
   const handleZoomComplete = useCallback(() => {
@@ -1806,6 +1800,8 @@ const HomePage = () => {
     const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
     
     try {
+      const sectionGid = currentSubstory?.id || currentSubstoryId || null;
+
       // Send request to backend to create node in Neo4j
       const response = await fetch(`${apiBaseUrl}/api/nodes/create`, {
         method: 'POST',
@@ -1814,7 +1810,10 @@ const HomePage = () => {
         },
         body: JSON.stringify({
           category: nodeData.category,
-          properties: nodeData.properties
+          properties: nodeData.properties,
+          // Attach to currently-selected section so it appears in the graph immediately
+          // (new DB matches via Section Name key stored in node.section/node.sections).
+          section_gid: sectionGid
         }),
       });
 
@@ -2133,8 +2132,8 @@ const HomePage = () => {
           {}
           <div className="h-full flex items-center ml-8 pl-2">
             <img
-              src="/logo/logo-with-text.png"
-              alt="Invisible Injury Logo"
+              src="/images/logo-with-text.png"
+              alt="Invisible Inqury Logo"
               className="h-8 object-contain"
             />
           </div>
@@ -2303,7 +2302,7 @@ const HomePage = () => {
           {/* Logo section */}
           <div className="flex justify-center items-center px-6 sm:px-8 lg:px-12 xl:px-16 pt-8 pb-6 w-full">
             <img
-              src="/logo/logo-without-text.png"
+              src="/images/logo-without-text.png"
               alt="Invisible Inquiry Logo"
               className="h-12 sm:h-12 object-contain"
             />
@@ -2987,21 +2986,26 @@ const HomePage = () => {
                 <div className="flex rounded-sm border border-[#707070] bg-[#09090B] p-0.5 gap-0.5">
                   <button
                     onClick={() => {
-                      setViewMode('Graph');
-                      setSelectedSceneContainer(null);
-                      updateURL({ view: 'Graph', scene: null });
-                      // Clear all selections when graph is redrawn
-                      setSelectedNodes(new Set());
-                      setSelectedEdges(new Set());
-                      selectNode(null);
-                      selectEdge(null);
-                      // Toggle between tree and force layout
-                      const newLayout = graphLayoutMode === 'force' ? 'tree' : 'force';
-                      setGraphLayoutMode(newLayout);
-                      // Zoom to fit after layout change
-                      setTimeout(() => {
-                        setZoomAction('fit');
-                      }, 100);
+                      // If already in Graph view, toggle layout mode
+                      if (viewMode === 'Graph' && !selectedSceneContainer) {
+                        // Toggle between tree and force layout
+                        const newLayout = graphLayoutMode === 'force' ? 'tree' : 'force';
+                        setGraphLayoutMode(newLayout);
+                        // Zoom to fit after layout change
+                        setTimeout(() => {
+                          setZoomAction('fit');
+                        }, 100);
+                      } else {
+                        // Switch to Graph view from other views
+                        setViewMode('Graph');
+                        setSelectedSceneContainer(null);
+                        updateURL({ view: 'Graph', scene: null });
+                        // Clear all selections when switching views
+                        setSelectedNodes(new Set());
+                        setSelectedEdges(new Set());
+                        selectNode(null);
+                        selectEdge(null);
+                      }
                     }}
                     className={`w-5 h-5 rounded-[2px] transition-colors flex items-center justify-center ${
                       viewMode === 'Graph' && !selectedSceneContainer

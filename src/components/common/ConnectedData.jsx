@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as d3 from 'd3';
 import StringConstants from '../StringConstants';
+import Loader from './Loader';
 
 // Mockup data matching the exact relationships from the image
 // Structure: 7 entities in SRC (left), 4 entities in TRG (right), 3 funding entities, 4 actions
@@ -82,17 +83,95 @@ const ConnectedData = ({
 
     const relationships = [];
     const nodeMap = new Map();
+
+    const normalizeType = (raw) => {
+      if (!raw) return '';
+      return String(raw)
+        .trim()
+        .toLowerCase()
+        .replace(/[\s-]+/g, '_');
+    };
+
+    const getNodeId = (node) => node?.id ?? node?.gid;
+
+    const getNodeType = (node) =>
+      normalizeType(
+        node?.node_type ??
+          node?.type ??
+          node?.category ??
+          (Array.isArray(node?.labels) ? node.labels[0] : undefined)
+      );
+
+    const isEntity = (node) => {
+      const t = getNodeType(node);
+      // "entity" is the common case; include other common "actor" node types as entities for display.
+      return (
+        t === 'entity' ||
+        t === 'entity_gen' ||
+        t === 'organization' ||
+        t === 'person' ||
+        t === 'recipient' ||
+        t === 'agency' ||
+        t === 'department' ||
+        t === 'foundation' ||
+        t === 'committee' ||
+        t === 'council' ||
+        t === 'institution' ||
+        t === 'university' ||
+        t === 'country' ||
+        t === 'location' ||
+        t === 'place_of_performance' ||
+        t === 'region' ||
+        t === 'usaid_program_region'
+      );
+    };
+
+    const isFundingMiddle = (node) => {
+      const t = getNodeType(node);
+      // Older data sometimes models money as "amount"; keep it as funding middle for the UI.
+      return t === 'funding' || t === 'amount' || t === 'disb_or_trans' || t === 'transaction';
+    };
+
+    const isActionMiddle = (node) => {
+      const t = getNodeType(node);
+      return t === 'action';
+    };
+
+    const getDisplayName = (node, fallback = 'Entity') => {
+      return (
+        node?.entity_name ||
+        node?.name ||
+        node?.label ||
+        node?.title ||
+        node?.country_name ||
+        node?.['Country Name'] ||
+        fallback
+      );
+    };
+
+    const getMiddleLabel = (node, fallback = 'Unknown') => {
+      return (
+        node?.amount ||
+        node?.value ||
+        node?.action_text ||
+        node?.act_typ ||
+        node?.name ||
+        node?.label ||
+        node?.title ||
+        fallback
+      );
+    };
     
     // Create a map of nodes by ID
     data.nodes.forEach(node => {
-      const nodeId = node.id || node.gid;
+      const nodeId = getNodeId(node);
       if (nodeId) {
         nodeMap.set(nodeId, node);
       }
     });
 
     // Process links to create relationships
-    // Look for patterns: Entity -> Amount/Action -> Entity
+    // Look for patterns: Entity -> (Funding/Amount/Action) -> Entity
     data.links.forEach(link => {
       const sourceId = link.sourceId || link.source;
       const targetId = link.targetId || link.target;
@@ -102,13 +181,13 @@ const ConnectedData = ({
 
       if (!sourceNode || !targetNode) return;
 
-      // Determine node types
-      const sourceType = sourceNode.node_type || sourceNode.category || 'Entity';
-      const targetType = targetNode.node_type || targetNode.category || 'Entity';
+      const sourceIsEntity = isEntity(sourceNode);
+      const targetIsEntity = isEntity(targetNode);
+      const sourceIsMiddle = isFundingMiddle(sourceNode) || isActionMiddle(sourceNode);
+      const targetIsMiddle = isFundingMiddle(targetNode) || isActionMiddle(targetNode);
 
       // Pattern 1: Entity -> Amount/Action (middle node)
-      if ((sourceType === 'Entity' || sourceType === 'entity') && 
-          (targetType === 'Amount' || targetType === 'Action' || targetType === 'amount' || targetType === 'action')) {
+      if (sourceIsEntity && targetIsMiddle) {
         // Find target Entity connected to this middle node
         const middleToTargetLinks = data.links.filter(l => {
           const linkSourceId = l.sourceId || l.source;
@@ -119,22 +198,21 @@ const ConnectedData = ({
           const finalTargetId = middleLink.targetId || middleLink.target;
           const finalTargetNode = nodeMap.get(finalTargetId);
           
-          if (finalTargetNode && (finalTargetNode.node_type === 'Entity' || finalTargetNode.category === 'entity')) {
-            const middleLabel = targetNode.amount || targetNode.action_text || targetNode.name || targetNode.label || 'Unknown';
-            const relationshipType = (targetType === 'Amount' || targetType === 'amount') ? 'funding' : 'action';
+          if (finalTargetNode && isEntity(finalTargetNode)) {
+            const middleLabel = getMiddleLabel(targetNode);
+            const relationshipType = isFundingMiddle(targetNode) ? 'funding' : 'action';
             
             relationships.push({
-              source: sourceNode.entity_name || sourceNode.name || sourceNode.label || 'Entity',
+              source: getDisplayName(sourceNode),
               middle: middleLabel,
-              target: finalTargetNode.entity_name || finalTargetNode.name || finalTargetNode.label || 'Entity',
+              target: getDisplayName(finalTargetNode),
               type: relationshipType
             });
           }
         });
       } 
       // Pattern 2: Amount/Action (middle) -> Entity
-      else if ((sourceType === 'Amount' || sourceType === 'Action' || sourceType === 'amount' || sourceType === 'action') &&
-               (targetType === 'Entity' || targetType === 'entity')) {
+      else if (sourceIsMiddle && targetIsEntity) {
         // Find source Entity connected to this middle node
         const sourceToMiddleLinks = data.links.filter(l => {
           const linkTargetId = l.targetId || l.target;
@@ -145,14 +223,14 @@ const ConnectedData = ({
           const sourceEntityId = sourceLink.sourceId || sourceLink.source;
           const sourceEntityNode = nodeMap.get(sourceEntityId);
           
-          if (sourceEntityNode && (sourceEntityNode.node_type === 'Entity' || sourceEntityNode.category === 'entity')) {
-            const middleLabel = sourceNode.amount || sourceNode.action_text || sourceNode.name || sourceNode.label || 'Unknown';
-            const relationshipType = (sourceType === 'Amount' || sourceType === 'amount') ? 'funding' : 'action';
+          if (sourceEntityNode && isEntity(sourceEntityNode)) {
+            const middleLabel = getMiddleLabel(sourceNode);
+            const relationshipType = isFundingMiddle(sourceNode) ? 'funding' : 'action';
             
             relationships.push({
-              source: sourceEntityNode.entity_name || sourceEntityNode.name || sourceEntityNode.label || 'Entity',
+              source: getDisplayName(sourceEntityNode),
               middle: middleLabel,
-              target: targetNode.entity_name || targetNode.name || targetNode.label || 'Entity',
+              target: getDisplayName(targetNode),
               type: relationshipType
             });
           }
@@ -236,33 +314,13 @@ const ConnectedData = ({
     const middleCounters = { funding: 0, action: 0 };
 
     // First pass: identify unique sources and middles
-    // Create exactly 7 source nodes: 1 (funding) + 2 (action middle) + 4 (action bottom)
-    // Structure based on image:
-    // TOP: 1 Entity (shared)
-    // MIDDLE: 2 Entity Name (separate nodes, both connect to same action)
-    // BOTTOM: 1 Entity + 3 Entity Name (4 separate nodes)
+    // Use source label + section as key to ensure same entities share the same position
     orderedRelationships.forEach((rel, relIndex) => {
       const section = rel.type === 'funding' ? 'funding' : 'action';
       
-      // Determine source key based on actual structure
-      let sourceKey;
-      if (section === 'funding') {
-        // All funding relationships share one Entity source node
-        sourceKey = 'Entity-funding';
-      } else {
-        // Action section
-        // relIndex 0-1: middle section (2 separate Entity Name nodes)
-        // relIndex 2-5: bottom section (1 Entity + 3 Entity Name, all separate)
-        if (relIndex < 2) {
-          // Middle section: 2 separate Entity Name nodes (index 0 and 1)
-          sourceKey = `Entity Name-action-middle-${relIndex}`;
-        } else {
-          // Bottom section: 4 separate source nodes
-          // relIndex 2: Entity
-          // relIndex 3-5: Entity Name (3 separate)
-          sourceKey = `${rel.source}-action-bottom-${relIndex}`;
-        }
-      }
+      // Create source key based on label and section only
+      // This ensures all relationships from the same source entity use the same visual node
+      const sourceKey = `${rel.source}-${section}`;
       
       // Only create new source node if this key hasn't appeared yet
       if (!sourceMeta.has(sourceKey)) {
@@ -284,34 +342,30 @@ const ConnectedData = ({
       }
     });
 
-    // Second pass: handle targets, creating separate nodes for splits
+    // Second pass: handle targets
+    // Use target label + section as key to ensure same entities share the same position
     orderedRelationships.forEach((rel, relIndex) => {
       const section = rel.type === 'funding' ? 'funding' : 'action';
-      // Create a unique key for this target based on source-middle-target combination
-      // This allows multiple targets with same label to be separate nodes
-      const targetKey = `${rel.source}-${rel.middle}-${rel.target}-${relIndex}`;
+      
+      // Create target key based on label and section only
+      // This ensures all relationships to the same target entity use the same visual node
+      const targetKey = `${rel.target}-${section}`;
       
       if (!targetNodesByRelationship.has(targetKey)) {
-        // Check if this is a split (same source-middle but different target instances)
-        const sameSourceMiddle = Array.from(targetNodesByRelationship.entries())
-          .filter(([key, data]) => {
-            const parts = key.split('-');
-            return parts[0] === rel.source && parts[1] === rel.middle;
-          });
-        
-        const targetIndex = sameSourceMiddle.length;
         targetNodesByRelationship.set(targetKey, {
           label: rel.target,
           section,
-          index: targetIndex,
+          index: targetCounters[section],
           relationshipIndex: relIndex
         });
         
-        // Also update targetMeta for positioning (use first occurrence's index)
-        if (!targetMeta.has(rel.target)) {
-          targetMeta.set(rel.target, { section, index: targetCounters[section] });
-          targetCounters[section] += 1;
-        }
+        // Also update targetMeta for positioning
+        targetMeta.set(targetKey, { 
+          section, 
+          index: targetCounters[section],
+          originalName: rel.target
+        });
+        targetCounters[section] += 1;
       }
     });
 
@@ -548,28 +602,17 @@ const ConnectedData = ({
 
     orderedRelationships.forEach((rel, relIndex) => {
       const section = rel.type === 'funding' ? 'funding' : 'action';
-      // Use same grouping logic to find the source node
-      let sourceKey;
-      if (section === 'funding') {
-        sourceKey = 'Entity-funding';
-      } else {
-        if (relIndex < 2) {
-          // Middle section: 2 separate Entity Name nodes
-          sourceKey = `Entity Name-action-middle-${relIndex}`;
-        } else {
-          // Bottom section: 4 separate source nodes
-          sourceKey = `${rel.source}-action-bottom-${relIndex}`;
-        }
-      }
+      
+      // Use simplified keys to find nodes
+      const sourceKey = `${rel.source}-${section}`;
+      const targetKey = `${rel.target}-${section}`;
+      
       const sourceNode = nodeMap.get(`source-${sourceKey}`);
       const middleNode = nodeMap.get(`middle-${rel.middle}`);
-      // Find the target node using the relationship key
-      const targetKey = `${rel.source}-${rel.middle}-${rel.target}-${relIndex}`;
       const targetNode = nodeMap.get(`target-${targetKey}`);
 
       if (sourceNode && middleNode && targetNode) {
         // Source -> Middle link (only create once per source-middle pair)
-        const sourceMiddleKey = `${sourceNode.id}-${middleNode.id}`;
         const existingLink = links.find(l => 
           l.source === sourceNode.id && l.target === middleNode.id
         );
@@ -583,13 +626,19 @@ const ConnectedData = ({
           });
         }
 
-        // Middle -> Target link (create for each target, even if same label)
-        links.push({
-          source: middleNode.id,
-          target: targetNode.id,
-          gradientType: rel.type === 'funding' ? 'green-blue' : 'orange-blue',
-          path: ''
-        });
+        // Middle -> Target link (only create once per middle-target pair to avoid duplicate lines)
+        const existingMiddleTargetLink = links.find(l =>
+          l.source === middleNode.id && l.target === targetNode.id
+        );
+        
+        if (!existingMiddleTargetLink) {
+          links.push({
+            source: middleNode.id,
+            target: targetNode.id,
+            gradientType: rel.type === 'funding' ? 'green-blue' : 'orange-blue',
+            path: ''
+          });
+        }
       }
     });
 

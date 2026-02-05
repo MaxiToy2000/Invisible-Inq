@@ -3,6 +3,7 @@ import * as d3 from 'd3';
 import * as topojson from 'topojson-client';
 import { formatGraphData } from '../../utils/dataUtils';
 import { getNodeTypeColor } from '../../utils/colorUtils';
+import Loader from './Loader';
 
 const GraphViewByMap = ({ mapView = 'flat', graphData = { nodes: [], links: [] }, currentSubstoryId = null, currentSubstory = null }) => {
   const containerRef = useRef(null);
@@ -71,9 +72,11 @@ const GraphViewByMap = ({ mapView = 'flat', graphData = { nodes: [], links: [] }
       return;
     }
 
-    const countryNodes = graphData.nodes.filter(node => 
-      node.node_type === 'Country' || node.type === 'Country'
-    );
+    // Make case-insensitive check for country nodes
+    const countryNodes = graphData.nodes.filter(node => {
+      const nodeType = node.node_type || node.type;
+      return nodeType && String(nodeType).toLowerCase() === 'country';
+    });
 
     if (countryNodes.length === 0) {
       setHighlightedCountries([]);
@@ -133,9 +136,11 @@ const GraphViewByMap = ({ mapView = 'flat', graphData = { nodes: [], links: [] }
       return;
     }
 
-    const countryNodes = graphData.nodes.filter(node => 
-      node.node_type === 'Country' || node.type === 'Country'
-    );
+    // Make case-insensitive check for country nodes
+    const countryNodes = graphData.nodes.filter(node => {
+      const nodeType = node.node_type || node.type;
+      return nodeType && String(nodeType).toLowerCase() === 'country';
+    });
 
     countryDataMap.current.clear();
     countryNodes.forEach(node => {
@@ -348,7 +353,9 @@ const GraphViewByMap = ({ mapView = 'flat', graphData = { nodes: [], links: [] }
               
               const normalizedMapName = normalizeCountryName(mapCountryName);
               const countryNode = graphData.nodes.find(node => {
-                if (node.node_type !== 'Country' && node.type !== 'Country') return false;
+                // Make case-insensitive check for country nodes
+                const nodeType = node.node_type || node.type;
+                if (!nodeType || String(nodeType).toLowerCase() !== 'country') return false;
                 const nodeCountryName = node.country_name || node.name || node['Country Name'] || '';
                 const normalizedNodeName = normalizeCountryName(nodeCountryName);
                 return normalizedNodeName === normalizedMapName || 
@@ -565,7 +572,9 @@ const GraphViewByMap = ({ mapView = 'flat', graphData = { nodes: [], links: [] }
 
     const selectedCountryNormalized = normalizeCountryName(selectedCountryName);
     const matchingCountryNode = countryGraphData.nodes.find(node => {
-      if (node.node_type !== 'Country' && node.type !== 'Country') return false;
+      // Make case-insensitive check for country nodes
+      const nodeType = node.node_type || node.type;
+      if (!nodeType || String(nodeType).toLowerCase() !== 'country') return false;
       const nodeCountryName = node.country_name || node.name || node['Country Name'] || '';
       const normalizedNodeName = normalizeCountryName(nodeCountryName);
       return normalizedNodeName === selectedCountryNormalized || 
@@ -753,8 +762,8 @@ const GraphViewByMap = ({ mapView = 'flat', graphData = { nodes: [], links: [] }
         }
         // Highlight node on hover (but keep country node at 2px, Entity nodes have different styling)
         const isMatchingCountry = matchingCountryNode && (d.id === matchingCountryNode.id || d.gid === matchingCountryNode.gid);
-        const nodeType = d.node_type || d.type || 'Entity';
-        const isEntity = nodeType === 'Entity';
+        const nodeType = String(d.node_type || d.type || 'entity').toLowerCase();
+        const isEntity = nodeType === 'entity';
         if (!isMatchingCountry && !isEntity) {
           d3.select(this).select('circle')
             .attr('stroke-width', 3.5)
@@ -767,8 +776,8 @@ const GraphViewByMap = ({ mapView = 'flat', graphData = { nodes: [], links: [] }
         setGraphTooltip(null);
         // Restore original node style (country node stays at 2px, Entity nodes have different styling)
         const isMatchingCountry = matchingCountryNode && (d.id === matchingCountryNode.id || d.gid === matchingCountryNode.gid);
-        const nodeType = d.node_type || d.type || 'Entity';
-        const isEntity = nodeType === 'Entity';
+        const nodeType = String(d.node_type || d.type || 'entity').toLowerCase();
+        const isEntity = nodeType === 'entity';
         if (!isMatchingCountry && !isEntity) {
           d3.select(this).select('circle')
             .attr('stroke-width', 2.5)
@@ -842,8 +851,8 @@ const GraphViewByMap = ({ mapView = 'flat', graphData = { nodes: [], links: [] }
     const nodeShapes = node.each(function(d) {
       const nodeGroup = d3.select(this);
       const isMatchingCountry = matchingCountryNode && (d.id === matchingCountryNode.id || d.gid === matchingCountryNode.gid);
-      const nodeType = d.node_type || d.type || 'Entity';
-      const isEntity = nodeType === 'Entity';
+      const nodeType = String(d.node_type || d.type || 'entity').toLowerCase();
+      const isEntity = nodeType === 'entity';
       
       if (isMatchingCountry) {
         // Country node: render as 2px circle
