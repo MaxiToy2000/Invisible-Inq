@@ -80,7 +80,10 @@ class UserResponse(BaseModel):
     profile_picture: Optional[str] = None
     is_active: bool = True
     is_admin: bool = False
+    role: Optional[str] = "user"
+    status: Optional[str] = "active"
     created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
     auth_provider: Optional[str] = "local"  # local, google
 
     class Config:

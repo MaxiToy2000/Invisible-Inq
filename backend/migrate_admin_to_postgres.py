@@ -32,6 +32,8 @@ def create_admin_tables():
             auth_provider VARCHAR(50) DEFAULT 'local',
             is_active BOOLEAN DEFAULT TRUE,
             is_admin BOOLEAN DEFAULT FALSE,
+            role VARCHAR(50) DEFAULT 'user',
+            status VARCHAR(50) DEFAULT 'active',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
@@ -91,6 +93,15 @@ def create_admin_tables():
         logger.info("Creating users table (for regular users)...")
         neon_db.execute_query(users_table_query)
         logger.info("✓ users table created")
+
+        # Ensure newer columns exist for older schemas
+        ensure_user_columns = [
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(50) DEFAULT 'user';",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'active';"
+        ]
+        for alter_query in ensure_user_columns:
+            neon_db.execute_query(alter_query)
+        logger.info("✓ users table columns verified (role, status)")
         
         logger.info("Creating index on users.email...")
         neon_db.execute_query(users_email_index)

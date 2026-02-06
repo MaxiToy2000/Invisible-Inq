@@ -22,14 +22,19 @@ SECRET_KEY = Config.JWT_SECRET_KEY if hasattr(Config, 'JWT_SECRET_KEY') else "yo
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30 * 24 * 60  # 30 days
 
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify a password against its hash"""
+def verify_password(plain_password: str, hashed_password: str | bytes) -> bool:
+    """Verify a password against its bcrypt hash. Accepts str or bytes for hashed_password."""
     try:
+        hash_type = type(hashed_password).__name__
+        hash_len = len(hashed_password) if hashed_password else 0
+        logger.info(f"[auth/verify_password] Checking: hash_type={hash_type}, hash_len={hash_len}")
         password_bytes = plain_password.encode('utf-8')
-        hashed_bytes = hashed_password.encode('utf-8')
-        return bcrypt.checkpw(password_bytes, hashed_bytes)
+        hashed_bytes = hashed_password.encode('utf-8') if isinstance(hashed_password, str) else hashed_password
+        ok = bcrypt.checkpw(password_bytes, hashed_bytes)
+        logger.info(f"[auth/verify_password] result={ok}")
+        return ok
     except Exception as e:
-        logger.error(f"Error verifying password: {e}")
+        logger.error(f"[auth/verify_password] Error: {e}")
         return False
 
 def get_password_hash(password: str) -> str:
@@ -86,14 +91,16 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         if user_id is None or email is None:
             raise credentials_exception
         
-        # Return user data from token
+        # Return user data from token (including role and status)
         return {
             "id": user_id,
             "email": email,
             "full_name": payload.get("full_name"),
             "profile_picture": payload.get("profile_picture"),
             "auth_provider": payload.get("auth_provider", "local"),
-            "is_admin": payload.get("is_admin", False)
+            "is_admin": payload.get("is_admin", False),
+            "role": payload.get("role", "user"),
+            "status": payload.get("status", "active"),
         }
     except Exception as e:
         logger.error(f"Authentication error: {e}")

@@ -1,12 +1,74 @@
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Dict, Any
+
 
 def get_all_stories_query():
     """Query to fetch all stories with their chapters and sections.
 
-    Updated for the new Neo4j schema:
-    - Nodes: :story, :chapter, :section
-    - Relationships: :story_chapter, :chapter_section
+    Supports two Neo4j schemas:
+
+    1. gr_id unified schema (primary):
+       - All entities are :gr_id nodes; category distinguishes "story", "chapter", "section".
+       - Relationships: Story -[:HAS_CHAPTER]-> Chapter -[:HAS_SECTION]-> Section.
+       - Returns one row per story with key "story" containing nested chapters/sections.
+
+    2. Legacy schema (fallback):
+       - Nodes: :story, :chapter, :section
+       - Relationships: :story_chapter, :chapter_section
     """
+    # gr_id unified schema (category-based story/chapter/section)
+    return """
+    MATCH (story:gr_id)
+    WHERE toLower(trim(coalesce(story.category, ''))) = 'story'
+    OPTIONAL MATCH (story)-[:HAS_CHAPTER]-(chapter:gr_id)
+    WHERE toLower(trim(coalesce(chapter.category, ''))) = 'chapter'
+    OPTIONAL MATCH (chapter)-[:HAS_SECTION]-(section:gr_id)
+    WHERE toLower(trim(coalesce(section.category, ''))) = 'section'
+    WITH story, chapter, section,
+         toInteger(coalesce(toFloat(story.order), toFloat(story.`Story Number`), toFloat(story.`Story Number_new`), 0)) AS story_order,
+         toInteger(coalesce(toFloat(chapter.`Chapter Number`), toFloat(chapter.`Chapter Number_new`), 0)) AS chapter_number,
+         toInteger(coalesce(toFloat(section.`Section Number`), 0)) AS section_num
+    ORDER BY story_order, story.id, story.g_id, story.name, chapter_number, section_num
+    WITH story, story_order, chapter, chapter_number,
+         COLLECT(DISTINCT {
+             gid: coalesce(section.gid, section.id, section.g_id),
+             section_title: coalesce(section.name, section.`Section Name`, section.`graph name`, toString(section.gid), ""),
+             section_num: section_num,
+             section_query: toString(coalesce(section.gid, section.id, section.g_id)),
+             brief: coalesce(section.summary, section.`Summary`, section.brief, "")
+         }) AS sections
+    WITH story, story_order,
+         COLLECT(DISTINCT {
+             gid: coalesce(chapter.gid, chapter.id, chapter.g_id),
+             chapter_number: chapter_number,
+             chapter_title: coalesce(chapter.name, chapter.`Chapter Name`, toString(chapter.gid), ""),
+             sections: [s IN sections WHERE s.gid IS NOT NULL | s],
+             total_nodes: 0
+         }) AS chapters_raw
+    WITH story, story_order,
+         [c IN chapters_raw WHERE c.gid IS NOT NULL | c] AS chapters_filtered
+    WITH story, story_order,
+         [c IN chapters_filtered | {
+             gid: c.gid,
+             chapter_number: c.chapter_number,
+             chapter_title: c.chapter_title,
+             sections: [s IN c.sections WHERE s.gid IS NOT NULL | s],
+             total_nodes: c.total_nodes
+         }] AS chapters
+    RETURN {
+        story_title: coalesce(story.name, story.`Story Name`, toString(story.gid), ""),
+        story_id: coalesce(toString(story.id), toString(story.g_id), toString(story.gid)),
+        story_gid: coalesce(story.gid, story.g_id, story.id),
+        story_brief: coalesce(story.brief, story.summary, story.`Summary`, ""),
+        chapters: chapters
+    } AS story
+    ORDER BY story_order, story.id, story.g_id, story.name
+    """
+
+
+
+def get_all_stories_query_legacy():
+    """Legacy query for :story/:chapter/:section schema with :story_chapter/:chapter_section.
+    Used when gr_id schema returns no results."""
     return """
     MATCH (story:story)
     OPTIONAL MATCH (story)-[:story_chapter]-(chapter:chapter)
@@ -21,7 +83,6 @@ def get_all_stories_query():
              gid: section.gid,
              section_title: coalesce(section.`Section Name`, section.`graph name`, toString(section.gid)),
              section_num: section_num,
-             // For the frontend, we keep using a "section_query" field. In the new DB, gid is the most reliable identifier.
              section_query: toString(section.gid),
              brief: coalesce(section.summary, section.`Summary`, ""),
              chapter_number: chapter_number,
@@ -47,12 +108,64 @@ def get_all_stories_query():
          }] AS chapters
     RETURN {
         story_title: coalesce(story.`Story Name`, toString(story.gid)),
+        story_id: toString(story.gid),
         story_gid: story.gid,
         story_brief: "",
         chapters: chapters
     } AS story
     ORDER BY story_number, story.gid
     """
+
+def get_story_statistics_query(story_gid: Optional[str] = None, story_title: Optional[str] = None):
+    """Statistics for a story. New schema: gr_id nodes with HAS_CHAPTER, HAS_SECTION."""
+    if story_gid:
+        match_clause = """
+        MATCH (story:gr_id)
+        WHERE toLower(trim(coalesce(story.category, ''))) = 'story'
+          AND (toString(coalesce(story.id, story.g_id)) = toString($story_gid)
+               OR toString(story.name) = toString($story_gid))
+        """
+        params = {"story_gid": story_gid}
+    elif story_title:
+        match_clause = """
+        MATCH (story:gr_id)
+        WHERE toLower(trim(coalesce(story.category, ''))) = 'story'
+          AND (story.name = $story_title OR story.`Story Name` = $story_title)
+        """
+        params = {"story_title": story_title}
+    else:
+        raise ValueError("Either story_gid or story_title must be provided")
+
+    # Use relationship-based matching (section)-[*1..5]-(n) - same as graph data query
+    query = f"""
+    {match_clause}
+    OPTIONAL MATCH (story)-[:HAS_CHAPTER]-(chapter:gr_id)
+    WHERE toLower(trim(coalesce(chapter.category, ''))) = 'chapter'
+    OPTIONAL MATCH (chapter)-[:HAS_SECTION]-(section:gr_id)
+    WHERE toLower(trim(coalesce(section.category, ''))) = 'section'
+    WITH story, COLLECT(DISTINCT section) AS sections
+    UNWIND CASE WHEN size(sections) = 0 OR sections[0] IS NULL THEN [null] ELSE sections END AS section
+    OPTIONAL MATCH (section)-[*1..5]-(n)
+    WHERE (section IS NOT NULL AND NONE(l IN labels(n) WHERE toLower(l) = 'gr_id')) OR section IS NULL
+    WITH story, n
+    WITH story, COLLECT(DISTINCT n) AS node_list
+    WITH story, [x IN node_list WHERE x IS NOT NULL] AS nodes_only
+    WITH story,
+         size(nodes_only) AS total_nodes,
+         size([x IN nodes_only WHERE ANY(l IN labels(x) WHERE toLower(l) = 'entity')]) AS entity_count,
+         REDUCE(max_date = null, x IN [x IN nodes_only | coalesce(x.date, x.`Date`, x.`Relationship Date`, x.`Action Date`, x.`Process Date`, x.`Disb Date`)] | CASE WHEN max_date IS NULL OR x > max_date THEN x ELSE max_date END) AS updated_date
+
+    RETURN {{
+      story_id: coalesce(story.id, story.g_id, story.name, elementId(story)),
+      story_title: coalesce(story.name, story.`Story Name`, toString(story.id), toString(story.g_id)),
+      total_nodes: total_nodes,
+      entity_count: entity_count,
+      highlighted_nodes: 0,
+      updated_date: "2026-01-20"
+    }} AS statistics
+    """
+    
+    return query, params
 
 def get_story_by_id_query(story_id: str):
     """Query to fetch a specific story by ID (using Story Name/Number or gid).
@@ -101,22 +214,86 @@ def get_graph_data_by_section_query(section_gid: Optional[str] = None, section_q
     """
     Query to fetch graph data (nodes and links) for a section.
 
-    Updated for the new Neo4j schema:
-    - Section identity: resolve `(:section)` by gid/name
-    - Graph membership: Cross-property matching
-      * Section has: `graph name` property (with space)
-      * Other nodes have: `gr_id` property
-    - When a section is clicked, return all nodes where `node.gr_id == section.graph name`
-    - Return all relationships between those nodes
+    Primary: gr_id schema — section is :gr_id with category='section'; match by id/g_id (section_gid)
+    or id, g_id, name, Section Name, graph name (section_query/section_title). Traverse (section)-[*1..10]-(node),
+    excluding nodes labeled gr_id; return nodes and relationships between those nodes.
+
+    Fallback: legacy :section schema (section.`graph name` / node.gr_id) is in get_graph_data_by_section_query_legacy.
     """
-    
-    # Build the match clause based on what parameter was provided
     if section_gid:
-        # URL supplies gid as string; compare via toString() for type safety.
+        match_clause = """
+        MATCH (section:gr_id)
+        WHERE toLower(trim(coalesce(section.category, ''))) = 'section'
+          AND toString(coalesce(section.id, section.g_id, section.gid)) = toString($section_gid)
+        """
+        params = {"section_gid": section_gid}
+    elif section_query:
+        match_clause = """
+        MATCH (section:gr_id)
+        WHERE toLower(trim(coalesce(section.category, ''))) = 'section'
+          AND (toString(coalesce(section.id, section.g_id, section.gid)) = toString($section_query)
+               OR section.name = $section_query
+               OR section.`Section Name` = $section_query
+               OR section.`graph name` = $section_query)
+        """
+        params = {"section_query": section_query}
+    elif section_title:
+        match_clause = """
+        MATCH (section:gr_id)
+        WHERE toLower(trim(coalesce(section.category, ''))) = 'section'
+          AND (section.name = $section_title
+               OR section.`Section Name` = $section_title
+               OR section.`graph name` = $section_title)
+        """
+        params = {"section_title": section_title}
+    else:
+        raise ValueError("At least one of section_gid, section_query, or section_title must be provided")
+
+    query = f"""
+    {match_clause}
+    WITH section
+    // All nodes connected to the section within 1..10 hops, excluding other gr_id hierarchy nodes
+    MATCH (section)-[*1..10]-(node)
+    WHERE NONE(l IN labels(node) WHERE toLower(l) = 'gr_id')
+    WITH COLLECT(DISTINCT node) AS all_nodes
+    // Relationships between those nodes (pattern comprehension; works when no rels exist)
+    WITH all_nodes,
+         [(a)-[rel]-(b) WHERE a IN all_nodes AND b IN all_nodes AND id(a) < id(b) | {{ rel: rel, from: a, to: b }}] AS all_rels
+    RETURN {{
+      nodes: [n IN all_nodes | n {{
+        .*,
+        elementId: elementId(n),
+        labels: labels(n),
+        node_type: head(labels(n))
+      }}],
+      links: [rd IN all_rels | {{
+        gid: coalesce(toString(rd.rel.gid), toString(rd.rel.id), elementId(rd.rel)),
+        elementId: elementId(rd.rel),
+        type: type(rd.rel),
+        from_gid: coalesce(toString(rd.from.gid), toString(rd.from.id), toString(rd.from.g_id), elementId(rd.from)),
+        to_gid: coalesce(toString(rd.to.gid), toString(rd.to.id), toString(rd.to.g_id), elementId(rd.to)),
+        from_labels: labels(rd.from),
+        to_labels: labels(rd.to),
+        relationship_summary: coalesce(rd.rel.summary, rd.rel.`Relationship Summary`, rd.rel.`Relationship Summary_new`, rd.rel.name, rd.rel.text),
+        article_title: coalesce(rd.rel.title, rd.rel.`Article Title`, rd.rel.`Source Title`),
+        article_url: coalesce(rd.rel.url, rd.rel.`Article URL`, rd.rel.`article URL`, rd.rel.`Source URL`),
+        relationship_date: coalesce(rd.rel.date, rd.rel.`Date`, rd.rel.`Relationship Date`),
+        properties: properties(rd.rel)
+      }}]
+    }} AS graphData
+    """
+    return query, params
+
+
+def get_graph_data_by_section_query_legacy(section_gid: Optional[str] = None, section_query: Optional[str] = None, section_title: Optional[str] = None) -> Tuple[str, dict]:
+    """
+    Legacy graph query for :section schema: section.`graph name` and node.gr_id matching.
+    Used when gr_id schema returns no graph data.
+    """
+    if section_gid:
         match_clause = "MATCH (section:section) WHERE toString(section.gid) = toString($section_gid)"
         params = {"section_gid": section_gid}
     elif section_query:
-        # Backwards/compat: treat section_query as section.gid (string), or try matching common section name fields.
         match_clause = """
         MATCH (section:section)
         WHERE toString(section.gid) = toString($section_query)
@@ -125,7 +302,6 @@ def get_graph_data_by_section_query(section_gid: Optional[str] = None, section_q
         """
         params = {"section_query": section_query}
     elif section_title:
-        # New DB uses `Section Name` / `graph name` instead of Section_Title
         match_clause = """
         MATCH (section:section)
         WHERE section.`Section Name` = $section_title
@@ -134,20 +310,16 @@ def get_graph_data_by_section_query(section_gid: Optional[str] = None, section_q
         params = {"section_title": section_title}
     else:
         raise ValueError("At least one of section_gid, section_query, or section_title must be provided")
-    
+
     query = f"""
     {match_clause}
-    // Get the section's `graph name` - this is the key that matches other nodes' gr_id
     WITH section, toString(section.`graph name`) AS section_graph_name
 
-    // Collect all nodes where node.gr_id == section.`graph name` (excluding story/chapter/section hierarchy)
     MATCH (node)
     WHERE toString(node.gr_id) = section_graph_name
       AND NONE(l IN labels(node) WHERE toLower(l) IN ['story','chapter','section'])
     WITH section_graph_name, COLLECT(DISTINCT node) AS all_nodes
 
-    // Collect relationships between nodes in this section's graph
-    // Only include relationships where BOTH endpoints have the same gr_id
     MATCH (a)-[rel]-(b)
     WHERE toString(a.gr_id) = section_graph_name
       AND toString(b.gr_id) = section_graph_name
@@ -172,12 +344,10 @@ def get_graph_data_by_section_query(section_gid: Optional[str] = None, section_q
         gid: coalesce(toString(rd.rel.gid), elementId(rd.rel)),
         elementId: elementId(rd.rel),
         type: rd.type,
-        // Ensure link endpoints match node ids (gid preferred, fallback to elementId)
         from_gid: coalesce(toString(rd.from.gid), elementId(rd.from)),
         to_gid: coalesce(toString(rd.to.gid), elementId(rd.to)),
         from_labels: labels(rd.from),
         to_labels: labels(rd.to),
-        // Common fields consumed by the frontend
         relationship_summary: coalesce(rd.rel.summary, rd.rel.`Relationship Summary`, rd.rel.`Relationship Summary_new`, rd.rel.name, rd.rel.text),
         article_title: coalesce(rd.rel.title, rd.rel.`Article Title`, rd.rel.`Source Title`),
         article_url: coalesce(rd.rel.url, rd.rel.`Article URL`, rd.rel.`article URL`, rd.rel.`Source URL`),
@@ -186,7 +356,6 @@ def get_graph_data_by_section_query(section_gid: Optional[str] = None, section_q
       }}]
     }} AS graphData
     """
-    
     return query, params
 
 
@@ -458,8 +627,57 @@ def get_calendar_data_by_section_query(section_gid: Optional[str] = None, sectio
     
     return query, params
 
-def get_story_statistics_query(story_gid: Optional[str] = None, story_title: Optional[str] = None):
-    """Get statistics for a story: total nodes, entity count, etc."""
+def get_story_statistics(story_id: str) -> Dict[str, Any]:
+    """Get statistics for a story (total nodes, entity count, etc.)"""
+    try:
+        logger.debug(f"Fetching statistics for story: {story_id}")
+        # Try to get statistics by story_gid first, then by story_title
+        query, params = get_story_statistics_query(story_gid=story_id)
+        results = db.execute_query(query, params)
+        
+        if not results or len(results) == 0:
+            # Try by story title
+            logger.debug(f"No results for story_gid, trying story_title: {story_id}")
+            query, params = get_story_statistics_query(story_title=story_id)
+            results = db.execute_query(query, params)
+        
+        if not results or len(results) == 0:
+            logger.warning(f"No statistics found for story: {story_id}")
+            return {
+                "story_id": story_id,
+                "total_nodes": 0,
+                "entity_count": 0,
+                "highlighted_nodes": 0,
+                "updated_date": None
+            }
+        
+        stats = results[0].get("statistics", {})
+        total_nodes = stats.get("total_nodes", 0) or 0
+        entity_count = stats.get("entity_count", 0) or 0
+        highlighted_nodes = stats.get("highlighted_nodes", 0) or 0
+        updated_date = stats.get("updated_date", None)
+        
+        logger.debug(f"Statistics for {story_id}: {total_nodes} nodes, {entity_count} entities, {highlighted_nodes} highlighted")
+        return {
+            "story_id": story_id,
+            "total_nodes": total_nodes,
+            "entity_count": entity_count,
+            "highlighted_nodes": highlighted_nodes,
+            "updated_date": updated_date
+        }
+    except Exception as e:
+        # Return default values on error
+        logger.error(f"Error fetching statistics for story {story_id}: {str(e)}", exc_info=True)
+        return {
+            "story_id": story_id,
+            "total_nodes": 0,
+            "entity_count": 0
+        }
+
+
+
+def get_story_statistics_query_legacy(story_gid: Optional[str] = None, story_title: Optional[str] = None):
+    """Legacy statistics query for :story/:chapter/:section schema (section.`graph name`, n.gr_id)."""
     if story_gid:
         match_clause = "MATCH (story:story) WHERE toString(story.gid) = toString($story_gid)"
         params = {"story_gid": story_gid}
@@ -468,7 +686,7 @@ def get_story_statistics_query(story_gid: Optional[str] = None, story_title: Opt
         params = {"story_title": story_title}
     else:
         raise ValueError("Either story_gid or story_title must be provided")
-    
+
     query = f"""
     {match_clause}
     OPTIONAL MATCH (story)-[:story_chapter]-(chapter:chapter)
@@ -486,7 +704,7 @@ def get_story_statistics_query(story_gid: Optional[str] = None, story_title: Opt
          MAX(coalesce(n.date, n.`Date`, n.`Relationship Date`, n.`Action Date`, n.`Process Date`, n.`Disb Date`)) AS updated_date
 
     RETURN {{
-      story_gid: story.gid,
+      story_id: toString(story.gid),
       story_title: coalesce(story.`Story Name`, toString(story.gid)),
       total_nodes: total_nodes,
       entity_count: entity_count,
@@ -494,7 +712,6 @@ def get_story_statistics_query(story_gid: Optional[str] = None, story_title: Opt
       updated_date: updated_date
     }} AS statistics
     """
-    
     return query, params
 
 def get_all_node_types_query():

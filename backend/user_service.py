@@ -23,43 +23,45 @@ def create_user(user_data: UserCreate, auth_provider: str = "local", is_admin: b
         UserResponse if successful, None otherwise
     """
     try:
-        # Hash password if provided
+        # Hash password if provided (required for local auth)
         hashed_password = None
         if user_data.password:
             hashed_password = get_password_hash(user_data.password)
-        
-        # Insert user into PostgreSQL
+
+        role = "admin" if is_admin else "user"
+
         query = """
-        INSERT INTO users (email, full_name, hashed_password, auth_provider, is_active, is_admin, created_at, updated_at)
-        VALUES (%s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-        RETURNING id, email, full_name, profile_picture, auth_provider, is_active, is_admin, created_at, updated_at
+        INSERT INTO users (email, full_name, hashed_password, auth_provider, is_active, is_admin, role, status, created_at, updated_at)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        RETURNING id, email, full_name, profile_picture, auth_provider, is_active, is_admin, role, status, created_at, updated_at
         """
-        
         params = (
             user_data.email,
             user_data.full_name,
             hashed_password,
             auth_provider,
             True,  # is_active
-            is_admin
+            is_admin,
+            role,  # User Identity Model: role
+            "active"  # User Identity Model: status (default to active)
         )
-        
         result = neon_db.execute_write_query(query, params)
-        
+
         if result and len(result) > 0:
             user_row = result[0]
-            
             return UserResponse(
                 id=str(user_row['id']),
                 email=user_row['email'],
-                full_name=user_row['full_name'],
+                full_name=user_row.get('full_name'),
                 profile_picture=user_row.get('profile_picture'),
                 is_active=user_row.get('is_active', True),
                 is_admin=user_row.get('is_admin', False),
+                role=user_row.get('role', 'user'),
+                status=user_row.get('status', 'active'),
                 created_at=user_row.get('created_at'),
-                auth_provider=user_row.get('auth_provider', 'local')
+                updated_at=user_row.get('updated_at'),
+                auth_provider=user_row.get('auth_provider', 'local'),
             )
-        
         return None
     except Exception as e:
         error_msg = str(e)
@@ -73,6 +75,10 @@ def create_user(user_data: UserCreate, auth_provider: str = "local", is_admin: b
         if "relation" in error_msg.lower() and "does not exist" in error_msg.lower():
             logger.error("PostgreSQL 'users' table does not exist. Please run migration script.")
             raise RuntimeError("Database tables not initialized. Please run: python migrate_admin_to_postgres.py") from e
+        # Check if schema is missing columns
+        if "column" in error_msg.lower() and "does not exist" in error_msg.lower():
+            logger.error("PostgreSQL 'users' table schema is missing columns.")
+            raise RuntimeError("Database schema is out of date. Please run: python migrate_admin_to_postgres.py") from e
         # Re-raise other exceptions
         raise
 
@@ -87,18 +93,24 @@ def get_user_by_email(email: str) -> Optional[Dict]:
         User data dict if found, None otherwise
     """
     try:
+        normalized_email = email.strip()
         query = """
-        SELECT id, email, full_name, hashed_password, profile_picture, 
-               is_active, is_admin, created_at, updated_at, auth_provider
+        SELECT id, email, full_name, hashed_password, profile_picture,
+               is_active, is_admin, role, status, created_at, updated_at, auth_provider
         FROM users
-        WHERE email = %s
+        WHERE LOWER(email) = LOWER(%s)
         """
-        
-        result = neon_db.execute_query(query, (email,))
-        
+        logger.info(f"[auth/get_user_by_email] Querying for email={normalized_email!r}")
+        result = neon_db.execute_query(query, (normalized_email,))
+
         if result and len(result) > 0:
             user_row = result[0]
-            
+            has_hash = user_row.get('hashed_password') is not None
+            logger.info(
+                f"[auth/get_user_by_email] Found user: id={user_row.get('id')}, email={user_row.get('email')!r}, "
+                f"auth_provider={user_row.get('auth_provider')!r}, is_active={user_row.get('is_active')}, "
+                f"hashed_password_set={has_hash}, row_count=1"
+            )
             return {
                 "id": str(user_row['id']),
                 "email": user_row['email'],
@@ -107,14 +119,17 @@ def get_user_by_email(email: str) -> Optional[Dict]:
                 "profile_picture": user_row.get('profile_picture'),
                 "is_active": user_row.get('is_active', True),
                 "is_admin": user_row.get('is_admin', False),
+                "role": user_row.get('role', 'user'),
+                "status": user_row.get('status', 'active'),
                 "created_at": user_row.get('created_at'),
-                "auth_provider": user_row.get('auth_provider', 'local')
+                "updated_at": user_row.get('updated_at'),
+                "auth_provider": user_row.get('auth_provider') or 'local',
             }
-        
+        logger.info(f"[auth/get_user_by_email] No user found for email={normalized_email!r}, row_count=0")
         return None
     except Exception as e:
-        logger.error(f"Error getting user by email: {e}")
-        return None
+        logger.error(f"[auth/get_user_by_email] Error for email={email!r}: {e}")
+        raise
 
 def get_user_by_id(user_id: str) -> Optional[Dict]:
     """
@@ -128,17 +143,15 @@ def get_user_by_id(user_id: str) -> Optional[Dict]:
     """
     try:
         query = """
-        SELECT id, email, full_name, hashed_password, profile_picture, 
-               is_active, is_admin, created_at, updated_at, auth_provider
+        SELECT id, email, full_name, hashed_password, profile_picture,
+               is_active, is_admin, role, status, created_at, updated_at, auth_provider
         FROM users
         WHERE id = %s
         """
-        
         result = neon_db.execute_query(query, (int(user_id),))
-        
+
         if result and len(result) > 0:
             user_row = result[0]
-            
             return {
                 "id": str(user_row['id']),
                 "email": user_row['email'],
@@ -147,10 +160,12 @@ def get_user_by_id(user_id: str) -> Optional[Dict]:
                 "profile_picture": user_row.get('profile_picture'),
                 "is_active": user_row.get('is_active', True),
                 "is_admin": user_row.get('is_admin', False),
+                "role": user_row.get('role', 'user'),
+                "status": user_row.get('status', 'active'),
                 "created_at": user_row.get('created_at'),
-                "auth_provider": user_row.get('auth_provider', 'local')
+                "updated_at": user_row.get('updated_at'),
+                "auth_provider": user_row.get('auth_provider', 'local'),
             }
-        
         return None
     except Exception as e:
         logger.error(f"Error getting user by ID: {e}")
@@ -167,39 +182,50 @@ def authenticate_user(email: str, password: str) -> Optional[Dict]:
     Returns:
         User data dict if authentication successful, None otherwise
     """
+    email_for_log = (email or "").strip()
+    logger.info(f"[auth/authenticate_user] Starting for email={email_for_log!r}")
+
     try:
         user = get_user_by_email(email)
-        
+
         if not user:
-            logger.debug(f"User not found: {email}")
+            logger.warning(f"[auth/authenticate_user] Abort: user not found for email={email_for_log!r}")
             return None
-        
-        # Check if user uses local authentication
-        if user.get('auth_provider') != 'local':
-            logger.warning(f"User {email} attempted password login but uses {user.get('auth_provider')} auth")
+
+        logger.info(f"[auth/authenticate_user] User found id={user.get('id')}, auth_provider={user.get('auth_provider')!r}, is_active={user.get('is_active')}")
+
+        # Check if user uses local authentication (treat None/NULL as local)
+        auth_provider = user.get('auth_provider') or 'local'
+        if auth_provider != 'local':
+            logger.warning(f"[auth/authenticate_user] Abort: auth_provider={auth_provider!r} (not local) for email={email_for_log!r}")
             return None
-        
+
         # Check if user is active
         if not user.get('is_active', True):
-            logger.warning(f"Inactive user attempted login: {email}")
+            logger.warning(f"[auth/authenticate_user] Abort: user inactive for email={email_for_log!r}")
             return None
-        
+
         # Verify password
         hashed_password = user.get('hashed_password')
         if not hashed_password:
-            logger.warning(f"User {email} has no password set")
+            logger.warning(f"[auth/authenticate_user] Abort: no hashed_password in DB for email={email_for_log!r}")
             return None
-        
-        if not verify_password(password, hashed_password):
-            logger.warning(f"Invalid password for user: {email}")
+
+        logger.info(f"[auth/authenticate_user] Calling verify_password (hashed type={type(hashed_password).__name__})")
+        password_ok = verify_password(password, hashed_password)
+        logger.info(f"[auth/authenticate_user] verify_password result={password_ok}")
+
+        if not password_ok:
+            logger.warning(f"[auth/authenticate_user] Abort: password mismatch for email={email_for_log!r}")
             return None
-        
+
         # Remove password from returned user data
         user.pop('hashed_password', None)
+        logger.info(f"[auth/authenticate_user] Success for email={email_for_log!r}, user_id={user.get('id')}")
         return user
     except Exception as e:
         error_msg = str(e)
-        logger.error(f"Error authenticating user {email}: {error_msg}")
+        logger.error(f"[auth/authenticate_user] Exception for email={email_for_log!r}: {error_msg}")
         # Check if table doesn't exist
         if "relation" in error_msg.lower() and "does not exist" in error_msg.lower():
             logger.error("PostgreSQL 'users' table does not exist. Please run migration script.")

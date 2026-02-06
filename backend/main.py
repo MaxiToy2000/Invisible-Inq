@@ -10,7 +10,7 @@ import logging
 import os
 import aiofiles
 from config import Config
-from services import get_all_stories, get_graph_data, get_graph_data_by_section_and_country, search_with_ai, get_story_statistics, get_all_node_types, get_calendar_data, get_cluster_data, get_entity_wikidata, search_entity_wikidata
+from services import get_all_stories, get_graph_data, get_graph_data_by_section_and_country, get_gr_id_description, search_with_ai, get_story_statistics, get_all_node_types, get_calendar_data, get_cluster_data, get_entity_wikidata, search_entity_wikidata
 from models import GraphData, UserCreate, UserLogin, Token, UserResponse, GoogleAuthRequest, UserActivityCreate, UserActivityResponse, AdminLoginRequest, SubmissionCreate, SubmissionResponse, UserSubscriptionResponse, SubmissionUpdateRequest
 from pydantic import BaseModel
 from auth import create_access_token, verify_google_token, get_current_user, get_current_admin_user
@@ -141,11 +141,11 @@ async def register_user(user_data: UserCreate):
                 detail=str(e)
             )
         except RuntimeError as e:
-            # Database not initialized
+            # Database not initialized or schema out of date
             logger.error(f"Database initialization error: {e}")
             raise HTTPException(
                 status_code=500,
-                detail="Database not initialized. Please contact administrator."
+                detail=str(e)
             )
         
         if not new_user:
@@ -154,24 +154,21 @@ async def register_user(user_data: UserCreate):
                 detail="Failed to create user"
             )
         
-        # Create access token
+        # Create access token (include role, status, is_admin for auth context)
         access_token = create_access_token(
             data={
                 "sub": new_user.id,
                 "email": new_user.email,
                 "full_name": new_user.full_name,
                 "profile_picture": new_user.profile_picture,
-                "auth_provider": new_user.auth_provider
+                "auth_provider": new_user.auth_provider,
+                "is_admin": getattr(new_user, "is_admin", False),
+                "role": getattr(new_user, "role", "user"),
+                "status": getattr(new_user, "status", "active"),
             }
         )
-        
         logger.info(f"New user registered: {new_user.email}")
-        
-        return Token(
-            access_token=access_token,
-            token_type="bearer",
-            user=new_user
-        )
+        return Token(access_token=access_token, token_type="bearer", user=new_user)
     except HTTPException:
         raise
     except Exception as e:
@@ -186,12 +183,17 @@ async def login_user(user_credentials: UserLogin):
     """
     Login with email and password
     """
+    email_for_log = (user_credentials.email or "").strip()
+    logger.info(f"[auth/login] Request received for email={email_for_log!r}")
+
     try:
         # Authenticate user
         try:
             user = authenticate_user(user_credentials.email, user_credentials.password)
+            logger.info(f"[auth/login] authenticate_user returned: user_id={user['id'] if user else None}")
         except Exception as e:
             error_msg = str(e)
+            logger.exception(f"[auth/login] authenticate_user raised: {error_msg}")
             # Check if it's a database table issue
             if "relation" in error_msg.lower() and "does not exist" in error_msg.lower():
                 logger.error("Database tables not initialized")
@@ -201,33 +203,36 @@ async def login_user(user_credentials: UserLogin):
                 )
             # Re-raise other exceptions
             raise
-        
+
         if not user:
+            logger.warning(f"[auth/login] Rejected with 401: no user returned for email={email_for_log!r}")
             raise HTTPException(
                 status_code=401,
                 detail="Incorrect email or password"
             )
-        
+
         # Check if user is active
         if not user.get('is_active', True):
+            logger.warning(f"[auth/login] Rejected with 403: user inactive for email={email_for_log!r}")
             raise HTTPException(
                 status_code=403,
                 detail="User account is disabled"
             )
-        
-        # Create access token
+
+        # Create access token (include role, status, is_admin)
         access_token = create_access_token(
             data={
                 "sub": user['id'],
                 "email": user['email'],
                 "full_name": user.get('full_name'),
                 "profile_picture": user.get('profile_picture'),
-                "auth_provider": user.get('auth_provider', 'local')
+                "auth_provider": user.get('auth_provider', 'local'),
+                "is_admin": user.get('is_admin', False),
+                "role": user.get('role', 'user'),
+                "status": user.get('status', 'active'),
             }
         )
-        
-        logger.info(f"User logged in: {user['email']}")
-        
+        logger.info(f"[auth/login] Success: user_id={user['id']}, email={user['email']}")
         user_response = UserResponse(
             id=user['id'],
             email=user['email'],
@@ -235,14 +240,12 @@ async def login_user(user_credentials: UserLogin):
             profile_picture=user.get('profile_picture'),
             is_active=user.get('is_active', True),
             created_at=user.get('created_at'),
-            auth_provider=user.get('auth_provider', 'local')
+            updated_at=user.get('updated_at'),
+            auth_provider=user.get('auth_provider', 'local'),
+            role=user.get('role', 'user'),
+            status=user.get('status', 'active'),
         )
-        
-        return Token(
-            access_token=access_token,
-            token_type="bearer",
-            user=user_response
-        )
+        return Token(access_token=access_token, token_type="bearer", user=user_response)
     except HTTPException:
         raise
     except Exception as e:
@@ -332,7 +335,10 @@ async def get_current_user_info(current_user: dict = Depends(get_current_user)):
             profile_picture=user.get('profile_picture'),
             is_active=user.get('is_active', True),
             created_at=user.get('created_at'),
-            auth_provider=user.get('auth_provider', 'local')
+            updated_at=user.get('updated_at'),
+            auth_provider=user.get('auth_provider', 'local'),
+            role=user.get('role', 'user'),
+            status=user.get('status', 'active'),
         )
     except HTTPException:
         raise
@@ -394,9 +400,11 @@ async def admin_login(credentials: AdminLoginRequest):
             is_active=user.get('is_active', True),
             is_admin=user.get('is_admin', False),
             created_at=user.get('created_at'),
-            auth_provider=user.get('auth_provider', 'local')
+            updated_at=user.get('updated_at'),
+            auth_provider=user.get('auth_provider', 'local'),
+            role=user.get('role', 'user'),
+            status=user.get('status', 'active'),
         )
-        
         return Token(
             access_token=access_token,
             token_type="bearer",
@@ -831,12 +839,17 @@ async def get_stories():
 
 @app.get("/api/graph/{substory_id}", response_model=dict)
 async def get_graph_by_substory_id(substory_id: str):
+    """Get graph data for a substory/section. Numeric substory_id is treated as section_gid, else as section_query."""
     try:
         if substory_id.isdigit() or (substory_id.replace('.', '').isdigit()):
             graph_data = get_graph_data(section_gid=substory_id)
         else:
             graph_data = get_graph_data(section_query=substory_id)
-        return graph_data.model_dump()
+        out = graph_data.model_dump()
+        description = get_gr_id_description(substory_id)
+        if description is not None:
+            out["description"] = description
+        return out
     except Exception as e:
         raise HTTPException(
             status_code=500,
@@ -845,12 +858,17 @@ async def get_graph_by_substory_id(substory_id: str):
 
 @app.get("/api/graph", response_model=dict)
 async def get_graph_by_path(graph_path: Optional[str] = None):
+    """Get graph data by graph_path (same as section_query). Requires graph_path query parameter."""
     if not graph_path:
         raise HTTPException(status_code=400, detail="graph_path parameter is required")
 
     try:
         graph_data = get_graph_data(graph_path=graph_path)
-        return graph_data.model_dump()
+        out = graph_data.model_dump()
+        description = get_gr_id_description(graph_path)
+        if description is not None:
+            out["description"] = description
+        return out
     except Exception as e:
         raise HTTPException(
             status_code=500,

@@ -3,11 +3,14 @@ import logging
 from database import db
 from queries import (
     get_all_stories_query,
+    get_all_stories_query_legacy,
     get_story_by_id_query,
     get_graph_data_by_section_query,
+    get_graph_data_by_section_query_legacy,
     get_graph_data_by_section_and_country_query,
     get_section_by_id_query,
     get_story_statistics_query,
+    get_story_statistics_query_legacy,
     get_all_node_types_query,
     get_calendar_data_by_section_query,
     get_cluster_data_query
@@ -186,6 +189,11 @@ def get_all_stories() -> List[Story]:
         logger.info("Fetching all stories from database")
         query = get_all_stories_query()
         results = db.execute_query(query)
+        # Fallback to legacy :story/:chapter/:section schema if gr_id returns no rows
+        if not results:
+            logger.debug("No results from gr_id schema, trying legacy story/chapter/section query")
+            query_legacy = get_all_stories_query_legacy()
+            results = db.execute_query(query_legacy)
         logger.debug(f"Retrieved {len(results)} story records from database")
 
         stories = []
@@ -195,6 +203,7 @@ def get_all_stories() -> List[Story]:
                 continue
 
             story_title = story_data.get("story_title", "")
+            story_id_raw = story_data.get("story_id") or story_data.get("story_gid")
             story_gid = story_data.get("story_gid", "")
             story_brief = story_data.get("story_brief", "")
             
@@ -205,11 +214,10 @@ def get_all_stories() -> List[Story]:
                 story_brief = ""
             
             # Log story processing (debug level to avoid spam)
-            logger.debug(f"Processing story: {story_title} (gid: {story_gid}, brief length: {len(story_brief)})")
+            logger.debug(f"Processing story: {story_title} (id: {story_id_raw}, brief length: {len(story_brief)})")
 
-            # Use Neo4j gid for stable, globally-unique story IDs.
-            # (Frontend uses title for URL sync; it uses id for selection and /statistics.)
-            story_id = str(story_gid) if story_gid else generate_id_from_title(story_title)
+            # Prefer story_id (gr_id schema), then story_gid; fallback to slug from title.
+            story_id = str(story_id_raw) if story_id_raw else (str(story_gid) if story_gid else generate_id_from_title(story_title))
 
             chapters = []
             for chapter_data in story_data.get("chapters", []):
@@ -274,24 +282,51 @@ def get_all_stories() -> List[Story]:
 
 def get_graph_data(section_gid: Optional[str] = None, section_query: Optional[str] = None, section_title: Optional[str] = None, graph_path: Optional[str] = None) -> GraphData:
     try:
-        # Handle graph_path parameter - treat it as section_query if provided
+        # Resolve which param to use (graph_path is treated as section_query)
         if graph_path:
             logger.debug(f"Fetching graph data by graph_path: {graph_path}")
-            query, params = get_graph_data_by_section_query(section_query=graph_path)
+            use_section_query, use_section_gid, use_section_title = graph_path, None, None
         elif section_gid:
             logger.debug(f"Fetching graph data by section_gid: {section_gid}")
-            query, params = get_graph_data_by_section_query(section_gid=section_gid)
+            use_section_query, use_section_gid, use_section_title = None, section_gid, None
         elif section_query:
             logger.debug(f"Fetching graph data by section_query: {section_query}")
-            query, params = get_graph_data_by_section_query(section_query=section_query)
+            use_section_query, use_section_gid, use_section_title = section_query, None, None
         elif section_title:
             logger.debug(f"Fetching graph data by section_title: {section_title}")
-            query, params = get_graph_data_by_section_query(section_query=section_title)
+            use_section_query, use_section_gid, use_section_title = None, None, section_title
         else:
             raise ValueError("Either section_gid, section_query, section_title, or graph_path must be provided")
 
+        def run_legacy():
+            if use_section_gid:
+                return get_graph_data_by_section_query_legacy(section_gid=use_section_gid)
+            if use_section_query:
+                return get_graph_data_by_section_query_legacy(section_query=use_section_query)
+            return get_graph_data_by_section_query_legacy(section_title=use_section_title)
+
+        # Try gr_id schema first
+        if use_section_gid:
+            query, params = get_graph_data_by_section_query(section_gid=use_section_gid)
+        elif use_section_query:
+            query, params = get_graph_data_by_section_query(section_query=use_section_query)
+        else:
+            query, params = get_graph_data_by_section_query(section_title=use_section_title)
+
         results = db.execute_query(query, params)
         logger.debug(f"Retrieved graph data: {len(results)} result(s)")
+
+        # Fallback to legacy :section schema if no results or empty graph
+        if not results:
+            logger.debug("No results from gr_id graph query, trying legacy section query")
+            query, params = run_legacy()
+            results = db.execute_query(query, params)
+        else:
+            gd = results[0].get("graphData") or {}
+            if not gd.get("nodes") and not gd.get("links"):
+                logger.debug("Empty graphData from gr_id query, trying legacy section query")
+                query, params = run_legacy()
+                results = db.execute_query(query, params)
 
         if not results:
             return GraphData(nodes=[], links=[])
@@ -317,6 +352,34 @@ def get_graph_data(section_gid: Optional[str] = None, section_query: Optional[st
         error_msg = f"Error fetching graph data: {str(e)}"
         logger.error(error_msg, exc_info=True)
         raise Exception(error_msg) from e
+
+
+def get_gr_id_description(gr_id_or_path: str) -> Optional[str]:
+    """
+    Fetch section/substory description from Neon by gr_id or graph path.
+    Returns None if Neon is not configured, table does not exist, or no row is found.
+    """
+    if not gr_id_or_path or not str(gr_id_or_path).strip():
+        return None
+    try:
+        from neon_database import neon_db
+        if not neon_db.is_configured():
+            return None
+        # Optional: query a table like gr_id_descriptions(gr_id, description) or section_descriptions
+        # If the table does not exist, the query will fail and we return None.
+        q = """
+            SELECT description FROM gr_id
+            WHERE id = %s OR path = %s
+            LIMIT 1
+        """
+        rows = neon_db.execute_query(q, (gr_id_or_path.strip(), gr_id_or_path.strip()))
+        if rows and len(rows) > 0 and rows[0].get("description"):
+            return str(rows[0]["description"]).strip() or None
+        return None
+    except Exception as e:
+        logger.debug(f"get_gr_id_description({gr_id_or_path!r}): {e}")
+        return None
+
 
 def get_graph_data_by_section_and_country(section_query: str, country_name: str) -> GraphData:
     """Fetch graph data filtered by section and country"""
@@ -546,16 +609,21 @@ def get_story_statistics(story_id: str) -> Dict[str, Any]:
     """Get statistics for a story (total nodes, entity count, etc.)"""
     try:
         logger.debug(f"Fetching statistics for story: {story_id}")
-        # Try to get statistics by story_gid first, then by story_title
+        # Try gr_id schema by story_gid first, then by story_title
         query, params = get_story_statistics_query(story_gid=story_id)
         results = db.execute_query(query, params)
-        
         if not results or len(results) == 0:
-            # Try by story title
             logger.debug(f"No results for story_gid, trying story_title: {story_id}")
             query, params = get_story_statistics_query(story_title=story_id)
             results = db.execute_query(query, params)
-        
+        # Fallback to legacy :story/:chapter/:section schema
+        if not results or len(results) == 0:
+            logger.debug("No results from gr_id schema, trying legacy story statistics query")
+            query, params = get_story_statistics_query_legacy(story_gid=story_id)
+            results = db.execute_query(query, params)
+        if not results or len(results) == 0:
+            query, params = get_story_statistics_query_legacy(story_title=story_id)
+            results = db.execute_query(query, params)
         if not results or len(results) == 0:
             logger.warning(f"No statistics found for story: {story_id}")
             return {
@@ -581,12 +649,14 @@ def get_story_statistics(story_id: str) -> Dict[str, Any]:
             "updated_date": updated_date
         }
     except Exception as e:
-        # Return default values on error
+        # Return default values on error (same shape as success/not-found)
         logger.error(f"Error fetching statistics for story {story_id}: {str(e)}", exc_info=True)
         return {
             "story_id": story_id,
             "total_nodes": 0,
-            "entity_count": 0
+            "entity_count": 0,
+            "highlighted_nodes": 0,
+            "updated_date": None
         }
 
 def get_all_node_types() -> List[str]:
