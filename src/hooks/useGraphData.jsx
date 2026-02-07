@@ -256,12 +256,16 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
         if (rawGraphData && rawGraphData.nodes && rawGraphData.nodes.length > 100) {
           const limitedNodes = rawGraphData.nodes.slice(0, 2000);
 
-          const nodeIds = new Set(limitedNodes.map(node => node.id));
+          const normId = (v) => (v != null && v !== '' ? String(v) : '');
+          const nodeIds = new Set(
+            limitedNodes
+              .map((node) => normId(node.id ?? node.gid ?? node.elementId ?? node.element_id))
+              .filter(Boolean)
+          );
 
-          const limitedLinks = (rawGraphData.links || []).filter(link => {
-            const sourceId = link.sourceId;
-            const targetId = link.targetId;
-
+          const limitedLinks = (rawGraphData.links || []).filter((link) => {
+            const sourceId = normId(link.sourceId ?? link.source ?? link.from_gid ?? '');
+            const targetId = normId(link.targetId ?? link.target ?? link.to_gid ?? '');
             return sourceId && targetId && nodeIds.has(sourceId) && nodeIds.has(targetId);
           }).slice(0, 5000);
 

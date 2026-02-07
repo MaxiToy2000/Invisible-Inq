@@ -3,6 +3,18 @@ import * as d3 from 'd3';
 import { getNodeTypeColor } from '../../utils/colorUtils';
 import EmptyState from './EmptyState';
 
+const canonicalId = (n) => String(n?.id ?? n?.gid ?? '');
+
+function deduplicateNodesById(nodes) {
+  const seen = new Set();
+  return nodes.filter((node) => {
+    const id = canonicalId(node);
+    if (!id || seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+}
+
 // Safe deep copy function that handles circular references and functions
 // Defined outside component to avoid recreation on every render
 const safeDeepCopy = (node) => {
@@ -45,9 +57,8 @@ const NeighborsGraph = ({ selectedNode, graphData, onClose, isSubgraph = false }
         nodeTypeCounts[nodeType] = (nodeTypeCounts[nodeType] || 0) + 1;
       });
 
-      // CRITICAL: Create DEEP copies of nodes to prevent D3 simulation from modifying
-      // the original node positions in the main THREE.js graph
-      const copiedNodes = graphData.nodes.map(node => safeDeepCopy(node));
+      // Deduplicate so the same node (same id/gid) never appears twice, then deep copy
+      const copiedNodes = deduplicateNodesById(graphData.nodes).map(node => safeDeepCopy(node));
 
       // Process links to ensure source/target are node objects from our copies
       const processedLinks = graphData.links.map(link => {
@@ -101,11 +112,10 @@ const NeighborsGraph = ({ selectedNode, graphData, onClose, isSubgraph = false }
       }
     });
 
-    // Get neighbor nodes
-    const neighborNodes = graphData.nodes.filter(node => {
-      const nId = node.id || node.gid;
-      return neighborIds.has(String(nId));
-    });
+    // Get neighbor nodes (dedupe so same id never appears twice)
+    const neighborNodes = deduplicateNodesById(
+      graphData.nodes.filter(node => neighborIds.has(String(node.id || node.gid)))
+    );
 
     // Count node types
     const nodeTypeCounts = {};
@@ -117,10 +127,8 @@ const NeighborsGraph = ({ selectedNode, graphData, onClose, isSubgraph = false }
     // CRITICAL: Create DEEP copies of nodes to prevent D3 simulation from modifying
     // the original node positions in the main THREE.js graph
     const copiedSelectedNode = safeDeepCopy(selectedNode);
-
     const copiedNeighborNodes = neighborNodes.map(node => safeDeepCopy(node));
-
-    const allCopiedNodes = [copiedSelectedNode, ...copiedNeighborNodes];
+    const allCopiedNodes = deduplicateNodesById([copiedSelectedNode, ...copiedNeighborNodes]);
 
     // Create links for the neighbor graph (only between selected node and neighbors)
     const neighborLinks = connectedLinks.map(link => {
