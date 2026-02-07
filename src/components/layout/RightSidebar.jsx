@@ -1154,77 +1154,60 @@ const RightSidebar = ({
                   {/* This is a separate subgraph visualization in the sidebar, independent from the main THREE.js view */}
                   {/* The deep copy mechanism ensures the main THREE.js graph is not affected */}
                   {(() => {
-                    // PRIORITY 1: If displayNode exists (either from individual mode or multi-select pagination),
-                    // show the neighbors of that specific node
-                    if (displayNode) {
-                      return (
-                        <div className="w-full flex-1 min-h-0 mt-4 mb-1 flex-auto overflow-hidden">
-                          <NeighborsGraph 
-                            selectedNode={displayNode} 
-                            graphData={graphData}
-                            isSubgraph={false}
-                          />
-                        </div>
-                      );
-                    }
-                    
-                    // PRIORITY 2: In MULTI-SELECT mode without a specific displayNode,
-                    // show subgraph of all selected nodes and their connections
-                    if (isMultiSelect && (selectedNodes.size > 0 || selectedEdges.size > 0)) {
-                      // If multiSelectSubgraph is provided, use it
-                      if (multiSelectSubgraph && multiSelectSubgraph.nodes && multiSelectSubgraph.nodes.length > 0) {
-                        return (
-                          <div className="w-full flex-1 min-h-0 mt-4 mb-1 flex-auto overflow-hidden">
-                            <NeighborsGraph 
-                              selectedNode={null}
-                              graphData={multiSelectSubgraph}
-                              isSubgraph={true}
-                            />
-                          </div>
-                        );
-                      }
-                      
-                      // Otherwise, compute subgraph from selectedNodes and selectedEdges
+                    const nodeSource = filteredGraphData?.nodes || graphData?.nodes || [];
+                    const linkSource = filteredGraphData?.links || graphData?.links || [];
+                    const hasMultiSelection = selectedNodes.size > 1 || selectedEdges.size > 0;
+
+                    // PRIORITY 1: MULTI-SELECT – show selected nodes + depth-1 related nodes (direct neighbors)
+                    if (isMultiSelect && hasMultiSelection) {
                       const selectedNodesList = Array.from(selectedNodes);
                       const selectedEdgesList = Array.from(selectedEdges);
-                      
-                      // Get nodes for selected edges
+                      const norm = (id) => (id != null ? String(id) : '');
+
                       const edgeNodeIds = new Set();
                       selectedEdgesList.forEach(edgeId => {
-                        const edge = graphData.links?.find(l => 
-                          (l.id === edgeId) || 
-                          (l.source?.id === edgeId) || 
-                          (String(l.source?.id || l.source || l.sourceId) + '-' + String(l.target?.id || l.target || l.targetId) === edgeId)
-                        );
+                        const edge = linkSource.find(l => {
+                          const sid = l.source?.id ?? l.sourceId ?? l.source;
+                          const tid = l.target?.id ?? l.targetId ?? l.target;
+                          const linkId = l.id ?? `${norm(sid)}-${norm(tid)}`;
+                          return norm(linkId) === norm(edgeId) || (norm(sid) + '-' + norm(tid)) === norm(edgeId);
+                        });
                         if (edge) {
-                          const sourceId = edge.source?.id || edge.sourceId || edge.source;
-                          const targetId = edge.target?.id || edge.targetId || edge.target;
-                          edgeNodeIds.add(sourceId);
-                          edgeNodeIds.add(targetId);
+                          const sourceId = edge.source?.id ?? edge.sourceId ?? edge.source;
+                          const targetId = edge.target?.id ?? edge.targetId ?? edge.target;
+                          edgeNodeIds.add(norm(sourceId));
+                          edgeNodeIds.add(norm(targetId));
                         }
                       });
-                      
-                      // Combine selected nodes with nodes from selected edges
-                      const allNodeIds = new Set([...selectedNodesList, ...Array.from(edgeNodeIds)]);
-                      
-                      // Get actual node objects
-                      const subgraphNodes = graphData.nodes?.filter(n => allNodeIds.has(n.id || n.gid)) || [];
-                      
-                      // Get links between these nodes
-                      const subgraphLinks = graphData.links?.filter(link => {
-                        const sourceId = link.source?.id || link.sourceId || link.source;
-                        const targetId = link.target?.id || link.targetId || link.target;
-                        return allNodeIds.has(sourceId) && allNodeIds.has(targetId);
-                      }) || [];
-                      
-                      const computedSubgraph = {
-                        nodes: subgraphNodes,
-                        links: subgraphLinks
-                      };
-                      
+
+                      // Core = only the selected nodes (and nodes from selected edges)
+                      const coreNodeIds = new Set([
+                        ...selectedNodesList.map(norm),
+                        ...Array.from(edgeNodeIds)
+                      ]);
+
+                      // Nodes to show: selected + nodes that are directly linked to at least one selected node
+                      const allNodeIds = new Set(coreNodeIds);
+                      linkSource.forEach(link => {
+                        const sourceId = norm(link.source?.id ?? link.sourceId ?? link.source);
+                        const targetId = norm(link.target?.id ?? link.targetId ?? link.target);
+                        if (coreNodeIds.has(sourceId)) allNodeIds.add(targetId);
+                        if (coreNodeIds.has(targetId)) allNodeIds.add(sourceId);
+                      });
+
+                      const subgraphNodes = nodeSource.filter(n => allNodeIds.has(norm(n.id || n.gid)));
+                      // Only show links that touch a selected node (selected ↔ neighbor). Hide links between neighbors.
+                      const subgraphLinks = linkSource.filter(link => {
+                        const sourceId = norm(link.source?.id ?? link.sourceId ?? link.source);
+                        const targetId = norm(link.target?.id ?? link.targetId ?? link.target);
+                        if (!allNodeIds.has(sourceId) || !allNodeIds.has(targetId)) return false;
+                        return coreNodeIds.has(sourceId) || coreNodeIds.has(targetId);
+                      });
+
+                      const computedSubgraph = { nodes: subgraphNodes, links: subgraphLinks };
                       if (computedSubgraph.nodes.length > 0) {
                         return (
-                          <div className="w-full flex-1 min-h-0 mt-4 mb-1 flex-auto overflow-hidden">
+                          <div className="w-full flex-1 min-h-0 mt-4 mb-1 flex-auto overflow-hidden min-h-[320px]">
                             <NeighborsGraph 
                               selectedNode={null}
                               graphData={computedSubgraph}
@@ -1234,7 +1217,20 @@ const RightSidebar = ({
                         );
                       }
                     }
-                    
+
+                    // PRIORITY 2: Single node (or current page node in multi-select with only one node) – show its neighbors
+                    if (displayNode) {
+                      return (
+                        <div className="w-full flex-1 min-h-0 mt-4 mb-1 flex-auto overflow-hidden min-h-[320px]">
+                          <NeighborsGraph 
+                            selectedNode={displayNode} 
+                            graphData={graphData}
+                            isSubgraph={false}
+                          />
+                        </div>
+                      );
+                    }
+
                     return null;
                   })()}
                 </div>
