@@ -354,31 +354,26 @@ def get_graph_data(section_gid: Optional[str] = None, section_query: Optional[st
         raise Exception(error_msg) from e
 
 
-def get_gr_id_description(gr_id_or_path: str) -> Optional[str]:
+def get_gr_id_description(gr_id_value: str) -> Optional[str]:
     """
-    Fetch section/substory description from Neon by gr_id or graph path.
-    Returns None if Neon is not configured, table does not exist, or no row is found.
+    Get description for a section from Neon gr_id table.
+    gr_id_value is the same id used as graph_path (e.g. gra7zcmodmlq) - the gr_id node id
+    that links the selected SECTION from Neo4j to the row in Neon gr_id.
     """
-    if not gr_id_or_path or not str(gr_id_or_path).strip():
+    if not (gr_id_value or "").strip():
         return None
     try:
         from neon_database import neon_db
         if not neon_db.is_configured():
             return None
-        # Optional: query a table like gr_id_descriptions(gr_id, description) or section_descriptions
-        # If the table does not exist, the query will fail and we return None.
-        q = """
-            SELECT description FROM gr_id
-            WHERE id = %s OR path = %s
-            LIMIT 1
-        """
-        rows = neon_db.execute_query(q, (gr_id_or_path.strip(), gr_id_or_path.strip()))
-        if rows and len(rows) > 0 and rows[0].get("description"):
-            return str(rows[0]["description"]).strip() or None
-        return None
+        key = gr_id_value.strip()
+        results = neon_db.execute_query("SELECT description FROM gr_id WHERE id = %s LIMIT 1", (key,))
+        if results and results[0]:
+            desc = (results[0].get("description") or "").strip()
+            return desc if desc else None
     except Exception as e:
-        logger.debug(f"get_gr_id_description({gr_id_or_path!r}): {e}")
-        return None
+        logger.warning(f"Could not get gr_id description from Neon: {e}")
+    return None
 
 
 def get_graph_data_by_section_and_country(section_query: str, country_name: str) -> GraphData:
@@ -1014,6 +1009,60 @@ def get_entity_wikidata(entity_name: str) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Error fetching entity wikidata for '{entity_name}': {e}")
         logger.exception(e)  # Log full traceback
+        raise
+
+
+def get_wikidata_by_id(node_id: str, node_type: str = None) -> Dict[str, Any]:
+    """
+    Fetch wikidata information by entity/node id.
+    Looks up in entity_wikidata table by id or gid (Neo4j node id mapping).
+    
+    Args:
+        node_id: The node/entity id from the graph
+        node_type: Optional node type (entity, concept, data, entity_gen, framework)
+        
+    Returns:
+        Dict with 'found' boolean and 'data' containing entity details if found
+    """
+    from neon_database import neon_db
+        
+    logger.info(f"Fetching wikidata for node_id: '{node_id}'" + (f", node_type: '{node_type}'" if node_type else ""))
+    
+    if not neon_db.is_configured():
+        logger.warning("Neon database not configured, returning empty result")
+        return {"found": False, "data": None, "error": "Wikidata database not configured"}
+    
+    if not node_id:
+        return {"found": False, "data": None}
+    
+    try:
+        # Use fixed table name 'entity' as per database schema
+        query = """
+            SELECT *
+            FROM entity
+            WHERE id = %s
+            LIMIT 1
+        """
+        results = neon_db.execute_query(query, (node_id,))
+
+        if results:
+            entity_data = dict(results[0])
+            for key, value in entity_data.items():
+                if hasattr(value, 'isoformat'):
+                    entity_data[key] = value.isoformat()
+                elif value is None:
+                    entity_data[key] = None
+                elif key in ['image_url', 'logo_url'] and value == '':
+                    entity_data[key] = None
+            
+            logger.info(f"Found wikidata for node_id: '{node_id}'")
+            return {"found": True, "data": entity_data}
+        
+        logger.warning(f"No wikidata found for node_id: '{node_id}'")
+        return {"found": False, "data": None}
+        
+    except Exception as e:
+        logger.error(f"Error fetching wikidata for node_id '{node_id}': {e}")
         raise
 
 

@@ -39,6 +39,8 @@ const Layout = ({
   onAISearch = null,
   onAISummary = null,
   graphData = { nodes: [], links: [] },
+  graphDescription = null,
+  sectionDescription = null,
   onEntityHighlight = null,
   rightSidebarActiveTab = 'node-properties',
   onRightSidebarActiveTabChange = () => {},
@@ -119,6 +121,8 @@ const Layout = ({
           onAISearch={onAISearch}
           onAISummary={onAISummary}
           graphData={graphData}
+          graphDescription={graphDescription}
+          sectionDescription={sectionDescription}
           onEntityHighlight={onEntityHighlight}
         />
       </div>

@@ -91,6 +91,7 @@ const HomePage = () => {
   const [connectedDataCache, setConnectedDataCache] = useState({});
   const [connectedDataLoading, setConnectedDataLoading] = useState(false);
   const [connectedDataError, setConnectedDataError] = useState(null);
+  const [sectionDescription, setSectionDescription] = useState(null);
   
   // Ref to track if we're reading from URL to prevent infinite loops
   const isReadingFromURL = useRef(false);
@@ -106,6 +107,7 @@ const HomePage = () => {
     currentChapterId,
     currentSubstoryId,
     graphData,
+    graphDescription,
     entityHighlights,
     selectedNode,
     selectedEdge,
@@ -895,11 +897,19 @@ const HomePage = () => {
       const queryToUse = currentSubstory?.section_query || currentSubstory?.id;
       
       if (!queryToUse) {
+        setSectionDescription(null);
         return;
       }
 
       // Check if data is already cached
       if (connectedDataCache[queryToUse]) {
+        // Extract description from cached data
+        const cachedData = connectedDataCache[queryToUse];
+        if (cachedData.description) {
+          setSectionDescription(cachedData.description);
+        } else {
+          setSectionDescription(null);
+        }
         return;
       }
 
@@ -923,6 +933,13 @@ const HomePage = () => {
 
         const data = await response.json();
         
+        // Extract and store description from response
+        if (data.description) {
+          setSectionDescription(data.description);
+        } else {
+          setSectionDescription(null);
+        }
+        
         // Store in cache
         setConnectedDataCache(prev => ({
           ...prev,
@@ -932,6 +949,7 @@ const HomePage = () => {
         console.error('[HomePage] Error fetching ConnectedData:', err);
         const errorMsg = err.message || 'Failed to load connected data';
         setConnectedDataError(errorMsg);
+        setSectionDescription(null);
         showError(errorMsg, 'Connected Data Error');
       } finally {
         setConnectedDataLoading(false);
@@ -2441,6 +2459,8 @@ const HomePage = () => {
       onAISearch={handleAISearch}
       onAISummary={handleAISummary}
       graphData={graphData}
+      graphDescription={graphDescription}
+      sectionDescription={sectionDescription}
       filteredGraphData={filteredGraphData}
       onEntityHighlight={selectEntityById}
       rightSidebarActiveTab={rightSidebarActiveTab}

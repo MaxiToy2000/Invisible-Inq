@@ -21,6 +21,8 @@ const LeftSidebar = ({
   onAISearch = null,
   onAISummary = null,
   graphData = { nodes: [], links: [] },
+  graphDescription = null,
+  sectionDescription = null,
   onEntityHighlight = null
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -462,6 +464,23 @@ const LeftSidebar = ({
             disabled={!currentChapterId || !currentChapter || availableSections.length === 0}
             dropdownWidth={sidebarWidth}
           />
+
+          {}
+          {currentSubstory && (
+            <div className="pt-4">
+              <div>
+                {(graphDescription ?? sectionDescription ?? currentSubstory?.brief) ? (
+                  <>
+                    <div
+                      className="text-[#B4B4B4] mb-3 font-[sans-serif] font-normal text-[14px] leading-[18px] tracking-[0px]"
+                    >
+                      {renderBriefWithBadges(graphDescription ?? sectionDescription ?? currentSubstory?.brief ?? '', importantEntities)}
+                    </div>
+                  </>
+                ) : null}
+              </div>
+            </div>
+          )}
         </div>
 
         {}
