@@ -1025,9 +1025,7 @@ def get_wikidata_by_id(node_id: str, node_type: str = None) -> Dict[str, Any]:
         Dict with 'found' boolean and 'data' containing entity details if found
     """
     from neon_database import neon_db
-    
-    node_id = str(node_id).strip() if node_id else ""
-    
+        
     logger.info(f"Fetching wikidata for node_id: '{node_id}'" + (f", node_type: '{node_type}'" if node_type else ""))
     
     if not neon_db.is_configured():
@@ -1038,13 +1036,14 @@ def get_wikidata_by_id(node_id: str, node_type: str = None) -> Dict[str, Any]:
         return {"found": False, "data": None}
     
     try:
+        # Use fixed table name 'entity' as per database schema
         query = """
             SELECT *
-            FROM %s
+            FROM entity
             WHERE id = %s
             LIMIT 1
         """
-        results = neon_db.execute_query(query, (node_type, node_id))
+        results = neon_db.execute_query(query, (node_id,))
 
         if results:
             entity_data = dict(results[0])

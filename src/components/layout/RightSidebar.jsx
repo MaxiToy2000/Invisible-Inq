@@ -493,22 +493,42 @@ const RightSidebar = ({
       ].filter(([, value]) => value !== undefined && value !== null)
     : [];
 
+  // Only show specific edge properties: Label, Relationship Summary, Category, Article URL
   const filteredEdgeProperties = displayEdge
-    ? Object.entries(displayEdge._originalData || displayEdge)
-        .filter(([key, value]) => (
-          !key.startsWith('__') &&
-          !['index', 'source', 'target', 'sourceId', 'targetId', '_originalData'].includes(key) &&
-          value !== null &&
-          typeof value !== 'function' &&
-          (typeof value !== 'object' || Array.isArray(value))
-        ))
-        .sort((a, b) => {
-          if (a[0] === 'Section') return -1;
-          if (b[0] === 'Section') return 1;
-          if (a[0] === 'Year') return -1;
-          if (b[0] === 'Year') return 1;
-          return a[0].localeCompare(b[0]);
-        })
+    ? (() => {
+        const edgeData = displayEdge._originalData || displayEdge;
+        const properties = [];
+        
+        // Label
+        const label = edgeData.label || edgeData.Label || null;
+        if (label) properties.push(['Label', label]);
+        
+        // Relationship Summary
+        const relationshipSummary = edgeData.relationship_summary || 
+                                   edgeData['Relationship Summary'] || 
+                                   edgeData.relationshipSummary ||
+                                   null;
+        if (relationshipSummary) properties.push(['Relationship Summary', relationshipSummary]);
+        
+        // Category (from type field)
+        const category = edgeData.category || 
+                        edgeData.Category || 
+                        edgeData.type ||
+                        edgeData.Type ||
+                        null;
+        if (category) properties.push(['Category', category]);
+        
+        // Article URL
+        const articleUrl = edgeData.article_url || 
+                          edgeData['Article URL'] || 
+                          edgeData.articleUrl ||
+                          edgeData.url ||
+                          edgeData.URL ||
+                          null;
+        if (articleUrl) properties.push(['Article URL', articleUrl]);
+        
+        return properties;
+      })()
     : [];
 
   return (
