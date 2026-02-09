@@ -203,11 +203,233 @@ const BaseTooltipLayout = ({ node, color, graphData }) => {
 };
 
 // Entity-specific layout - displays node information (wikidata fetched in RightSidebar on click)
+// Entity-specific layout - displays node information (wikidata fetched in RightSidebar on click)
 const EntityTooltipLayout = ({ node, color }) => {
   const [imageError, setImageError] = useState(false);
+<<<<<<< HEAD
+  const [directImageUrl, setDirectImageUrl] = useState(null);
+  const fetchingRef = useRef(false);
+  const lastFetchedNodeRef = useRef(null);
+=======
+>>>>>>> 5f7ddf4fd650fb72c90a1e075601ff668f0f6ca5
   
   const entityName = node.name || node['Entity Name'] || node.entity_name || node.id || 'Unknown';
   const nodeType = node.node_type || node.type || 'Type';
+<<<<<<< HEAD
+  const nodeTypeLower = (nodeType || '').toLowerCase();
+  const WIKIDATA_NODE_TYPES = ['entity', 'concept', 'data', 'entity_gen', 'framework'];
+  const isWikidataNodeType = WIKIDATA_NODE_TYPES.some(t => nodeTypeLower.includes(t));
+  
+  // Reset fetchAttempted when node changes
+  useEffect(() => {
+    if (lastFetchedNodeRef.current !== nodeId) {
+      setFetchAttempted(false);
+      lastFetchedNodeRef.current = nodeId;
+    }
+  }, [nodeId]);
+  const subtype = node.subtype || node.category || wikidataInfo?.instance_of_label || 'Subtype';
+  const degree = node.degree || node.related_count || 857;
+  
+  // Get description from wikidata or node
+  const description = wikidataInfo?.description || node.description || node.summary || '';
+  
+  // Function to fetch direct image URL from Wikimedia Commons API
+  const fetchDirectImageUrl = async (url) => {
+    try {
+      // Ensure HTTPS
+      url = url.replace(/^http:/, 'https:');
+      
+      // Check if it's already a direct upload.wikimedia.org URL
+      if (url.includes('upload.wikimedia.org')) {
+        setDirectImageUrl(url);
+        return;
+      }
+      
+      // Check if it's a Wikimedia Commons page URL
+      if (url.includes('commons.wikimedia.org')) {
+        let filename = null;
+        
+        // Try different URL patterns to extract filename
+        // Pattern 1: Special:FilePath/filename (handles URL-encoded filenames)
+        const specialFilePathMatch = url.match(/Special:FilePath\/(.+?)(?:\?|#|$)/);
+        if (specialFilePathMatch) {
+          try {
+            filename = decodeURIComponent(specialFilePathMatch[1]);
+          } catch (e) {
+            // If decoding fails, try using the raw match
+            filename = specialFilePathMatch[1].replace(/%20/g, ' ').replace(/%2F/g, '/');
+          }
+        } else {
+          // Pattern 2: File:filename
+          const fileMatch = url.match(/\/wiki\/File:(.+?)(?:\?|#|$)/);
+          if (fileMatch) {
+            try {
+              filename = decodeURIComponent(fileMatch[1]);
+            } catch (e) {
+              filename = fileMatch[1].replace(/%20/g, ' ').replace(/%2F/g, '/');
+            }
+          }
+        }
+        
+        if (filename) {
+          // Clean up filename (handle URL encoding)
+          filename = filename.replace(/%20/g, ' ').replace(/\+/g, ' ').trim();
+          
+          // Use Wikimedia Commons API to get direct image URL
+          // API format: https://commons.wikimedia.org/w/api.php?action=query&titles=File:filename&prop=imageinfo&iiprop=url&format=json
+          const fileTitle = filename.replace(/ /g, '_');
+          const apiUrl = `https://commons.wikimedia.org/w/api.php?action=query&titles=File:${encodeURIComponent(fileTitle)}&prop=imageinfo&iiprop=url&format=json&origin=*`;
+          
+          try {
+            const response = await fetch(apiUrl);
+            const data = await response.json();
+            
+            // Extract direct image URL from API response
+            const pages = data.query?.pages;
+            if (pages) {
+              const pageId = Object.keys(pages)[0];
+              const imageInfo = pages[pageId]?.imageinfo;
+              if (imageInfo && imageInfo[0]?.url) {
+                const directUrl = imageInfo[0].url;
+                console.log('✅ Converted Wikimedia URL via API:', { original: url, filename, direct: directUrl });
+                setDirectImageUrl(directUrl);
+                return;
+              }
+            }
+          } catch (apiError) {
+            console.warn('⚠️ Wikimedia API call failed:', apiError);
+          }
+        }
+      }
+      
+      // If conversion failed, use original URL with HTTPS
+      setDirectImageUrl(url);
+    } catch (e) {
+      console.error('❌ Error converting Wikimedia URL:', e);
+      setDirectImageUrl(url);
+    }
+  };
+  
+  // Get and normalize image URL from wikidata
+  const rawImageUrl = wikidataInfo?.image_url || wikidataInfo?.logo_url || null;
+  
+  // Normalize image URL - ensure it's a valid absolute URL
+  const normalizedUrl = useMemo(() => {
+    if (!rawImageUrl) return null;
+    
+    try {
+      const trimmed = String(rawImageUrl).trim();
+      
+      // Skip empty strings
+      if (!trimmed || trimmed === 'null' || trimmed === 'undefined' || trimmed === '') {
+        return null;
+      }
+      
+      // Convert HTTP to HTTPS for security and to avoid redirects
+      let url = trimmed;
+      if (url.startsWith('http://')) {
+        url = url.replace(/^http:/, 'https:');
+      }
+      
+      // If it's already a full URL, use it (now with HTTPS)
+      if (url.startsWith('https://')) {
+        return url;
+      }
+      
+      // If it's a protocol-relative URL, add https
+      if (url.startsWith('//')) {
+        return `https:${url}`;
+      }
+      
+      // If it starts with /, it might be a path
+      if (url.startsWith('/')) {
+        // Check if it looks like a Wikimedia Commons path
+        if (url.includes('commons.wikimedia.org') || url.includes('upload.wikimedia.org')) {
+          return `https:${url}`;
+        }
+        // Otherwise, it's a relative path - log for debugging
+        console.warn('Relative image URL detected:', url);
+        return url;
+      }
+      
+      // Return as-is if it doesn't match any pattern
+      return url;
+    } catch (e) {
+      console.error('Error processing image URL:', rawImageUrl, e);
+      return null;
+    }
+  }, [rawImageUrl]);
+  
+  // Use direct image URL if available, otherwise use normalized URL
+  const imageUrl = directImageUrl || normalizedUrl;
+  
+  // Fetch direct image URL for Wikimedia Commons URLs
+  useEffect(() => {
+    if (normalizedUrl && normalizedUrl.includes('commons.wikimedia.org') && !directImageUrl) {
+      fetchDirectImageUrl(normalizedUrl);
+    } else if (normalizedUrl && !normalizedUrl.includes('commons.wikimedia.org')) {
+      // For non-Wikimedia URLs, use normalized URL directly
+      setDirectImageUrl(normalizedUrl);
+    }
+  }, [normalizedUrl]);
+  
+  // Reset image error and direct URL when rawImageUrl changes
+  useEffect(() => {
+    setImageError(false);
+    setDirectImageUrl(null);
+  }, [rawImageUrl]);
+  
+  // Debug: Log image URL when available
+  useEffect(() => {
+    if (wikidataInfo) {
+      console.log('Wikidata info received:', {
+        hasImageUrl: !!wikidataInfo.image_url,
+        hasLogoUrl: !!wikidataInfo.logo_url,
+        imageUrl: wikidataInfo.image_url,
+        logoUrl: wikidataInfo.logo_url,
+        normalizedImageUrl: imageUrl
+      });
+    }
+  }, [wikidataInfo, imageUrl]);
+
+  // Fetch wikidata when component mounts (for entity, concept, data, entity_gen, framework)
+  useEffect(() => {
+    const fetchWikidata = async () => {
+      if (!isWikidataNodeType || !nodeId || nodeId === 'Unknown' || fetchAttempted || fetchingRef.current) return;
+      
+      fetchingRef.current = true;
+      setLoading(true);
+      setFetchAttempted(true);
+      
+      try {
+        let finalNodeId = nodeId;
+        if (nodeType === 'concept') { 
+          finalNodeId = 'co' + nodeId;
+        }
+        console.log('Fetching wikidata for node:', { nodeType, nodeId });
+        const url = `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'}/api/wikidata/${encodeURIComponent(nodeType || '')}/${encodeURIComponent(finalNodeId)}`;
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        
+        if (response.ok) {
+          const result = await response.json();
+          if (result.found && result.data) {
+            setWikidataInfo(result.data);
+          }
+        }
+      } catch (err) {
+        console.error('Wikidata fetch error:', err);
+      } finally {
+        setLoading(false);
+        fetchingRef.current = false;
+      }
+    };
+
+    fetchWikidata();
+  }, [nodeId, nodeType, isWikidataNodeType, fetchAttempted]);
+=======
   const subtype = node.subtype || node.category || 'Subtype';
   const degree = node.degree || node.related_count || 857;
   
@@ -216,6 +438,7 @@ const EntityTooltipLayout = ({ node, color }) => {
   
   // Get image URL from node (wikidata images are only fetched in RightSidebar on click)
   const imageUrl = node.IMG_SRC || null;
+>>>>>>> 5f7ddf4fd650fb72c90a1e075601ff668f0f6ca5
 
   return (
     <div 
@@ -246,6 +469,7 @@ const EntityTooltipLayout = ({ node, color }) => {
             background: '#9CA3AF',
           }}
         >
+          {imageUrl && !imageError ? (
           {imageUrl && !imageError ? (
             <img 
               src={imageUrl} 
