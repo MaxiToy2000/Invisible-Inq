@@ -14,6 +14,7 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
   const [currentChapter, setCurrentChapter] = useState(null);
   const [currentSubstory, setCurrentSubstory] = useState(null);
   const [graphData, setGraphData] = useState({ nodes: [], links: [] });
+  const [graphDescription, setGraphDescription] = useState(null);
   const [entityHighlights, setEntityHighlights] = useState([]);
   const [selectedNode, setSelectedNode] = useState(null);
   const [selectedEdge, setSelectedEdge] = useState(null);
@@ -141,15 +142,16 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
     let hasLoggedError = false;
 
     const loadSubstoryData = async () => {
-      if (!currentStoryId || !currentChapterId || !currentSubstoryId) {
-        if (isMounted) {
-          setCurrentSubstory(null);
-          setGraphData({ nodes: [], links: [] });
-          setEntityHighlights([]);
-          setError(null);
+        if (!currentStoryId || !currentChapterId || !currentSubstoryId) {
+          if (isMounted) {
+            setCurrentSubstory(null);
+            setGraphData({ nodes: [], links: [] });
+            setGraphDescription(null);
+            setEntityHighlights([]);
+            setError(null);
+          }
+          return;
         }
-        return;
-      }
 
       try {
         if (isMounted) {
@@ -251,6 +253,9 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
         
         const rawGraphData = await apiResponse.json();
 
+        // Extract description from response
+        const description = rawGraphData.description || null;
+
         let formattedGraphData;
 
         if (rawGraphData && rawGraphData.nodes && rawGraphData.nodes.length > 100) {
@@ -278,6 +283,7 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
 
         if (isMounted) {
           setGraphData(formattedGraphData);
+          setGraphDescription(description);
           setEntityHighlights(highlights);
           setLoading(false);
           hasLoggedError = false; // Reset error flag on success
@@ -305,6 +311,7 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
           setLoading(false);
 
           setGraphData({ nodes: [], links: [] });
+          setGraphDescription(null);
           setEntityHighlights([]);
         }
       }
@@ -704,6 +711,7 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
     currentChapterId,
     currentSubstoryId,
     graphData,
+    graphDescription,
     entityHighlights,
     selectedNode,
     selectedEdge,

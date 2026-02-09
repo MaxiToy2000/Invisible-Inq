@@ -283,15 +283,35 @@ const RightSidebar = ({
   };
 
   // Determine which node/edge to display based on mode (single select vs multi-select)
-  const displayNode = isMultiSelect ? (currentItem?.type === 'node' ? currentItem.data : null) : selectedNode;
-  const displayEdge = isMultiSelect ? (currentItem?.type === 'edge' ? currentItem.data : null) : selectedEdge;
+  const displayNode = useMemo(() => {
+    return isMultiSelect ? (currentItem?.type === 'node' ? currentItem.data : null) : selectedNode;
+  }, [isMultiSelect, currentItem, selectedNode]);
+  
+  const displayEdge = useMemo(() => {
+    return isMultiSelect ? (currentItem?.type === 'edge' ? currentItem.data : null) : selectedEdge;
+  }, [isMultiSelect, currentItem, selectedEdge]);
   
   // Wikidata lookup by node id (entity, concept, data, entity_gen, framework)
-  const entityName = displayNode?.name || displayNode?.['Entity Name'] || displayNode?.entity_name || displayNode?.id || null;
-  const entityId = displayNode?.id ?? displayNode?.gid ?? null;
+  const entityName = useMemo(() => {
+    return displayNode?.name || displayNode?.['Entity Name'] || displayNode?.entity_name || displayNode?.id || null;
+  }, [displayNode]);
+  
+  const entityId = useMemo(() => {
+    return displayNode?.id ?? displayNode?.gid ?? null;
+  }, [displayNode]);
+  
   const WIKIDATA_NODE_TYPES = ['entity', 'concept', 'data', 'entity_gen', 'framework'];
-  const nodeTypeLower = (displayNode?.node_type || displayNode?.type || '').toLowerCase();
-  const isWikidataNode = displayNode && WIKIDATA_NODE_TYPES.some(t => nodeTypeLower.includes(t));
+  const nodeTypeLower = useMemo(() => {
+    return (displayNode?.node_type || displayNode?.type || displayNode?.category || '').toLowerCase();
+  }, [displayNode]);
+  
+  const nodeType = useMemo(() => {
+    return displayNode?.node_type || displayNode?.type || displayNode?.category || '';
+  }, [displayNode]);
+  
+  const isWikidataNode = useMemo(() => {
+    return displayNode && WIKIDATA_NODE_TYPES.some(t => nodeTypeLower.includes(t));
+  }, [displayNode, nodeTypeLower]);
   
   // Function to fetch direct image URL from Wikimedia Commons API
   const fetchDirectImageUrl = async (url) => {
@@ -358,6 +378,7 @@ const RightSidebar = ({
     if (lastFetchedNodeIdRef.current !== entityId) {
       setWikidataInfo(null);
       setWikidataImageUrl(null);
+      wikidataFetchingRef.current = false; // Reset fetching flag when entity changes
       lastFetchedNodeIdRef.current = entityId;
     }
   }, [entityId]);
@@ -377,10 +398,9 @@ const RightSidebar = ({
       setWikidataLoading(true);
       
       try {
-        const nodeType = displayNode?.node_type || displayNode?.type || displayNode?.category || '';
         let finalEntityId = entityId;
         // For concept nodes, prepend 'co' to the entity ID
-        if (nodeType.toLowerCase() == 'concept') {
+        if (nodeTypeLower === 'concept') {
           finalEntityId = 'co' + entityId;
         }
         const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
@@ -433,7 +453,7 @@ const RightSidebar = ({
     };
 
     fetchWikidata();
-  }, [entityId, isWikidataNode, displayNode?.node_type, displayNode?.type, displayNode?.category]);
+  }, [entityId, isWikidataNode, nodeType, displayNode]);
   
   // Determine which image to display (prioritize wikidata image)
   const displayImageUrl = wikidataImageUrl || displayNode?.IMG_SRC || null;
