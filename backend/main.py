@@ -10,7 +10,7 @@ import logging
 import os
 import aiofiles
 from config import Config
-from services import get_all_stories, get_graph_data, get_graph_data_by_section_and_country, get_gr_id_description, search_with_ai, get_story_statistics, get_all_node_types, get_calendar_data, get_cluster_data, get_entity_wikidata, search_entity_wikidata
+from services import get_all_stories, get_graph_data, get_graph_data_by_section_and_country, get_gr_id_description, search_with_ai, get_story_statistics, get_all_node_types, get_calendar_data, get_cluster_data, get_entity_wikidata, get_wikidata_by_id, search_entity_wikidata
 from models import GraphData, UserCreate, UserLogin, Token, UserResponse, GoogleAuthRequest, UserActivityCreate, UserActivityResponse, AdminLoginRequest, SubmissionCreate, SubmissionResponse, UserSubscriptionResponse, SubmissionUpdateRequest
 from pydantic import BaseModel
 from auth import create_access_token, verify_google_token, get_current_user, get_current_admin_user
@@ -972,6 +972,32 @@ async def get_node_types():
             status_code=500,
             detail=f"Error fetching node types: {str(e)}"
         )
+
+# ============== Wikidata Endpoint (registered early to avoid route conflicts) ==============
+@app.get("/api/wikidata/{node_type}/{node_id}")
+async def get_wikidata_by_node(node_type: str, node_id: str):
+    """
+    Get wikidata information by node type and node id.
+    Supports node types: entity, concept, data, entity_gen, framework.
+    """
+    try:
+        from urllib.parse import unquote
+        print(f"Node type: {node_type}, Node id: {node_id}")
+        node_type = unquote(node_type)
+        node_id = unquote(node_id)
+        if not node_id or not node_id.strip():
+            raise HTTPException(status_code=400, detail="Node id is required")
+        if not node_type or not node_type.strip():
+            raise HTTPException(status_code=400, detail="Node type is required")
+        result = get_wikidata_by_id(node_id.strip(), node_type.strip())
+        logger.info(f"Wikidata request: node_type={node_type}, node_id={node_id}, found={result.get('found')}")
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception(f"Error fetching wikidata for node_type '{node_type}' node_id '{node_id}': {e}")
+        raise HTTPException(status_code=500, detail=f"Error fetching wikidata: {str(e)}")
+
 
 
 # ============== Entity Wikidata Endpoints ==============
