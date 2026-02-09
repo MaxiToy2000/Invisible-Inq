@@ -378,10 +378,6 @@ const RightSidebar = ({
       
       try {
         const nodeType = displayNode?.node_type || displayNode?.type || displayNode?.category || '';
-<<<<<<< HEAD
-        const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? (import.meta.env.DEV ? '' : 'http://localhost:8000');
-        const url = `${apiBaseUrl}/api/wikidata/${encodeURIComponent(nodeType)}/${encodeURIComponent(entityId)}`;
-=======
         let finalEntityId = entityId;
         // For concept nodes, prepend 'co' to the entity ID
         if (nodeType.toLowerCase() == 'concept') {
@@ -389,7 +385,6 @@ const RightSidebar = ({
         }
         const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
         const url = `${apiBaseUrl}/api/wikidata/${encodeURIComponent(nodeType)}/${encodeURIComponent(finalEntityId)}`;
->>>>>>> 5f7ddf4fd650fb72c90a1e075601ff668f0f6ca5
         const response = await fetch(
           url,
           { 
@@ -443,19 +438,11 @@ const RightSidebar = ({
   // Determine which image to display (prioritize wikidata image)
   const displayImageUrl = wikidataImageUrl || displayNode?.IMG_SRC || null;
   
-<<<<<<< HEAD
-  // Node Properties tab: id, name, node_type; description and url only when they have a value
-=======
   // Node Properties tab: name, node_type; wikidata fields (description, alias, foundation, country, url) if available
->>>>>>> 5f7ddf4fd650fb72c90a1e075601ff668f0f6ca5
   const filteredNodeProperties = displayNode
     ? [
         ['name', displayNode.name ?? ''],
         ['node_type', displayNode.node_type ?? displayNode.type ?? displayNode.category ?? ''],
-<<<<<<< HEAD
-        ...(displayNode.description != null && displayNode.description !== '' ? [['description', displayNode.description]] : []),
-        ...(displayNode.url != null && displayNode.url !== '' ? [['url', displayNode.url]] : [])
-=======
         // Add wikidata fields if available (after name and node_type)
         ...(wikidataInfo?.description != null && wikidataInfo?.description !== '' 
           ? [['description', wikidataInfo.description]] 
@@ -483,7 +470,6 @@ const RightSidebar = ({
         ...(wikidataInfo?.url != null && wikidataInfo?.url !== '' 
           ? [['url', wikidataInfo.url]] 
           : []),
->>>>>>> 5f7ddf4fd650fb72c90a1e075601ff668f0f6ca5
       ].filter(([, value]) => value !== undefined && value !== null)
     : [];
 

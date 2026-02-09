@@ -203,6 +203,7 @@ const BaseTooltipLayout = ({ node, color, graphData }) => {
 };
 
 // Entity-specific layout - displays node information (wikidata fetched in RightSidebar on click)
+// Entity-specific layout - displays node information (wikidata fetched in RightSidebar on click)
 const EntityTooltipLayout = ({ node, color }) => {
   const [imageError, setImageError] = useState(false);
 <<<<<<< HEAD
@@ -213,7 +214,6 @@ const EntityTooltipLayout = ({ node, color }) => {
 >>>>>>> 5f7ddf4fd650fb72c90a1e075601ff668f0f6ca5
   
   const entityName = node.name || node['Entity Name'] || node.entity_name || node.id || 'Unknown';
-  let nodeId = node.id || node.gid || null;
   const nodeType = node.node_type || node.type || 'Type';
 <<<<<<< HEAD
   const nodeTypeLower = (nodeType || '').toLowerCase();
@@ -469,6 +469,7 @@ const EntityTooltipLayout = ({ node, color }) => {
             background: '#9CA3AF',
           }}
         >
+          {imageUrl && !imageError ? (
           {imageUrl && !imageError ? (
             <img 
               src={imageUrl} 
