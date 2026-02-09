@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   FaUser, FaBuilding, FaMapMarkerAlt, FaDollarSign, 
   FaHandshake, FaFlag, FaBullseye, FaCog, 
@@ -209,15 +209,28 @@ const EntityTooltipLayout = ({ node, color }) => {
   const [fetchAttempted, setFetchAttempted] = useState(false);
   const [imageError, setImageError] = useState(false);
   const [directImageUrl, setDirectImageUrl] = useState(null);
+  const fetchingRef = useRef(false);
+  const lastFetchedNodeRef = useRef(null);
   
   const entityName = node.name || node['Entity Name'] || node.entity_name || node.id || 'Unknown';
+  let nodeId = node.id || node.gid || null;
   const nodeType = node.node_type || node.type || 'Type';
+  const nodeTypeLower = (nodeType || '').toLowerCase();
+  const WIKIDATA_NODE_TYPES = ['entity', 'concept', 'data', 'entity_gen', 'framework'];
+  const isWikidataNodeType = WIKIDATA_NODE_TYPES.some(t => nodeTypeLower.includes(t));
+  
+  // Reset fetchAttempted when node changes
+  useEffect(() => {
+    if (lastFetchedNodeRef.current !== nodeId) {
+      setFetchAttempted(false);
+      lastFetchedNodeRef.current = nodeId;
+    }
+  }, [nodeId]);
   const subtype = node.subtype || node.category || wikidataInfo?.instance_of_label || 'Subtype';
   const degree = node.degree || node.related_count || 857;
   
   // Get description from wikidata or node
-  const description = wikidataInfo?.description || node.description || node.summary || 
-    'The purpose of lorem ipsum is to create a natural looking block of text (sentence, paragraph, page, etc.) that doesn\'t distract from the layout.';
+  const description = wikidataInfo?.description || node.description || node.summary || '';
   
   // Function to fetch direct image URL from Wikimedia Commons API
   const fetchDirectImageUrl = async (url) => {
@@ -378,45 +391,43 @@ const EntityTooltipLayout = ({ node, color }) => {
     }
   }, [wikidataInfo, imageUrl]);
 
-  // Fetch wikidata when component mounts
+  // Fetch wikidata when component mounts (for entity, concept, data, entity_gen, framework)
   useEffect(() => {
     const fetchWikidata = async () => {
-      if (!entityName || entityName === 'Unknown' || fetchAttempted) return;
+      if (!isWikidataNodeType || !nodeId || nodeId === 'Unknown' || fetchAttempted || fetchingRef.current) return;
       
+      fetchingRef.current = true;
       setLoading(true);
       setFetchAttempted(true);
       
       try {
-        const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
-        const response = await fetch(
-          `${apiBaseUrl}/api/entity/wikidata/${encodeURIComponent(entityName)}`,
-          { 
-            method: 'GET',
-            headers: { 'Content-Type': 'application/json' }
-          }
-        );
+        let finalNodeId = nodeId;
+        if (nodeType === 'concept') { 
+          finalNodeId = 'co' + nodeId;
+        }
+        console.log('Fetching wikidata for node:', { nodeType, nodeId });
+        const url = `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'}/api/wikidata/${encodeURIComponent(nodeType || '')}/${encodeURIComponent(finalNodeId)}`;
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' }
+        });
         
         if (response.ok) {
           const result = await response.json();
-          console.log('Wikidata API response:', result);
           if (result.found && result.data) {
-            console.log('Setting wikidata info:', result.data);
             setWikidataInfo(result.data);
-          } else {
-            console.log('No wikidata found for entity:', entityName);
           }
-        } else {
-          console.error('Wikidata API error:', response.status, response.statusText);
         }
       } catch (err) {
         console.error('Wikidata fetch error:', err);
       } finally {
         setLoading(false);
+        fetchingRef.current = false;
       }
     };
 
     fetchWikidata();
-  }, [entityName, fetchAttempted]);
+  }, [nodeId, nodeType, isWikidataNodeType, fetchAttempted]);
 
   return (
     <div 
@@ -1022,11 +1033,14 @@ const ProcessTooltipLayout = ({ node, color, graphData }) => {
   return <BaseTooltipLayout node={node} color={color} graphData={graphData} />;
 };
 
+// Node types that use EntityTooltipLayout with wikidata lookup by id
+const WIKIDATA_LAYOUT_TYPES = ['entity', 'person', 'concept', 'data', 'entity_gen', 'framework'];
+
 // Get the appropriate layout component based on node type
 const getTooltipLayout = (nodeType) => {
   const type = nodeType?.toLowerCase() || '';
   
-  if (type.includes('entity') || type.includes('person')) return EntityTooltipLayout;
+  if (WIKIDATA_LAYOUT_TYPES.some(t => type.includes(t))) return EntityTooltipLayout;
   if (type.includes('agency') || type.includes('organization')) return AgencyTooltipLayout;
   if (type.includes('country')) return CountryTooltipLayout;
   if (type.includes('location') || type.includes('place')) return LocationTooltipLayout;
@@ -1049,12 +1063,12 @@ const NodeTooltipEnhanced = ({ node, position, graphData }) => {
   const color = getNodeColor(nodeType);
   const TooltipLayout = getTooltipLayout(nodeType);
   
-  // Allow pointer events for entity tooltips (for clickable links)
-  const isEntity = nodeType.toLowerCase().includes('entity') || nodeType.toLowerCase().includes('person');
+  // Allow pointer events for wikidata tooltips (entity, concept, data, entity_gen, framework - for clickable links)
+  const isWikidataTooltip = WIKIDATA_LAYOUT_TYPES.some(t => (nodeType || '').toLowerCase().includes(t));
 
   return (
     <div
-      className={`fixed z-[9999] ${isEntity ? '' : 'pointer-events-none'}`}
+      className={`fixed z-[9999] ${isWikidataTooltip ? '' : 'pointer-events-none'}`}
       style={{
         left: `${position.x}px`,
         top: `${position.y}px`,

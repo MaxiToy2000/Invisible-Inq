@@ -1017,6 +1017,61 @@ def get_entity_wikidata(entity_name: str) -> Dict[str, Any]:
         raise
 
 
+def get_wikidata_by_id(node_id: str, node_type: str = None) -> Dict[str, Any]:
+    """
+    Fetch wikidata information by entity/node id.
+    Looks up in entity_wikidata table by id or gid (Neo4j node id mapping).
+    
+    Args:
+        node_id: The node/entity id from the graph
+        node_type: Optional node type (entity, concept, data, entity_gen, framework)
+        
+    Returns:
+        Dict with 'found' boolean and 'data' containing entity details if found
+    """
+    from neon_database import neon_db
+    
+    node_id = str(node_id).strip() if node_id else ""
+    
+    logger.info(f"Fetching wikidata for node_id: '{node_id}'" + (f", node_type: '{node_type}'" if node_type else ""))
+    
+    if not neon_db.is_configured():
+        logger.warning("Neon database not configured, returning empty result")
+        return {"found": False, "data": None, "error": "Wikidata database not configured"}
+    
+    if not node_id:
+        return {"found": False, "data": None}
+    
+    try:
+        query = """
+            SELECT *
+            FROM %s
+            WHERE id = %s
+            LIMIT 1
+        """
+        results = neon_db.execute_query(query, (node_type, node_id))
+
+        if results:
+            entity_data = dict(results[0])
+            for key, value in entity_data.items():
+                if hasattr(value, 'isoformat'):
+                    entity_data[key] = value.isoformat()
+                elif value is None:
+                    entity_data[key] = None
+                elif key in ['image_url', 'logo_url'] and value == '':
+                    entity_data[key] = None
+            
+            logger.info(f"Found wikidata for node_id: '{node_id}'")
+            return {"found": True, "data": entity_data}
+        
+        logger.warning(f"No wikidata found for node_id: '{node_id}'")
+        return {"found": False, "data": None}
+        
+    except Exception as e:
+        logger.error(f"Error fetching wikidata for node_id '{node_id}': {e}")
+        raise
+
+
 def search_entity_wikidata(search_term: str, limit: int = 10) -> Dict[str, Any]:
     """
     Search for entities in the wikidata table.

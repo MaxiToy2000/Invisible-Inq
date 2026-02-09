@@ -67,6 +67,8 @@ const RightSidebar = ({
   const [wikidataInfo, setWikidataInfo] = useState(null);
   const [wikidataImageUrl, setWikidataImageUrl] = useState(null);
   const [wikidataLoading, setWikidataLoading] = useState(false);
+  const wikidataFetchingRef = useRef(false);
+  const lastFetchedNodeIdRef = useRef(null);
 
   // Sync external sortBy with local state
   useEffect(() => {
@@ -263,9 +265,12 @@ const RightSidebar = ({
   const displayNode = isMultiSelect ? (currentItem?.type === 'node' ? currentItem.data : null) : selectedNode;
   const displayEdge = isMultiSelect ? (currentItem?.type === 'edge' ? currentItem.data : null) : selectedEdge;
   
-  // Get entity name for wikidata lookup
+  // Wikidata lookup by node id (entity, concept, data, entity_gen, framework)
   const entityName = displayNode?.name || displayNode?.['Entity Name'] || displayNode?.entity_name || displayNode?.id || null;
-  const isEntityNode = displayNode && (displayNode.node_type?.toLowerCase().includes('entity') || displayNode.type?.toLowerCase().includes('entity'));
+  const entityId = displayNode?.id ?? displayNode?.gid ?? null;
+  const WIKIDATA_NODE_TYPES = ['entity', 'concept', 'data', 'entity_gen', 'framework'];
+  const nodeTypeLower = (displayNode?.node_type || displayNode?.type || '').toLowerCase();
+  const isWikidataNode = displayNode && WIKIDATA_NODE_TYPES.some(t => nodeTypeLower.includes(t));
   
   // Function to fetch direct image URL from Wikimedia Commons API
   const fetchDirectImageUrl = async (url) => {
@@ -327,21 +332,35 @@ const RightSidebar = ({
     }
   };
   
-  // Fetch wikidata when displayNode changes (for entity nodes)
+  // Reset wikidata when node changes
   useEffect(() => {
+    if (lastFetchedNodeIdRef.current !== entityId) {
+      setWikidataInfo(null);
+      setWikidataImageUrl(null);
+      lastFetchedNodeIdRef.current = entityId;
+    }
+  }, [entityId]);
+
+  // Fetch wikidata when displayNode changes (entity, concept, data, entity_gen, framework)
+  useEffect(() => { 
     const fetchWikidata = async () => {
-      if (!isEntityNode || !entityName || entityName === 'Unknown') {
-        setWikidataInfo(null);
-        setWikidataImageUrl(null);
+      if (!isWikidataNode || !entityId || entityId === 'Unknown' || wikidataFetchingRef.current) {
+        if (!isWikidataNode || !entityId || entityId === 'Unknown') {
+          setWikidataInfo(null);
+          setWikidataImageUrl(null);
+        }
         return;
       }
       
+      wikidataFetchingRef.current = true;
       setWikidataLoading(true);
       
       try {
-        const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+        const nodeType = displayNode?.node_type || displayNode?.type || displayNode?.category || '';
+        const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? (import.meta.env.DEV ? '' : 'http://localhost:8000');
+        const url = `${apiBaseUrl}/api/wikidata/${encodeURIComponent(nodeType)}/${encodeURIComponent(entityId)}`;
         const response = await fetch(
-          `${apiBaseUrl}/api/entity/wikidata/${encodeURIComponent(entityName)}`,
+          url,
           { 
             method: 'GET',
             headers: { 'Content-Type': 'application/json' }
@@ -383,25 +402,24 @@ const RightSidebar = ({
         setWikidataImageUrl(null);
       } finally {
         setWikidataLoading(false);
+        wikidataFetchingRef.current = false;
       }
     };
 
     fetchWikidata();
-  }, [entityName, isEntityNode]);
+  }, [entityId, isWikidataNode, displayNode?.node_type, displayNode?.type, displayNode?.category]);
   
   // Determine which image to display (prioritize wikidata image)
   const displayImageUrl = wikidataImageUrl || displayNode?.IMG_SRC || null;
   
+  // Node Properties tab: id, name, node_type; description and url only when they have a value
   const filteredNodeProperties = displayNode
-    ? Object.entries(displayNode)
-        .filter(([key, value]) => (
-          !key.startsWith('__') &&
-          !['x', 'y', 'z', 'vx', 'vy', 'vz', 'fx', 'fy', 'fz', 'index', 'IMG_SRC', 'highlight'].includes(key) &&
-          value !== null &&
-          typeof value !== 'function' &&
-          (typeof value !== 'object' || Array.isArray(value))
-        ))
-        .slice(0, 8)
+    ? [
+        ['name', displayNode.name ?? ''],
+        ['node_type', displayNode.node_type ?? displayNode.type ?? displayNode.category ?? ''],
+        ...(displayNode.description != null && displayNode.description !== '' ? [['description', displayNode.description]] : []),
+        ...(displayNode.url != null && displayNode.url !== '' ? [['url', displayNode.url]] : [])
+      ].filter(([, value]) => value !== undefined && value !== null)
     : [];
 
   const filteredEdgeProperties = displayEdge
@@ -501,7 +519,7 @@ const RightSidebar = ({
           {}
           <div className="flex-shrink-0 w-1/3 pr-2 h-full flex items-center">
             {/* Only show image at top for non-entity nodes */}
-            {displayNode && !isEntityNode && (
+            {displayNode && !isWikidataNode && (
               <div className="p-2 bg-[#09090B] rounded shadow-sm flex justify-center border border-[#707070] w-full">
                 <div className="w-24 h-24 bg-gray-800 rounded-full overflow-hidden flex items-center justify-center">
                   {displayNode?.IMG_SRC ? (
@@ -548,7 +566,7 @@ const RightSidebar = ({
                 )}
                 
                 {/* Wikidata Information Section (for Entity Nodes) */}
-                {displayNode && isEntityNode && wikidataInfo && (
+                {displayNode && isWikidataNode && wikidataInfo && (
                   <div className="mb-4 flex flex-col space-y-3 pb-4">
                     <div className="flex flex-row">
                       {/* Left Line */}
@@ -743,7 +761,7 @@ const RightSidebar = ({
                 )}
                 
                 {/* Node Properties - Only show for non-entity nodes, or for entity nodes when wikidata is not available */}
-                {displayNode && (!isEntityNode || (isEntityNode && !wikidataInfo)) && filteredNodeProperties.length > 0 && (
+                {displayNode && (!isWikidataNode || (isWikidataNode && !wikidataInfo)) && filteredNodeProperties.length > 0 && (
                   <div className="flex flex-col space-y-3">
                     {filteredNodeProperties.map(([key, value], index) => {
                       const isUrlProperty = key.toLowerCase().includes('url') || key.toLowerCase() === 'link' || key.toLowerCase().includes('website') || key.toLowerCase().includes('webpage');
@@ -841,7 +859,7 @@ const RightSidebar = ({
               {((selectedNode || selectedEdge) || isMultiSelect) && (
                 <div className="flex flex-col h-full">
                 {/* Only show top image for non-entity nodes */}
-                {displayNode && !isEntityNode && (
+                {displayNode && !!displayNode.IMG_SRC && (
                   <div className="mb-4 p-2 bg-[#09090B] rounded shadow-sm flex justify-center w-full border border-[#707070] flex-shrink-0">
                     <div className="w-20 h-20 bg-gray-800 overflow-hidden flex items-center justify-center">
                       {displayNode?.IMG_SRC ? (
@@ -865,7 +883,7 @@ const RightSidebar = ({
                   {activeTab === 'node-properties' && (
                     <div className="flex-1 overflow-y-auto pr-2 min-h-0">
                   {/* Wikidata Information Section (for Entity Nodes) - Desktop */}
-                  {displayNode && isEntityNode && wikidataInfo && (
+                  {displayNode && isWikidataNode && wikidataInfo && (
                     <div className="w-full flex-shrink-0 mb-4 py-2 pr-2 bg-[#09090B] rounded-md border border-[#707070]">
                       <div className="flex flex-row">
                         {/* Left Line */}
@@ -1060,7 +1078,7 @@ const RightSidebar = ({
                   )}
                   
                   {/* Node Details - Only show for non-entity nodes, or for entity nodes when wikidata is not available */}
-                  {displayNode && (!isEntityNode || (isEntityNode && !wikidataInfo)) && filteredNodeProperties.length > 0 && (
+                  {displayNode && (!isWikidataNode || (isWikidataNode && !wikidataInfo)) && filteredNodeProperties.length > 0 && (
                     <div className="w-full flex-shrink-0 mb-4">
                       <div className="flex flex-col space-y-3">
                         {filteredNodeProperties.map(([key, value], index) => {
