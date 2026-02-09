@@ -202,19 +202,20 @@ const BaseTooltipLayout = ({ node, color, graphData }) => {
   );
 };
 
-// Entity-specific layout with Wikidata integration - Figma Design
+// Entity-specific layout - displays node information (wikidata fetched in RightSidebar on click)
 const EntityTooltipLayout = ({ node, color }) => {
-  const [wikidataInfo, setWikidataInfo] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [fetchAttempted, setFetchAttempted] = useState(false);
   const [imageError, setImageError] = useState(false);
+<<<<<<< HEAD
   const [directImageUrl, setDirectImageUrl] = useState(null);
   const fetchingRef = useRef(false);
   const lastFetchedNodeRef = useRef(null);
+=======
+>>>>>>> 5f7ddf4fd650fb72c90a1e075601ff668f0f6ca5
   
   const entityName = node.name || node['Entity Name'] || node.entity_name || node.id || 'Unknown';
   let nodeId = node.id || node.gid || null;
   const nodeType = node.node_type || node.type || 'Type';
+<<<<<<< HEAD
   const nodeTypeLower = (nodeType || '').toLowerCase();
   const WIKIDATA_NODE_TYPES = ['entity', 'concept', 'data', 'entity_gen', 'framework'];
   const isWikidataNodeType = WIKIDATA_NODE_TYPES.some(t => nodeTypeLower.includes(t));
@@ -428,6 +429,16 @@ const EntityTooltipLayout = ({ node, color }) => {
 
     fetchWikidata();
   }, [nodeId, nodeType, isWikidataNodeType, fetchAttempted]);
+=======
+  const subtype = node.subtype || node.category || 'Subtype';
+  const degree = node.degree || node.related_count || 857;
+  
+  // Get description from node (wikidata is only fetched in RightSidebar on click)
+  const description = node.description || node.summary || '';
+  
+  // Get image URL from node (wikidata images are only fetched in RightSidebar on click)
+  const imageUrl = node.IMG_SRC || null;
+>>>>>>> 5f7ddf4fd650fb72c90a1e075601ff668f0f6ca5
 
   return (
     <div 
@@ -458,11 +469,7 @@ const EntityTooltipLayout = ({ node, color }) => {
             background: '#9CA3AF',
           }}
         >
-          {loading ? (
-            <div className="w-full h-full flex items-center justify-center">
-              <Loader size={24} />
-            </div>
-          ) : imageUrl && !imageError ? (
+          {imageUrl && !imageError ? (
             <img 
               src={imageUrl} 
               alt={entityName}
@@ -474,19 +481,9 @@ const EntityTooltipLayout = ({ node, color }) => {
               onError={(e) => { 
                 console.error('❌ Image failed to load:', {
                   url: imageUrl,
-                  originalUrl: rawImageUrl,
                   error: e,
                   target: e.target
                 });
-                // Try to see if it's a CORS issue
-                const img = e.target;
-                if (img && img.complete && img.naturalWidth === 0) {
-                  console.warn('Image load failed - possible CORS or invalid URL');
-                  // If it's a Wikimedia URL, try using a proxy or different format
-                  if (imageUrl.includes('wikimedia.org')) {
-                    console.warn('Wikimedia image failed - this might be a CORS issue. Consider using a proxy.');
-                  }
-                }
                 setImageError(true);
               }}
             />
