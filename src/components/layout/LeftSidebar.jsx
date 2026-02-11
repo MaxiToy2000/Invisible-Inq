@@ -482,22 +482,6 @@ const LeftSidebar = ({
             </div>
           )}
         </div>
-
-        {}
-        {currentSubstory && (currentSubstory.title || currentSubstory.brief) && (
-          <div className="pb-4">
-            <div>
-              {}
-              {currentSubstory.brief && (
-                <div
-                  className="text-[#B4B4B4] mb-3 font-[sans-serif] font-normal text-[14px] leading-[18px] tracking-[0px]"
-                >
-                  {renderBriefWithBadges(currentSubstory.brief, importantEntities)}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
       </div>
 
       {}

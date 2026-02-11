@@ -264,19 +264,23 @@ def get_graph_data_by_section_query(section_gid: Optional[str] = None, section_q
         .*,
         elementId: elementId(n),
         labels: labels(n),
-        node_type: head(labels(n))
+        node_type: head(labels(n)),
+        id: coalesce(toString(n.id), toString(n.gid), toString(n.g_id), elementId(n)),
+        description: coalesce(n.description, n.Description, n.summary, n.Summary, n.text, n.Text, n.brief, n.desc, ""),
+        url: coalesce(n.url, n.URL, n.article_url, n.`Article URL`, n.`Article Link`, n.article_link, n.`Source URL`, "")
       }}],
       links: [rd IN all_rels | {{
-        gid: coalesce(toString(rd.rel.gid), toString(rd.rel.id), elementId(rd.rel)),
+        gid: coalesce(toString(rd.rel.id), toString(rd.rel.gid), elementId(rd.rel)),
+        id: coalesce(toString(rd.rel.id), toString(rd.rel.gid), elementId(rd.rel)),
         elementId: elementId(rd.rel),
         type: type(rd.rel),
-        from_gid: coalesce(toString(rd.from.gid), toString(rd.from.id), toString(rd.from.g_id), elementId(rd.from)),
-        to_gid: coalesce(toString(rd.to.gid), toString(rd.to.id), toString(rd.to.g_id), elementId(rd.to)),
+        from_gid: coalesce(toString(rd.from.id), toString(rd.from.gid), toString(rd.from.g_id), elementId(rd.from)),
+        to_gid: coalesce(toString(rd.to.id), toString(rd.to.gid), toString(rd.to.g_id), elementId(rd.to)),
         from_labels: labels(rd.from),
         to_labels: labels(rd.to),
         relationship_summary: coalesce(rd.rel.summary, rd.rel.`Relationship Summary`, rd.rel.`Relationship Summary_new`, rd.rel.name, rd.rel.text),
         article_title: coalesce(rd.rel.title, rd.rel.`Article Title`, rd.rel.`Source Title`),
-        article_url: coalesce(rd.rel.url, rd.rel.`Article URL`, rd.rel.`article URL`, rd.rel.`Source URL`),
+        article_url: coalesce(rd.rel.url, rd.rel.`Article URL`, rd.rel.`article URL`, rd.rel.`Source URL`, rd.rel.`Article Link`, rd.rel.article_link, rd.rel.link),
         relationship_date: coalesce(rd.rel.date, rd.rel.`Date`, rd.rel.`Relationship Date`),
         properties: properties(rd.rel)
       }}]
@@ -338,19 +342,22 @@ def get_graph_data_by_section_query_legacy(section_gid: Optional[str] = None, se
         .*,
         elementId: elementId(n),
         labels: labels(n),
-        node_type: head(labels(n))
+        node_type: head(labels(n)),
+        id: coalesce(toString(n.id), toString(n.gid), elementId(n)),
+        description: coalesce(n.description, n.Description, n.summary, n.Summary, n.text, n.Text, n.brief, n.desc, ""),
+        url: coalesce(n.url, n.URL, n.article_url, n.`Article URL`, n.`Article Link`, n.article_link, n.`Source URL`, "")
       }}],
       links: [rd IN all_rels | {{
-        gid: coalesce(toString(rd.rel.gid), elementId(rd.rel)),
+        gid: coalesce(toString(rd.rel.id), toString(rd.rel.gid), elementId(rd.rel)),
         elementId: elementId(rd.rel),
         type: rd.type,
-        from_gid: coalesce(toString(rd.from.gid), elementId(rd.from)),
-        to_gid: coalesce(toString(rd.to.gid), elementId(rd.to)),
+        from_gid: coalesce(toString(rd.from.id), toString(rd.from.gid), elementId(rd.from)),
+        to_gid: coalesce(toString(rd.to.id), toString(rd.to.gid), elementId(rd.to)),
         from_labels: labels(rd.from),
         to_labels: labels(rd.to),
         relationship_summary: coalesce(rd.rel.summary, rd.rel.`Relationship Summary`, rd.rel.`Relationship Summary_new`, rd.rel.name, rd.rel.text),
         article_title: coalesce(rd.rel.title, rd.rel.`Article Title`, rd.rel.`Source Title`),
-        article_url: coalesce(rd.rel.url, rd.rel.`Article URL`, rd.rel.`article URL`, rd.rel.`Source URL`),
+        article_url: coalesce(rd.rel.url, rd.rel.`Article URL`, rd.rel.`article URL`, rd.rel.`Source URL`, rd.rel.`Article Link`, rd.rel.article_link, rd.rel.link),
         relationship_date: coalesce(rd.rel.date, rd.rel.`Date`, rd.rel.`Relationship Date`),
         properties: properties(rd.rel)
       }}]
@@ -462,33 +469,83 @@ def get_section_by_id_query(section_gid: str):
     } AS section
     """, {"section_gid": section_gid}
 
+def get_graph_data_by_section_and_country_query_gr_id(section_query: str, country_name: str) -> Tuple[str, dict]:
+    """
+    gr_id schema: section is :gr_id category='section'. Find section by id/g_id/gid;
+    find country in (section)-[*1..10]-(country); subgraph (country)-[*0..2]-(n) with n connected to section.
+    """
+    query = """
+    MATCH (section:gr_id)
+    WHERE toLower(trim(coalesce(section.category, ''))) = 'section'
+      AND (toString(coalesce(section.id, section.g_id, section.gid)) = toString($section_query)
+           OR section.name = $section_query
+           OR section.`Section Name` = $section_query
+           OR section.`graph name` = $section_query)
+    WITH section
+
+    MATCH (section)-[*1..10]-(country)
+    WHERE NONE(l IN labels(country) WHERE toLower(l) = 'gr_id')
+      AND ANY(l IN labels(country) WHERE toLower(l) = 'country')
+      AND toLower(coalesce(country.name, country.`Country Name`, country.`Country Name_new`, country.`Entity Name`, '')) = toLower($country_name)
+    WITH section, country
+    LIMIT 1
+
+    MATCH (country)-[*0..2]-(n)
+    WHERE NONE(l IN labels(n) WHERE toLower(l) = 'gr_id')
+    WITH section, country, COLLECT(DISTINCT n) AS subgraph_nodes
+    WITH [x IN subgraph_nodes WHERE x IS NOT NULL] AS all_nodes
+
+    WITH all_nodes,
+         [(a)-[rel]-(b) WHERE a IN all_nodes AND b IN all_nodes AND id(a) < id(b) | { rel: rel, from: a, to: b }] AS all_rels
+    RETURN {
+      nodes: [n IN all_nodes | n {
+        .*,
+        elementId: elementId(n),
+        labels: labels(n),
+        node_type: head(labels(n)),
+        id: coalesce(toString(n.id), toString(n.gid), toString(n.g_id), elementId(n)),
+        description: coalesce(n.description, n.Description, n.summary, n.Summary, n.text, n.Text, n.brief, n.desc, ""),
+        url: coalesce(n.url, n.URL, n.article_url, n.`Article URL`, n.`Article Link`, n.article_link, n.`Source URL`, "")
+      }],
+      links: [rd IN all_rels | {
+        gid: coalesce(toString(rd.rel.id), toString(rd.rel.gid), elementId(rd.rel)),
+        elementId: elementId(rd.rel),
+        type: type(rd.rel),
+        from_gid: coalesce(toString(rd.from.id), toString(rd.from.gid), toString(rd.from.g_id), elementId(rd.from)),
+        to_gid: coalesce(toString(rd.to.id), toString(rd.to.gid), toString(rd.to.g_id), elementId(rd.to)),
+        relationship_summary: coalesce(rd.rel.summary, rd.rel.`Relationship Summary`, rd.rel.`Relationship Summary_new`, rd.rel.name, rd.rel.text),
+        article_title: coalesce(rd.rel.title, rd.rel.`Article Title`, rd.rel.`Source Title`),
+        article_url: coalesce(rd.rel.url, rd.rel.`Article URL`, rd.rel.`article URL`, rd.rel.`Source URL`, rd.rel.`Article Link`, rd.rel.article_link, rd.rel.link),
+        relationship_date: coalesce(rd.rel.date, rd.rel.`Date`, rd.rel.`Relationship Date`),
+        properties: properties(rd.rel)
+      }]
+    } AS graphData
+    """
+    return query, {"section_query": section_query, "country_name": country_name}
+
+
 def get_graph_data_by_section_and_country_query(section_query: str, country_name: str) -> Tuple[str, dict]:
     """
     Query to fetch graph data (nodes and links) for a section filtered by country.
 
-    Updated for the new Neo4j schema:
-    - `section_query` is treated as the section `gid` (string), consistent with the homepage mapping.
-    - Cross-property matching: section.`graph name` matches other nodes' gr_id
-    - Find a Country node with gr_id matching the section's `graph name`
-    - Include nodes within 2 hops that have the same gr_id
+    Legacy schema: section.`graph name` and node.gr_id. Also supports gr_id schema via
+    get_graph_data_by_section_and_country_query_gr_id (tried first in services).
     """
-    
     query = """
     MATCH (section:section)
     WHERE toString(section.gid) = toString($section_query)
+       OR toString(section.id) = toString($section_query)
        OR section.`Section Name` = $section_query
        OR section.`graph name` = $section_query
-    WITH section, toString(section.`graph name`) AS section_graph_name
+    WITH section, toString(coalesce(section.`graph name`, section.gid, section.id)) AS section_graph_name
 
-    // Find the country node(s) matching the country name where country.gr_id = section.`graph name`
     MATCH (country)
-    WHERE toString(country.gr_id) = section_graph_name
+    WHERE (toString(country.gr_id) = section_graph_name OR toString(country.gid) = section_graph_name OR toString(country.id) = section_graph_name)
       AND ANY(l IN labels(country) WHERE toLower(l) = 'country')
-      AND toLower(coalesce(country.name, country.`Country Name`, country.`Country Name_new`, '')) = toLower($country_name)
+      AND toLower(coalesce(country.name, country.`Country Name`, country.`Country Name_new`, country.`Entity Name`, '')) = toLower($country_name)
 
-    // Collect nodes within 2 hops of the country (with the same gr_id)
     MATCH (country)-[*0..2]-(n)
-    WHERE toString(n.gr_id) = section_graph_name
+    WHERE (toString(n.gr_id) = section_graph_name OR toString(n.gid) = section_graph_name OR toString(n.id) = section_graph_name)
       AND NONE(l IN labels(n) WHERE toLower(l) IN ['story','chapter','section'])
     WITH COLLECT(DISTINCT n) AS all_nodes
 
@@ -509,23 +566,25 @@ def get_graph_data_by_section_and_country_query(section_query: str, country_name
         .*,
         elementId: elementId(n),
         labels: labels(n),
-        node_type: head(labels(n))
+        node_type: head(labels(n)),
+        id: coalesce(toString(n.id), toString(n.gid), toString(n.g_id), elementId(n)),
+        description: coalesce(n.description, n.Description, n.summary, n.Summary, n.text, n.Text, n.brief, n.desc, ""),
+        url: coalesce(n.url, n.URL, n.article_url, n.`Article URL`, n.`Article Link`, n.article_link, n.`Source URL`, "")
       }],
       links: [rd IN all_rels | {
-        gid: coalesce(toString(rd.rel.gid), elementId(rd.rel)),
+        gid: coalesce(toString(rd.rel.id), toString(rd.rel.gid), elementId(rd.rel)),
         elementId: elementId(rd.rel),
         type: rd.type,
-        from_gid: coalesce(toString(rd.from.gid), elementId(rd.from)),
-        to_gid: coalesce(toString(rd.to.gid), elementId(rd.to)),
-        relationship_summary: coalesce(rd.rel.summary, rd.rel.`Relationship Summary`, rd.rel.name, rd.rel.text),
-        article_title: coalesce(rd.rel.title, rd.rel.`Article Title`),
-        article_url: coalesce(rd.rel.url, rd.rel.`Article URL`, rd.rel.`article URL`),
+        from_gid: coalesce(toString(rd.from.id), toString(rd.from.gid), toString(rd.from.g_id), elementId(rd.from)),
+        to_gid: coalesce(toString(rd.to.id), toString(rd.to.gid), toString(rd.to.g_id), elementId(rd.to)),
+        relationship_summary: coalesce(rd.rel.summary, rd.rel.`Relationship Summary`, rd.rel.`Relationship Summary_new`, rd.rel.name, rd.rel.text),
+        article_title: coalesce(rd.rel.title, rd.rel.`Article Title`, rd.rel.`Source Title`),
+        article_url: coalesce(rd.rel.url, rd.rel.`Article URL`, rd.rel.`article URL`, rd.rel.`Source URL`, rd.rel.`Article Link`, rd.rel.article_link, rd.rel.link),
         relationship_date: coalesce(rd.rel.date, rd.rel.`Date`, rd.rel.`Relationship Date`),
         properties: properties(rd.rel)
       }]
     } AS graphData
     """
-
     params = {"section_query": section_query, "country_name": country_name}
     return query, params
 
@@ -715,18 +774,16 @@ def get_story_statistics_query_legacy(story_gid: Optional[str] = None, story_tit
     return query, params
 
 def get_all_node_types_query():
-    """Query to fetch all distinct node types (labels) from the database"""
-    # Use a query that finds all distinct labels by checking actual nodes
-    # This is more reliable than CALL db.labels() which may not work in all Neo4j versions
+    """Query to fetch all distinct node types (labels) from the database.
+    Supports both legacy (gr_id) and gr_id schema (nodes with gid/id or connected to gr_id sections)."""
     query = """
-    // New DB: return normalized label names for nodes that participate in graphs (by gr_id).
     MATCH (n)
-    WHERE n.gr_id IS NOT NULL
-      AND NONE(l IN labels(n) WHERE toLower(l) IN ['story','chapter','section'])
+    WHERE (n.gr_id IS NOT NULL OR n.gid IS NOT NULL OR n.id IS NOT NULL)
+      AND NONE(l IN labels(n) WHERE toLower(l) IN ['story','chapter','section','gr_id'])
     WITH labels(n) AS nodeLabels
     UNWIND nodeLabels AS label
     WITH label
-    WHERE toLower(label) NOT IN ['story','chapter','section']
+    WHERE toLower(label) NOT IN ['story','chapter','section','gr_id']
     RETURN DISTINCT replace(toLower(label), ' ', '_') AS node_type
     ORDER BY node_type
     """

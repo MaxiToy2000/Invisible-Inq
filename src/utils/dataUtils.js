@@ -194,12 +194,47 @@ export const formatGraphData = (rawData) => {
         id;
       const nodeNameStr = String(nodeName || '');
 
+      // Canonical description (current DB uses id; various property names for description)
+      const descriptionVal =
+        node.description ??
+        node.Description ??
+        node.summary ??
+        node.Summary ??
+        node.text ??
+        node.Text ??
+        node.brief ??
+        node.desc ??
+        node.summary_text ??
+        node.text_content ??
+        node.body ??
+        '';
+      const descStr = descriptionVal != null && String(descriptionVal).trim() !== '' ? String(descriptionVal).trim() : null;
+
+      // Canonical url/article_url (current DB and legacy variants)
+      const urlVal =
+        node.url ??
+        node.URL ??
+        node.article_url ??
+        node['Article URL'] ??
+        node.articleUrl ??
+        node['Article Link'] ??
+        node.article_link ??
+        node['Article link'] ??
+        node['Source URL'] ??
+        node.source_url ??
+        node.link ??
+        node.source ??
+        null;
+      const urlStr = urlVal != null && String(urlVal).trim() !== '' ? String(urlVal).trim() : null;
+
       nodes.push({
         ...node,
         id,
         name: nodeNameStr,
         node_type: normalizeType(nodeType) || node.node_type,
         category,
+        ...(descStr != null && { description: descStr }),
+        ...(urlStr != null && { url: urlStr, article_url: urlStr }),
       });
     });
   }
@@ -282,13 +317,22 @@ export const formatGraphData = (rawData) => {
           link['Source Title'] ||
           '';
       }
-      if (!newLink.url) {
-        newLink.url =
-          link.url ||
-          link.article_url ||
-          link['Article URL'] ||
-          link['Source URL'] ||
-          '';
+      const linkUrl =
+        link.url ||
+        link.URL ||
+        link.article_url ||
+        link['Article URL'] ||
+        link.articleUrl ||
+        link['Article Link'] ||
+        link.article_link ||
+        link['Source URL'] ||
+        link.source_url ||
+        '';
+      if (!newLink.url && linkUrl) {
+        newLink.url = linkUrl;
+      }
+      if (!newLink.article_url && (newLink.url || linkUrl)) {
+        newLink.article_url = newLink.url || linkUrl;
       }
 
       links.push(newLink);

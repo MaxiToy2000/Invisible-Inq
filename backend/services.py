@@ -8,6 +8,7 @@ from queries import (
     get_graph_data_by_section_query,
     get_graph_data_by_section_query_legacy,
     get_graph_data_by_section_and_country_query,
+    get_graph_data_by_section_and_country_query_gr_id,
     get_section_by_id_query,
     get_story_statistics_query,
     get_story_statistics_query_legacy,
@@ -23,16 +24,16 @@ def generate_id_from_title(title: str) -> str:
     return title.lower().replace(' ', '_').replace('&', 'and').replace('/', '_').replace("'", '').replace('-', '_')
 
 def format_node(node_data: Dict[str, Any]) -> Dict[str, Any]:
-    gid_value = node_data.get("gid")
+    # Current DB (gr_id schema) uses "id"; legacy used "gid". Prefer id then gid for compatibility.
     element_id = node_data.get("elementId") or node_data.get("element_id")
-
-    raw_id = gid_value
-    if raw_id is None:
-        raw_id = node_data.get("id")
-    if raw_id is None:
-        raw_id = element_id
-
+    raw_id = (
+        node_data.get("id")
+        or node_data.get("gid")
+        or node_data.get("g_id")
+        or element_id
+    )
     node_id = str(raw_id) if raw_id is not None else ""
+    gid_value = node_data.get("gid") or node_data.get("id") or (raw_id if raw_id else None)
 
     raw_node_type = node_data.get("node_type") or node_data.get("type")
     if not raw_node_type and isinstance(node_data.get("labels"), list) and node_data.get("labels"):
@@ -56,6 +57,36 @@ def format_node(node_data: Dict[str, Any]) -> Dict[str, Any]:
         or node_data.get("Summary")
     )
 
+    # Canonical description: current and legacy DB use various property names
+    description_val = (
+        node_data.get("description")
+        or node_data.get("Description")
+        or node_data.get("summary")
+        or node_data.get("Summary")
+        or node_data.get("text")
+        or node_data.get("Text")
+        or node_data.get("brief")
+        or node_data.get("desc")
+        or node_data.get("summary_text")
+        or node_data.get("text_content")
+        or node_data.get("body")
+    )
+    # Canonical url/article_url: current and legacy DB variants
+    url_val = (
+        node_data.get("url")
+        or node_data.get("URL")
+        or node_data.get("article_url")
+        or node_data.get("Article URL")
+        or node_data.get("articleUrl")
+        or node_data.get("Article Link")
+        or node_data.get("article_link")
+        or node_data.get("Article link")
+        or node_data.get("Source URL")
+        or node_data.get("source_url")
+        or node_data.get("link")
+        or node_data.get("source")
+    )
+
     node = {
         "id": node_id,
         "gid": gid_value,
@@ -68,6 +99,11 @@ def format_node(node_data: Dict[str, Any]) -> Dict[str, Any]:
         "color": None,
         "highlight": bool(node_data.get("highlight")) if node_data.get("highlight") is not None else False,
     }
+    if description_val is not None and str(description_val).strip():
+        node["description"] = str(description_val).strip()
+    if url_val is not None and str(url_val).strip():
+        node["url"] = str(url_val).strip()
+        node["article_url"] = node["url"]
 
     # Pass through all additional properties (keep original keys/casing from Neo4j)
     for key, value in node_data.items():
@@ -80,19 +116,59 @@ def format_node(node_data: Dict[str, Any]) -> Dict[str, Any]:
     return node
 
 def format_link(link_data: Dict[str, Any]) -> Dict[str, Any]:
+    # Merge in relationship properties if returned as a nested dict (e.g. properties(rd.rel))
+    props = link_data.get("properties")
+    if not isinstance(props, dict):
+        props = {}
+
+    # Canonical article_url: current and legacy DB (top-level and relationship properties)
+    article_url_val = (
+        link_data.get("article_url")
+        or link_data.get("Article URL")
+        or link_data.get("articleUrl")
+        or link_data.get("url")
+        or link_data.get("URL")
+        or link_data.get("Article Link")
+        or link_data.get("article_link")
+        or link_data.get("Article link")
+        or link_data.get("Source URL")
+        or link_data.get("source_url")
+        or link_data.get("link")
+        or link_data.get("source")
+        or props.get("article_url")
+        or props.get("Article URL")
+        or props.get("url")
+        or props.get("Article Link")
+        or props.get("article_link")
+        or props.get("Source URL")
+    )
+
+    # Current DB uses id on relationships; legacy used gid
+    link_gid = link_data.get("gid") or link_data.get("id")
+    from_gid = link_data.get("from_gid") or link_data.get("from_id")
+    to_gid = link_data.get("to_gid") or link_data.get("to_id")
     link = {
-        "id": str(link_data.get("gid", "")),
-        "sourceId": str(link_data.get("from_gid", "")),
-        "targetId": str(link_data.get("to_gid", "")),
-        "title": link_data.get("article_title") or link_data.get("Article Title"),
-        "label": link_data.get("relationship_summary") or link_data.get("Relationship Summary"),
+        "id": str(link_gid) if link_gid else "",
+        "sourceId": str(from_gid) if from_gid else "",
+        "targetId": str(to_gid) if to_gid else "",
+        "title": link_data.get("article_title") or link_data.get("Article Title") or props.get("title") or props.get("Article Title"),
+        "label": link_data.get("relationship_summary") or link_data.get("Relationship Summary") or props.get("relationship_summary") or props.get("summary"),
         "category": link_data.get("type") or "Entity_Relationship",
         "color": None,
     }
+    if article_url_val is not None and str(article_url_val).strip():
+        link["article_url"] = str(article_url_val).strip()
+        link["url"] = link["article_url"]
 
     for key, value in link_data.items():
-        if key not in ["id", "gid", "sourceId", "targetId", "from_gid", "to_gid", "title", "label", "category", "type"] and value is not None:
+        if key not in ["id", "gid", "sourceId", "targetId", "from_gid", "to_gid", "title", "label", "category", "type", "properties"] and value is not None:
             link[key] = value
+    # Flatten useful relationship properties from properties() into top-level for frontend
+    if isinstance(props, dict):
+        for k, v in props.items():
+            if v is None or k in link:
+                continue
+            link[k] = v
 
     return link
 
@@ -367,7 +443,15 @@ def get_gr_id_description(gr_id_value: str) -> Optional[str]:
         if not neon_db.is_configured():
             return None
         key = gr_id_value.strip()
-        results = neon_db.execute_query("SELECT description FROM gr_id WHERE id = %s LIMIT 1", (key,))
+        # Support both gid and id columns (dump/schema may use either)
+        results = None
+        for col in ("gid", "id"):
+            try:
+                results = neon_db.execute_query(f"SELECT description FROM gr_id WHERE {col} = %s LIMIT 1", (key,))
+                if results and results[0]:
+                    break
+            except Exception:
+                continue
         if results and results[0]:
             desc = (results[0].get("description") or "").strip()
             return desc if desc else None
@@ -377,13 +461,15 @@ def get_gr_id_description(gr_id_value: str) -> Optional[str]:
 
 
 def get_graph_data_by_section_and_country(section_query: str, country_name: str) -> GraphData:
-    """Fetch graph data filtered by section and country"""
+    """Fetch graph data filtered by section and country. Tries gr_id schema first, then legacy."""
     try:
         logger.info(f"Fetching graph data for section '{section_query}' and country '{country_name}'")
-        query, params = get_graph_data_by_section_and_country_query(section_query, country_name)
-        logger.debug(f"Executing query with params: {params}")
-        
+        query, params = get_graph_data_by_section_and_country_query_gr_id(section_query, country_name)
         results = db.execute_query(query, params)
+        if not results:
+            query, params = get_graph_data_by_section_and_country_query(section_query, country_name)
+            results = db.execute_query(query, params)
+        logger.debug(f"Executing query with params: {params}")
         logger.info(f"Retrieved country-filtered graph data: {len(results)} result(s)")
 
         if not results:
@@ -1036,13 +1122,9 @@ def get_wikidata_by_id(node_id: str, node_type: str = None) -> Dict[str, Any]:
         return {"found": False, "data": None}
     
     try:
-        # Use fixed table name 'entity' as per database schema
-        query = """
-            SELECT *
-            FROM entity
-            WHERE id = %s
-            LIMIT 1
-        """
+        # Neon entity table has column "gid" only (no "id" column) - must use gid
+        entity_key_col = "gid"
+        query = "SELECT * FROM entity WHERE entity." + entity_key_col + " = %s LIMIT 1"
         results = neon_db.execute_query(query, (node_id,))
 
         if results:

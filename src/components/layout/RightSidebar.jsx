@@ -68,7 +68,7 @@ const RightSidebar = ({
   const [wikidataImageUrl, setWikidataImageUrl] = useState(null);
   const [wikidataLoading, setWikidataLoading] = useState(false);
   const wikidataFetchingRef = useRef(false);
-  const lastFetchedNodeIdRef = useRef(null);
+  const lastFetchedEntityKeyRef = useRef(null);
 
   // Sync external sortBy with local state
   useEffect(() => {
@@ -312,6 +312,72 @@ const RightSidebar = ({
   const isWikidataNode = useMemo(() => {
     return displayNode && WIKIDATA_NODE_TYPES.some(t => nodeTypeLower.includes(t));
   }, [displayNode, nodeTypeLower]);
+
+  // Entity description: from wikidata or from node (match backend canonical + alternate keys from dump)
+  const entityDescription = useMemo(() => {
+    if (wikidataInfo?.description != null && String(wikidataInfo.description).trim() !== '') {
+      return String(wikidataInfo.description).trim();
+    }
+    const fromNode =
+      displayNode?.description ??
+      displayNode?.Description ??
+      displayNode?.summary ??
+      displayNode?.Summary ??
+      displayNode?.text ??
+      displayNode?.Text ??
+      displayNode?.brief ??
+      displayNode?.desc ??
+      displayNode?.summary_text ??
+      displayNode?.text_content ??
+      displayNode?.body ??
+      '';
+    return fromNode != null && String(fromNode).trim() !== '' ? String(fromNode).trim() : '';
+  }, [displayNode, wikidataInfo]);
+
+  // Article URL: for relationship/action edges or relationship/action nodes
+  const isRelationshipOrActionNode = useMemo(() => {
+    if (!displayNode) return false;
+    const t = nodeTypeLower;
+    return t.includes('relationship') || t.includes('action');
+  }, [displayNode, nodeTypeLower]);
+
+  const articleUrl = useMemo(() => {
+    if (displayEdge) {
+      const edgeData = displayEdge._originalData || displayEdge;
+      return (
+        edgeData.article_url ??
+        edgeData['Article URL'] ??
+        edgeData.articleUrl ??
+        edgeData.url ??
+        edgeData.URL ??
+        edgeData['Article Link'] ??
+        edgeData.article_link ??
+        edgeData['Article link'] ??
+        edgeData['Source URL'] ??
+        edgeData.source_url ??
+        edgeData.link ??
+        edgeData.source ??
+        ''
+      );
+    }
+    if (displayNode && isRelationshipOrActionNode) {
+      return (
+        displayNode.url ??
+        displayNode.article_url ??
+        displayNode['Article URL'] ??
+        displayNode.articleUrl ??
+        displayNode['Article Link'] ??
+        displayNode.article_link ??
+        displayNode['Article link'] ??
+        displayNode['Source URL'] ??
+        displayNode.source_url ??
+        displayNode.link ??
+        displayNode.source ??
+        ''
+      );
+    }
+    return '';
+  }, [displayEdge, displayNode, isRelationshipOrActionNode]);
   
   // Function to fetch direct image URL from Wikimedia Commons API
   const fetchDirectImageUrl = async (url) => {
@@ -373,61 +439,50 @@ const RightSidebar = ({
     }
   };
   
-  // Reset wikidata when node changes
+  // Reset wikidata when entity (name) changes
   useEffect(() => {
-    if (lastFetchedNodeIdRef.current !== entityId) {
+    if (lastFetchedEntityKeyRef.current !== entityName) {
       setWikidataInfo(null);
       setWikidataImageUrl(null);
-      wikidataFetchingRef.current = false; // Reset fetching flag when entity changes
-      lastFetchedNodeIdRef.current = entityId;
+      wikidataFetchingRef.current = false;
+      lastFetchedEntityKeyRef.current = entityName;
     }
-  }, [entityId]);
+  }, [entityName]);
 
-  // Fetch wikidata when displayNode changes (entity, concept, data, entity_gen, framework)
-  useEffect(() => { 
+  // Fetch wikidata by entity name: GET /api/entity/wikidata/{entity_name}
+  useEffect(() => {
     const fetchWikidata = async () => {
-      if (!isWikidataNode || !entityId || entityId === 'Unknown' || wikidataFetchingRef.current) {
-        if (!isWikidataNode || !entityId || entityId === 'Unknown') {
+      const nameToFetch = (entityName && String(entityName).trim()) || '';
+      if (!isWikidataNode || !nameToFetch || wikidataFetchingRef.current) {
+        if (!isWikidataNode || !nameToFetch) {
           setWikidataInfo(null);
           setWikidataImageUrl(null);
         }
         return;
       }
-      
+
       wikidataFetchingRef.current = true;
       setWikidataLoading(true);
-      
+
       try {
-        let finalEntityId = entityId;
-        // For concept nodes, prepend 'co' to the entity ID
-        if (nodeTypeLower === 'concept') {
-          finalEntityId = 'co' + entityId;
-        }
         const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
-        const url = `${apiBaseUrl}/api/wikidata/${encodeURIComponent(nodeType)}/${encodeURIComponent(finalEntityId)}`;
-        const response = await fetch(
-          url,
-          { 
-            method: 'GET',
-            headers: { 'Content-Type': 'application/json' }
-          }
-        );
-        
+        const url = `${apiBaseUrl}/api/entity/wikidata/${encodeURIComponent(nameToFetch)}`;
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' }
+        });
+
         if (response.ok) {
           const result = await response.json();
           if (result.found && result.data) {
             setWikidataInfo(result.data);
-            
-            // Get image URL from wikidata
+
             const rawImageUrl = result.data.image_url || result.data.logo_url || null;
             if (rawImageUrl) {
-              // Normalize URL
               let normalizedUrl = String(rawImageUrl).trim();
               if (normalizedUrl.startsWith('http://')) {
                 normalizedUrl = normalizedUrl.replace(/^http:/, 'https:');
               }
-              
-              // If it's a Wikimedia Commons URL, convert it
               if (normalizedUrl.includes('commons.wikimedia.org')) {
                 const directUrl = await fetchDirectImageUrl(normalizedUrl);
                 setWikidataImageUrl(directUrl);
@@ -441,6 +496,9 @@ const RightSidebar = ({
             setWikidataInfo(null);
             setWikidataImageUrl(null);
           }
+        } else {
+          setWikidataInfo(null);
+          setWikidataImageUrl(null);
         }
       } catch (err) {
         console.error('Wikidata fetch error:', err);
@@ -453,7 +511,7 @@ const RightSidebar = ({
     };
 
     fetchWikidata();
-  }, [entityId, isWikidataNode, nodeType, displayNode]);
+  }, [entityName, isWikidataNode, displayNode]);
   
   // Determine which image to display (prioritize wikidata image)
   const displayImageUrl = wikidataImageUrl || displayNode?.IMG_SRC || null;
@@ -467,9 +525,12 @@ const RightSidebar = ({
         ...(wikidataInfo?.description != null && wikidataInfo?.description !== '' 
           ? [['description', wikidataInfo.description]] 
           : []),
-        // Add node's own description if not already shown from wikidata
-        ...(wikidataInfo?.description == null && displayNode.description != null && displayNode.description !== '' 
-          ? [['description', displayNode.description]] 
+        // Add node's own description if not already shown from wikidata (match backend/dump keys)
+        ...(wikidataInfo?.description == null
+          ? (() => {
+              const d = displayNode?.description ?? displayNode?.Description ?? displayNode?.summary ?? displayNode?.Summary ?? displayNode?.text ?? displayNode?.Text ?? displayNode?.brief ?? displayNode?.desc ?? '';
+              return d != null && String(d).trim() !== '' ? [['description', String(d).trim()]] : [];
+            })()
           : []),
         // Alias from wikidata
         ...(wikidataInfo?.alias != null && wikidataInfo?.alias !== '' 
@@ -518,12 +579,19 @@ const RightSidebar = ({
                         null;
         if (category) properties.push(['Category', category]);
         
-        // Article URL
+        // Article URL (current DB and legacy variants)
         const articleUrl = edgeData.article_url || 
                           edgeData['Article URL'] || 
                           edgeData.articleUrl ||
                           edgeData.url ||
                           edgeData.URL ||
+                          edgeData['Article Link'] ||
+                          edgeData.article_link ||
+                          edgeData['Article link'] ||
+                          edgeData['Source URL'] ||
+                          edgeData.source_url ||
+                          edgeData.link ||
+                          edgeData.source ||
                           null;
         if (articleUrl) properties.push(['Article URL', articleUrl]);
         
@@ -873,7 +941,17 @@ const RightSidebar = ({
                       </div>
                   </div>
                 )}
-                
+
+                {/* Entity / Node Description - show when we have description and it's not already in wikidata card */}
+                {displayNode && entityDescription && (!isWikidataNode || !wikidataInfo) && (
+                  <div className="mb-4 flex flex-col space-y-1 flex-shrink-0">
+                    <h4 className="text-xs font-normal text-[#7D7D7D] leading-[14px]">Description</h4>
+                    <p className="text-sm text-[#F4F4F5] break-words leading-relaxed">
+                      {entityDescription}
+                    </p>
+                  </div>
+                )}
+
                 {/* Node Properties - Only show for non-entity nodes, or for entity nodes when wikidata is not available */}
                 {displayNode && (!isWikidataNode || (isWikidataNode && !wikidataInfo)) && filteredNodeProperties.length > 0 && (
                   <div className="flex flex-col space-y-3">
@@ -927,6 +1005,21 @@ const RightSidebar = ({
                         </div>
                       );
                     })}
+                  </div>
+                )}
+
+                {/* Article link - for relationship/action edges or relationship/action nodes */}
+                {(displayEdge || isRelationshipOrActionNode) && articleUrl && isValidUrl(String(articleUrl)) && (
+                  <div className="mt-3 flex flex-col space-y-1 flex-shrink-0">
+                    <h4 className="text-xs font-normal text-[#7D7D7D] leading-[14px]">Article</h4>
+                    <a
+                      href={formatUrl(String(articleUrl))}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm text-[#6EA4F4] hover:underline break-words"
+                    >
+                      {String(articleUrl).length > 60 ? String(articleUrl).slice(0, 60) + '…' : articleUrl}
+                    </a>
                   </div>
                 )}
                 </div>
@@ -1218,6 +1311,16 @@ const RightSidebar = ({
                       </div>
                     </div>
                   )}
+
+                  {/* Entity / Node Description - show when we have description and it's not already in wikidata card */}
+                  {displayNode && entityDescription && (!isWikidataNode || !wikidataInfo) && (
+                    <div className="w-full flex-shrink-0 mb-4">
+                      <h4 className="text-xs font-normal text-[#7D7D7D] mb-1.5 leading-[14px]">Description</h4>
+                      <p className="text-sm text-[#F4F4F5] break-words leading-relaxed">
+                        {entityDescription}
+                      </p>
+                    </div>
+                  )}
                   
                   {/* Node Details - Only show for non-entity nodes, or for entity nodes when wikidata is not available */}
                   {displayNode && (!isWikidataNode || (isWikidataNode && !wikidataInfo)) && filteredNodeProperties.length > 0 && (
@@ -1276,6 +1379,21 @@ const RightSidebar = ({
                           );
                         })}
                       </div>
+                    </div>
+                  )}
+
+                  {/* Article link - for relationship/action edges or relationship/action nodes */}
+                  {(displayEdge || isRelationshipOrActionNode) && articleUrl && isValidUrl(String(articleUrl)) && (
+                    <div className="w-full flex-shrink-0 mb-4">
+                      <h4 className="text-xs font-normal text-[#7D7D7D] mb-1.5 leading-[14px]">Article</h4>
+                      <a
+                        href={formatUrl(String(articleUrl))}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm text-[#6EA4F4] hover:underline break-words"
+                      >
+                        {String(articleUrl).length > 60 ? String(articleUrl).slice(0, 60) + '…' : articleUrl}
+                      </a>
                     </div>
                   )}
 
