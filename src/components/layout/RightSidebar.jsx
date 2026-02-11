@@ -1312,16 +1312,6 @@ const RightSidebar = ({
                     </div>
                   )}
 
-                  {/* Entity / Node Description - show when we have description and it's not already in wikidata card */}
-                  {displayNode && entityDescription && (!isWikidataNode || !wikidataInfo) && (
-                    <div className="w-full flex-shrink-0 mb-4">
-                      <h4 className="text-xs font-normal text-[#7D7D7D] mb-1.5 leading-[14px]">Description</h4>
-                      <p className="text-sm text-[#F4F4F5] break-words leading-relaxed">
-                        {entityDescription}
-                      </p>
-                    </div>
-                  )}
-                  
                   {/* Node Details - Only show for non-entity nodes, or for entity nodes when wikidata is not available */}
                   {displayNode && (!isWikidataNode || (isWikidataNode && !wikidataInfo)) && filteredNodeProperties.length > 0 && (
                     <div className="w-full flex-shrink-0 mb-4">
