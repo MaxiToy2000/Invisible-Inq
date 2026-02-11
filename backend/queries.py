@@ -731,3 +731,26 @@ def get_all_node_types_query():
     ORDER BY node_type
     """
     return query, {}
+
+
+def get_articles_by_relationship_gid_query(relationship_gid: str) -> Tuple[str, dict]:
+    """
+    Get all article nodes that have an IN_ARTICLE relationship to the given relationship node.
+    relationship_gid is the gid of the relationship (link) in the graph; the relationship
+    may be represented as a node with that gid, and articles link to it via :IN_ARTICLE.
+    """
+    query = """
+    MATCH (relNode)
+    WHERE toString(coalesce(relNode.gid, relNode.id, relNode.g_id)) = toString($relationship_gid)
+    MATCH (article)-[:IN_ARTICLE]-(relNode)
+    RETURN DISTINCT {
+      gid: coalesce(article.gid, article.id, article.g_id),
+      elementId: elementId(article),
+      labels: labels(article),
+      node_type: head(labels(article)),
+      name: coalesce(article.name, article.title, article.`Article Title`, article.`Source Title`, toString(article.gid)),
+      title: coalesce(article.title, article.`Article Title`, article.name),
+      url: coalesce(article.url, article.`Article URL`, article.`Source URL`, article.`article URL`)
+    } AS article
+    """
+    return query, {"relationship_gid": relationship_gid}

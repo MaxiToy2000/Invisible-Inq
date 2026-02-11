@@ -13,7 +13,8 @@ from queries import (
     get_story_statistics_query_legacy,
     get_all_node_types_query,
     get_calendar_data_by_section_query,
-    get_cluster_data_query
+    get_cluster_data_query,
+    get_articles_by_relationship_gid_query,
 )
 from models import Story, Chapter, Substory, Node, Link, GraphData
 
@@ -374,6 +375,31 @@ def get_gr_id_description(gr_id_value: str) -> Optional[str]:
     except Exception as e:
         logger.warning(f"Could not get gr_id description from Neon: {e}")
     return None
+
+
+def get_articles_for_relationship(relationship_gid: str) -> List[Dict[str, Any]]:
+    """
+    Get all article nodes that have IN_ARTICLE relationship to the relationship node
+    identified by relationship_gid (the link/edge gid in the graph).
+    Returns a list of article node dicts (id, name, title, url, etc.).
+    """
+    if not (relationship_gid or "").strip():
+        return []
+    try:
+        query, params = get_articles_by_relationship_gid_query(relationship_gid.strip())
+        results = db.execute_query(query, params)
+        articles = []
+        for record in results:
+            article_data = record.get("article")
+            if not isinstance(article_data, dict):
+                continue
+            # Normalize to frontend-friendly node shape (format_node expects gid, etc.)
+            node = format_node(article_data)
+            articles.append(node)
+        return articles
+    except Exception as e:
+        logger.warning(f"Could not get articles for relationship {relationship_gid}: {e}")
+        return []
 
 
 def get_graph_data_by_section_and_country(section_query: str, country_name: str) -> GraphData:

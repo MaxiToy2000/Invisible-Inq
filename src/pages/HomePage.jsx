@@ -111,6 +111,8 @@ const HomePage = () => {
     entityHighlights,
     selectedNode,
     selectedEdge,
+    relatedArticlesForEdge,
+    relatedArticlesLoading,
     loading,
     error,
     selectStory,
@@ -2486,6 +2488,8 @@ const HomePage = () => {
       selectedEdges={selectedEdges}
       hierarchyTreeAxis={hierarchyTreeAxis}
       onHierarchyTreeAxisChange={setHierarchyTreeAxis}
+      relatedArticlesForEdge={relatedArticlesForEdge}
+      relatedArticlesLoadingForEdge={relatedArticlesLoading}
     >
         <div className="flex flex-col h-full">
           {}

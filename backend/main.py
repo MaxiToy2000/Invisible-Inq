@@ -10,7 +10,7 @@ import logging
 import os
 import aiofiles
 from config import Config
-from services import get_all_stories, get_graph_data, get_graph_data_by_section_and_country, get_gr_id_description, search_with_ai, get_story_statistics, get_all_node_types, get_calendar_data, get_cluster_data, get_entity_wikidata, get_wikidata_by_id, search_entity_wikidata
+from services import get_all_stories, get_graph_data, get_graph_data_by_section_and_country, get_gr_id_description, get_articles_for_relationship, search_with_ai, get_story_statistics, get_all_node_types, get_calendar_data, get_cluster_data, get_entity_wikidata, get_wikidata_by_id, search_entity_wikidata
 from models import GraphData, UserCreate, UserLogin, Token, UserResponse, GoogleAuthRequest, UserActivityCreate, UserActivityResponse, AdminLoginRequest, SubmissionCreate, SubmissionResponse, UserSubscriptionResponse, SubmissionUpdateRequest
 from pydantic import BaseModel
 from auth import create_access_token, verify_google_token, get_current_user, get_current_admin_user
@@ -890,6 +890,18 @@ async def get_graph_by_substory_and_country(substory_id: str, country_name: str)
         raise HTTPException(
             status_code=500,
             detail=f"Error fetching graph data for substory {substory_id} and country {country_name}: {str(e)}"
+        )
+
+@app.get("/api/graph/relationship/{relationship_id}/articles", response_model=List[dict])
+async def get_articles_for_relationship_endpoint(relationship_id: str):
+    """Get all article nodes related to the given relationship (link/edge) via IN_ARTICLE."""
+    try:
+        articles = get_articles_for_relationship(relationship_id)
+        return articles
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error fetching articles for relationship: {str(e)}"
         )
 
 @app.get("/api/calendar", response_model=dict)

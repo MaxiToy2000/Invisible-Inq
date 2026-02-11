@@ -26,6 +26,8 @@ const GraphPage = () => {
     entityHighlights,
     selectedNode,
     selectedEdge,
+    relatedArticlesForEdge,
+    relatedArticlesLoading,
     loading,
     error,
     selectStory,
@@ -332,6 +334,8 @@ const GraphPage = () => {
       multiSelectSubgraph={multiSelectSubgraph}
       selectedNodes={selectedNodes}
       selectedEdges={selectedEdges}
+      relatedArticlesForEdge={relatedArticlesForEdge}
+      relatedArticlesLoadingForEdge={relatedArticlesLoading}
     >
       <div className="relative w-full h-full flex flex-col">
         <div className="flex-1 w-full flex flex-col">

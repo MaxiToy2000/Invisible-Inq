@@ -18,6 +18,8 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
   const [entityHighlights, setEntityHighlights] = useState([]);
   const [selectedNode, setSelectedNode] = useState(null);
   const [selectedEdge, setSelectedEdge] = useState(null);
+  const [relatedArticlesForEdge, setRelatedArticlesForEdge] = useState([]);
+  const [relatedArticlesLoading, setRelatedArticlesLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -593,6 +595,48 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
     setSelectedNode(null);
   }, []);
 
+  // Fetch related article nodes only when: (1) a relationship edge is selected, or (2) a node with type 'relationship' or 'action' is selected
+  const relationshipId = selectedEdge?.id || selectedEdge?.gid || selectedNode?.id || selectedNode?.gid || '';
+  useEffect(() => {
+    const fromEdge = selectedEdge?.id || selectedEdge?.gid;
+    const fromNode = selectedNode?.id || selectedNode?.gid;
+    const rid = fromEdge ?? fromNode;
+
+    const nodeTypeRaw = selectedNode?.node_type ?? selectedNode?.type ?? selectedNode?.category ?? (Array.isArray(selectedNode?.labels) ? selectedNode.labels[0] : null);
+    const nodeType = (nodeTypeRaw != null && nodeTypeRaw !== '') ? String(nodeTypeRaw).toLowerCase().replace(/\s+/g, '_') : '';
+
+    const isRelationshipOrActionNode = nodeType === 'relationship' || nodeType === 'action';
+    const shouldFetchForEdge = !!fromEdge;
+    const shouldFetchForNode = !!fromNode && isRelationshipOrActionNode;
+
+    if (!shouldFetchForEdge && !shouldFetchForNode) {
+      setRelatedArticlesForEdge([]);
+      return;
+    }
+    if (rid == null || String(rid).trim() === '') {
+      setRelatedArticlesForEdge([]);
+      return;
+    }
+
+    let isMounted = true;
+    setRelatedArticlesLoading(true);
+    fetch(`${apiBaseUrl}/api/graph/relationship/${encodeURIComponent(String(rid))}/articles`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+    })
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => {
+        if (isMounted && Array.isArray(data)) setRelatedArticlesForEdge(data);
+      })
+      .catch(() => {
+        if (isMounted) setRelatedArticlesForEdge([]);
+      })
+      .finally(() => {
+        if (isMounted) setRelatedArticlesLoading(false);
+      });
+    return () => { isMounted = false; };
+  }, [selectedEdge, selectedNode, relationshipId, apiBaseUrl]);
+
   const selectEntityById = useCallback((entityId) => {
     const node = findNodeById(graphData, entityId);
     if (node) {
@@ -719,6 +763,8 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
     entityHighlights,
     selectedNode,
     selectedEdge,
+    relatedArticlesForEdge,
+    relatedArticlesLoading,
     loading,
     error,
     selectStory,

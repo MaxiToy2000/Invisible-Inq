@@ -67,7 +67,9 @@ const Layout = ({
   selectedNodes = new Set(),
   selectedEdges = new Set(),
   hierarchyTreeAxis = { x: false, y: false, z: false },
-  onHierarchyTreeAxisChange = () => {}
+  onHierarchyTreeAxisChange = () => {},
+  relatedArticlesForEdge = [],
+  relatedArticlesLoadingForEdge = false
 }) => {
   const [leftSidebarCollapsed, setLeftSidebarCollapsed] = useState(false);
   const [rightSidebarCollapsed, setRightSidebarCollapsed] = useState(false);
@@ -234,6 +236,8 @@ const Layout = ({
           selectedEdges={selectedEdges}
           hierarchyTreeAxis={hierarchyTreeAxis}
           onHierarchyTreeAxisChange={onHierarchyTreeAxisChange}
+          relatedArticlesForEdge={relatedArticlesForEdge}
+          relatedArticlesLoadingForEdge={relatedArticlesLoadingForEdge}
         />
       </div>
       )}
