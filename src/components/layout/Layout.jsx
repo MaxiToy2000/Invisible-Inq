@@ -67,7 +67,11 @@ const Layout = ({
   selectedNodes = new Set(),
   selectedEdges = new Set(),
   hierarchyTreeAxis = { x: false, y: false, z: false },
-  onHierarchyTreeAxisChange = () => {}
+  onHierarchyTreeAxisChange = () => {},
+  showSavePositionButton = false,
+  onSavePositionClick = null,
+  savePositionStatus = null,
+  onResetPositionClick = null,
 }) => {
   const [leftSidebarCollapsed, setLeftSidebarCollapsed] = useState(false);
   const [rightSidebarCollapsed, setRightSidebarCollapsed] = useState(false);
@@ -124,6 +128,10 @@ const Layout = ({
           graphDescription={graphDescription}
           sectionDescription={sectionDescription}
           onEntityHighlight={onEntityHighlight}
+          showSavePositionButton={showSavePositionButton}
+          onSavePositionClick={onSavePositionClick}
+          savePositionStatus={savePositionStatus}
+          onResetPositionClick={onResetPositionClick}
         />
       </div>
 

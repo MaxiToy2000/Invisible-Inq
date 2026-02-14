@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useToast } from '../contexts/ToastContext';
+import { useAuth } from '../contexts/AuthContext';
 import Layout from '../components/layout/Layout';
 import ThreeGraphVisualization from '../components/graph/ThreeGraphVisualization';
 import GraphControls from '../components/graph/GraphControls';
@@ -13,6 +14,11 @@ import { FaProjectDiagram, FaTable, FaCode, FaSearch, FaDownload, FaCube, FaSqua
 const GraphPage = () => {
   const location = useLocation();
   const { showError } = useToast();
+  const { isAuthenticated } = useAuth();
+  const graphRef = useRef(null);
+  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+  const [savedGraphCameraPosition, setSavedGraphCameraPosition] = useState(null);
+  const [savePositionStatus, setSavePositionStatus] = useState(null); // 'saving' | 'saved' | 'error' | null
 
   const {
     stories,
@@ -103,6 +109,67 @@ const GraphPage = () => {
       setAiSearchError(null); // Clear error after showing toast
     }
   }, [aiSearchError, showError]);
+
+  // Load saved graph camera position when user is authenticated
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setSavedGraphCameraPosition(null);
+      return;
+    }
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    let cancelled = false;
+    fetch(`${apiBaseUrl}/api/graph-camera-position`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => {
+        if (!res.ok || res.status === 204) return null;
+        return res.json();
+      })
+      .then((data) => {
+        if (cancelled || !data) return;
+        setSavedGraphCameraPosition({
+          position: { x: data.position_x, y: data.position_y, z: data.position_z },
+          target: { x: data.target_x, y: data.target_y, z: data.target_z },
+        });
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [isAuthenticated, apiBaseUrl]);
+
+  const handleSaveGraphCameraPosition = useCallback(async (state) => {
+    const token = localStorage.getItem('token');
+    if (!token) throw new Error('Not authenticated');
+    const res = await fetch(`${apiBaseUrl}/api/graph-camera-position`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        position_x: state.position.x,
+        position_y: state.position.y,
+        position_z: state.position.z,
+        target_x: state.target.x,
+        target_y: state.target.y,
+        target_z: state.target.z,
+      }),
+    });
+    if (!res.ok) throw new Error('Failed to save');
+  }, [apiBaseUrl]);
+
+  const handleSavePositionClick = useCallback(async () => {
+    const state = graphRef.current?.getCurrentCameraState?.();
+    if (!state || !isAuthenticated) return;
+    setSavePositionStatus('saving');
+    try {
+      await handleSaveGraphCameraPosition(state);
+      setSavePositionStatus('saved');
+      setTimeout(() => setSavePositionStatus(null), 2000);
+    } catch {
+      setSavePositionStatus('error');
+      setTimeout(() => setSavePositionStatus(null), 2000);
+    }
+  }, [isAuthenticated, handleSaveGraphCameraPosition]);
+
+  const handleResetPositionClick = useCallback(() => {
+    graphRef.current?.resetCameraToInitial?.();
+  }, []);
 
   const handleAISearch = async (searchQuery) => {
     try {
@@ -332,6 +399,10 @@ const GraphPage = () => {
       multiSelectSubgraph={multiSelectSubgraph}
       selectedNodes={selectedNodes}
       selectedEdges={selectedEdges}
+      showSavePositionButton={viewMode === 'Graph'}
+      onSavePositionClick={isAuthenticated ? handleSavePositionClick : undefined}
+      savePositionStatus={savePositionStatus}
+      onResetPositionClick={handleResetPositionClick}
     >
       <div className="relative w-full h-full flex flex-col">
         <div className="flex-1 w-full flex flex-col">
@@ -359,6 +430,7 @@ const GraphPage = () => {
             {}
             {viewMode === 'Graph' && (
                 <ThreeGraphVisualization
+                  ref={graphRef}
                   data={graphData}
                   onNodeClick={handleNodeClick}
                   loading={loading}
@@ -381,6 +453,7 @@ const GraphPage = () => {
                   onSelectedEdgesChange={(edges) => {
                     setSelectedEdges(edges);
                   }}
+                  initialCameraPosition={savedGraphCameraPosition}
                 />
             )}
 

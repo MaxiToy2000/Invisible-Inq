@@ -19,6 +19,7 @@ const GraphViewByMap = ({ mapView = 'flat', graphData = { nodes: [], links: [] }
   const [graphTooltip, setGraphTooltip] = useState(null); // Tooltip for graph nodes/edges
   const [countryGraphData, setCountryGraphData] = useState({ nodes: [], links: [] });
   const [loadingCountryData, setLoadingCountryData] = useState(false);
+  const [showRelatedPanel, setShowRelatedPanel] = useState(false);
   const graphSvgRef = useRef(null);
   const rotationRef = useRef({ x: 0, y: 0 });
   const animationFrameRef = useRef(null);
@@ -240,6 +241,7 @@ const GraphViewByMap = ({ mapView = 'flat', graphData = { nodes: [], links: [] }
         setSelectedCountryPosition(null);
         setSelectedCountryName(null);
         setCountryGraphData({ nodes: [], links: [] });
+        setShowRelatedPanel(false);
         isRotationPausedRef.current = false;
         svg.selectAll('.countries path').attr('stroke', '#525978');
       }
@@ -371,6 +373,7 @@ const GraphViewByMap = ({ mapView = 'flat', graphData = { nodes: [], links: [] }
                 setSelectedCountryPosition(null);
                 setSelectedCountryName(null);
                 setCountryGraphData({ nodes: [], links: [] });
+                setShowRelatedPanel(false);
                 isRotationPausedRef.current = false;
                 d3.select(this).attr('stroke', '#525978');
               } else {
@@ -664,9 +667,10 @@ const GraphViewByMap = ({ mapView = 'flat', graphData = { nodes: [], links: [] }
       .alpha(0)
       .stop();
 
-    // Create links container
+    // Create links container (pointer-events so clicks reach graph when SVG has pointer-events-none)
     const linkContainer = svg.append('g')
-      .attr('class', 'graph-links');
+      .attr('class', 'graph-links')
+      .attr('pointer-events', 'auto');
 
     // Create links with hover area (invisible wider stroke for easier hovering)
     const link = linkContainer
@@ -735,9 +739,10 @@ const GraphViewByMap = ({ mapView = 'flat', graphData = { nodes: [], links: [] }
     // Country node position is already set by the hierarchical layout above
     // (centered in the graph area with other nodes arranged in circular levels around it)
 
-    // Create nodes
+    // Create nodes (graph-nodes container has pointer-events so clicks register)
     const node = svg.append('g')
       .attr('class', 'graph-nodes')
+      .attr('pointer-events', 'auto')
       .selectAll('g')
       .data(countryGraphData.nodes)
       .enter()
@@ -747,7 +752,14 @@ const GraphViewByMap = ({ mapView = 'flat', graphData = { nodes: [], links: [] }
         return isMatchingCountry ? 'graph-node country-node-selected' : 'graph-node';
       })
       .style('cursor', 'pointer')
-      .style('pointer-events', 'auto') // Enable pointer events for nodes
+      .style('pointer-events', 'auto')
+      .on('click', function(event, d) {
+        event.stopPropagation();
+        const isCountryNode = matchingCountryNode && (d.id === matchingCountryNode.id || d.gid === matchingCountryNode.gid);
+        if (isCountryNode) {
+          setShowRelatedPanel(prev => !prev);
+        }
+      })
       .on('mouseenter', function(event, d) {
         const containerRect = containerRef.current?.getBoundingClientRect();
         if (containerRect) {
@@ -855,7 +867,12 @@ const GraphViewByMap = ({ mapView = 'flat', graphData = { nodes: [], links: [] }
       const isEntity = nodeType === 'entity';
       
       if (isMatchingCountry) {
-        // Country node: render as 2px circle
+        // Country node: invisible larger hit area for easier clicking, then 2px circle
+        nodeGroup.append('circle')
+          .attr('r', 14)
+          .attr('fill', 'transparent')
+          .attr('stroke', 'none')
+          .attr('pointer-events', 'all');
         nodeGroup.append('circle')
           .attr('r', 2)
           .attr('fill', `url(#${countryGradientId})`)
@@ -1179,6 +1196,82 @@ const GraphViewByMap = ({ mapView = 'flat', graphData = { nodes: [], links: [] }
           </div>
         </div>
       )}
+
+      {/* Related nodes & relationships panel (when country node in graph is clicked) */}
+      {showRelatedPanel && selectedCountryName && countryGraphData?.nodes?.length > 0 && (() => {
+        const normalize = (name) => (name ?? '').toString().toLowerCase().trim().replace(/\s+/g, ' ');
+        const selectedNorm = normalize(selectedCountryName);
+        const countryNode = countryGraphData.nodes.find(n => {
+          const type = (n.node_type || n.type || '').toString().toLowerCase();
+          if (type !== 'country') return false;
+          const name = normalize(n.country_name || n.name || n['Country Name'] || '');
+          return name === selectedNorm || selectedNorm.includes(name) || name.includes(selectedNorm);
+        });
+        const countryId = countryNode?.id ?? countryNode?.gid;
+        const relatedNodes = countryGraphData.nodes.filter(n => (n.id ?? n.gid) !== countryId);
+        const links = countryGraphData.links || [];
+        const relationships = links.filter(link => {
+          const src = link.sourceId ?? link.source ?? link.from_gid;
+          const tgt = link.targetId ?? link.target ?? link.to_gid;
+          const srcId = typeof src === 'object' ? (src?.id ?? src?.gid) : src;
+          const tgtId = typeof tgt === 'object' ? (tgt?.id ?? tgt?.gid) : tgt;
+          return String(srcId) === String(countryId) || String(tgtId) === String(countryId);
+        });
+        const getNodeName = (id) => {
+          const n = countryGraphData.nodes.find(node => String(node.id ?? node.gid) === String(id));
+          return n?.name ?? n?.entity_name ?? n?.country_name ?? n?.id ?? n?.gid ?? id;
+        };
+        return (
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 w-[90%] max-w-2xl max-h-[50vh] overflow-hidden flex flex-col bg-[#1A1A1A] border border-[#2A2A2A] rounded-lg shadow-2xl">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-[#2A2A2A] shrink-0">
+              <h3 className="text-white text-sm font-semibold">Related to {selectedCountryName}</h3>
+              <button
+                type="button"
+                onClick={() => setShowRelatedPanel(false)}
+                className="text-[#9F9FA9] hover:text-white p-1 rounded"
+                aria-label="Close"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <div className="overflow-y-auto px-4 py-3 space-y-4">
+              <div>
+                <h4 className="text-[#B4B4B4] text-xs font-medium uppercase tracking-wide mb-2">Related nodes ({relatedNodes.length})</h4>
+                <ul className="space-y-1.5">
+                  {relatedNodes.slice(0, 50).map((n, i) => (
+                    <li key={n.id ?? n.gid ?? i} className="text-[#E4E4E7] text-xs">
+                      <span className="font-medium">{n.name ?? n.entity_name ?? n.country_name ?? n.id ?? n.gid ?? '—'}</span>
+                      <span className="text-[#707070] ml-2">{n.node_type ?? n.type ?? 'entity'}</span>
+                    </li>
+                  ))}
+                  {relatedNodes.length > 50 && <li className="text-[#707070] text-xs">… and {relatedNodes.length - 50} more</li>}
+                </ul>
+              </div>
+              <div>
+                <h4 className="text-[#B4B4B4] text-xs font-medium uppercase tracking-wide mb-2">Relationships ({relationships.length})</h4>
+                <ul className="space-y-1.5">
+                  {relationships.slice(0, 30).map((link, i) => {
+                    const srcId = link.sourceId ?? link.source ?? link.from_gid;
+                    const tgtId = link.targetId ?? link.target ?? link.to_gid;
+                    const fromName = getNodeName(typeof srcId === 'object' ? (srcId?.id ?? srcId?.gid) : srcId);
+                    const toName = getNodeName(typeof tgtId === 'object' ? (tgtId?.id ?? tgtId?.gid) : tgtId);
+                    const label = link.relationship_summary ?? link.label ?? link.type ?? '—';
+                    return (
+                      <li key={i} className="text-[#E4E4E7] text-xs">
+                        <span className="font-medium">{fromName}</span>
+                        <span className="text-[#707070] mx-1">→</span>
+                        <span className="font-medium">{toName}</span>
+                        {label && label !== '—' && <span className="text-[#9F9FA9] ml-2">({label})</span>}
+                      </li>
+                    );
+                  })}
+                  {relationships.length > 30 && <li className="text-[#707070] text-xs">… and {relationships.length - 30} more</li>}
+                </ul>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
       
       {/* Country Tooltip */}
       {tooltipData && (

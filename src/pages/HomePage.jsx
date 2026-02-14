@@ -92,7 +92,10 @@ const HomePage = () => {
   const [connectedDataLoading, setConnectedDataLoading] = useState(false);
   const [connectedDataError, setConnectedDataError] = useState(null);
   const [sectionDescription, setSectionDescription] = useState(null);
-  
+  const [savedGraphCameraPosition, setSavedGraphCameraPosition] = useState(null); // { position: {x,y,z}, target: {x,y,z} } for restore
+  const [savePositionStatus, setSavePositionStatus] = useState(null); // 'saving' | 'saved' | 'error' | null (for LeftSidebar button)
+  const graphRef = useRef(null);
+
   // Ref to track if we're reading from URL to prevent infinite loops
   const isReadingFromURL = useRef(false);
   // Ref to track the last URL we set ourselves (to prevent reading our own updates)
@@ -127,6 +130,75 @@ const HomePage = () => {
 
   // Initialize activity tracking
   useActivityTracking();
+
+  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+
+  // Load saved graph camera position when user is authenticated
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setSavedGraphCameraPosition(null);
+      return;
+    }
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    let cancelled = false;
+    fetch(`${apiBaseUrl}/api/graph-camera-position`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((res) => {
+        if (!res.ok) return null;
+        if (res.status === 204) return null;
+        return res.json();
+      })
+      .then((data) => {
+        if (cancelled || !data) return;
+        setSavedGraphCameraPosition({
+          position: { x: data.position_x, y: data.position_y, z: data.position_z },
+          target: { x: data.target_x, y: data.target_y, z: data.target_z },
+        });
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [isAuthenticated, apiBaseUrl]);
+
+  const handleSaveGraphCameraPosition = useCallback(async (state) => {
+    const token = localStorage.getItem('token');
+    if (!token) throw new Error('Not authenticated');
+    const res = await fetch(`${apiBaseUrl}/api/graph-camera-position`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        position_x: state.position.x,
+        position_y: state.position.y,
+        position_z: state.position.z,
+        target_x: state.target.x,
+        target_y: state.target.y,
+        target_z: state.target.z,
+      }),
+    });
+    if (!res.ok) throw new Error('Failed to save');
+  }, [apiBaseUrl]);
+
+  const handleSavePositionClick = useCallback(async () => {
+    const state = graphRef.current?.getCurrentCameraState?.();
+    if (!state || !isAuthenticated) return;
+    setSavePositionStatus('saving');
+    try {
+      await handleSaveGraphCameraPosition(state);
+      setSavePositionStatus('saved');
+      setTimeout(() => setSavePositionStatus(null), 2000);
+    } catch {
+      setSavePositionStatus('error');
+      setTimeout(() => setSavePositionStatus(null), 2000);
+    }
+  }, [isAuthenticated, handleSaveGraphCameraPosition]);
+
+  const handleResetPositionClick = useCallback(() => {
+    graphRef.current?.resetCameraToInitial?.();
+  }, []);
 
   // Close user menu when clicking outside
   useEffect(() => {
@@ -2486,6 +2558,10 @@ const HomePage = () => {
       selectedEdges={selectedEdges}
       hierarchyTreeAxis={hierarchyTreeAxis}
       onHierarchyTreeAxisChange={setHierarchyTreeAxis}
+      showSavePositionButton={viewMode === 'Graph' && !selectedSceneContainer}
+      onSavePositionClick={isAuthenticated ? handleSavePositionClick : undefined}
+      savePositionStatus={savePositionStatus}
+      onResetPositionClick={handleResetPositionClick}
     >
         <div className="flex flex-col h-full">
           {}
@@ -2676,6 +2752,7 @@ const HomePage = () => {
               )}
 
               <ThreeGraphVisualization
+                ref={graphRef}
                 data={filteredGraphData}
                 onNodeClick={selectNode}
                 onNodeRightClick={handleNodeRightClick}
@@ -2699,6 +2776,7 @@ const HomePage = () => {
                 onSelectedEdgesChange={setSelectedEdges}
                 graphLayoutMode={graphLayoutMode}
                 hierarchyTreeAxis={hierarchyTreeAxis}
+                initialCameraPosition={savedGraphCameraPosition}
               />
             </>
           )}

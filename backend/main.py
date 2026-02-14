@@ -11,13 +11,14 @@ import os
 import aiofiles
 from config import Config
 from services import get_all_stories, get_graph_data, get_graph_data_by_section_and_country, get_gr_id_description, search_with_ai, get_story_statistics, get_all_node_types, get_calendar_data, get_cluster_data, get_entity_wikidata, get_wikidata_by_id, search_entity_wikidata
-from models import GraphData, UserCreate, UserLogin, Token, UserResponse, GoogleAuthRequest, UserActivityCreate, UserActivityResponse, AdminLoginRequest, SubmissionCreate, SubmissionResponse, UserSubscriptionResponse, SubmissionUpdateRequest
+from models import GraphData, UserCreate, UserLogin, Token, UserResponse, GoogleAuthRequest, UserActivityCreate, UserActivityResponse, AdminLoginRequest, SubmissionCreate, SubmissionResponse, UserSubscriptionResponse, SubmissionUpdateRequest, GraphCameraPositionSave, GraphCameraPositionResponse
 from pydantic import BaseModel
 from auth import create_access_token, verify_google_token, get_current_user, get_current_admin_user
 from user_service import create_user, authenticate_user, get_user_by_email, create_or_update_google_user, get_user_by_id, get_all_users, get_user_statistics
 from activity_service import create_activity, get_activities, get_activity_statistics, get_user_activity_summary
 from submission_service import create_submission, process_submission, get_submission, get_user_submissions, get_all_submissions
 from subscription_service import get_user_subscription, update_user_subscription, get_subscription_plan, SUBSCRIPTION_PLANS
+from graph_camera_service import save_camera_position, get_camera_position
 from rate_limit_service import check_rate_limit, record_request
 from datetime import timedelta, datetime
 
@@ -684,6 +685,56 @@ async def get_user_subscription_endpoint(
     except Exception as e:
         logger.exception(f"Error getting subscription: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get subscription: {str(e)}")
+
+# ============== Graph camera position (save/restore view) ==============
+
+@app.post("/api/graph-camera-position")
+async def save_graph_camera_position_endpoint(
+    body: GraphCameraPositionSave,
+    current_user: dict = Depends(get_current_user),
+):
+    """Save the current graph camera position for the authenticated user (by email)."""
+    try:
+        email = current_user.get("email")
+        if not email:
+            raise HTTPException(status_code=400, detail="User email not found")
+        ok = save_camera_position(
+            subscriber_email=email,
+            position_x=body.position_x,
+            position_y=body.position_y,
+            position_z=body.position_z,
+            target_x=body.target_x,
+            target_y=body.target_y,
+            target_z=body.target_z,
+        )
+        if not ok:
+            raise HTTPException(status_code=500, detail="Failed to save camera position")
+        return {"message": "Camera position saved"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Error saving graph camera position: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/graph-camera-position", response_model=Optional[GraphCameraPositionResponse])
+async def get_graph_camera_position_endpoint(
+    current_user: dict = Depends(get_current_user),
+):
+    """Get the last saved graph camera position for the authenticated user."""
+    try:
+        email = current_user.get("email")
+        if not email:
+            raise HTTPException(status_code=400, detail="User email not found")
+        row = get_camera_position(subscriber_email=email)
+        if not row:
+            return None
+        return GraphCameraPositionResponse(**row)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Error getting graph camera position: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
 
 # ============== Admin Submission Endpoints ==============
 

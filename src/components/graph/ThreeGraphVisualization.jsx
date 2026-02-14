@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState, useMemo, useCallback } from 'react';
+import React, { useRef, useEffect, useState, useMemo, useCallback, forwardRef, useImperativeHandle } from 'react';
 import ForceGraph3D from '3d-force-graph';
 import SpriteText from 'three-spritetext';
 import * as d3 from 'd3-force-3d';
@@ -474,9 +474,9 @@ const completelyResetSimulation = (graph, isInitialLoad = false) => {
 
 /**
  * 3D graph visualization component using ForceGraph3D
- * Wrapped in React.memo to prevent unnecessary re-renders
+ * Wrapped in React.memo + forwardRef; ref exposes getCurrentCameraState() for parent "Save position" buttons.
  */
-const ThreeGraphVisualization = React.memo(({
+const ThreeGraphVisualization = React.memo(forwardRef(({
   data,
   onNodeClick,
   onNodeRightClick,
@@ -500,7 +500,9 @@ const ThreeGraphVisualization = React.memo(({
   onSelectedEdgesChange = () => {}, // Callback when selected edges change
   graphLayoutMode = 'force', // 'force' | 'tree' (hierarchical)
   hierarchyTreeAxis = { x: false, y: false, z: false }, // Hierarchy tree axis configuration
-}) => {
+  initialCameraPosition = null, // { position: {x,y,z}, target: {x,y,z} } to restore saved view
+  onSavePosition = null, // (state) => void; when provided, "Save XYZ position" button is shown inside graph
+}, ref) => {
   // Callback validation (only log once on mount or when callbacks change)
   // console.log('🟣 ThreeGraphVisualization - selectionMode:', selectionMode);
 
@@ -546,8 +548,10 @@ const ThreeGraphVisualization = React.memo(({
   const [isHoveringSelected, setIsHoveringSelected] = useState(false); // Track if hovering over selected items
   const [selectedRegion, setSelectedRegion] = useState(null); // Store the selected region bounds/path
   const [webglError, setWebglError] = useState(null); // Track WebGL initialization errors
+  const [savePositionStatus, setSavePositionStatus] = useState(null); // 'saving' | 'saved' | 'error' | null
   const nodeLookupMapRef = useRef(new Map()); // Fast O(1) node lookup map
   const previousDataRef = useRef(null); // Track previous data for incremental updates
+  const appliedInitialCameraRef = useRef(false); // Whether we already applied initialCameraPosition
   
   // Region-based subgraph dragging state
   const regionDragRef = useRef({
@@ -1814,19 +1818,24 @@ const ThreeGraphVisualization = React.memo(({
     // This must be done AFTER all configuration but BEFORE setting camera position
     graphRef.current.graphData({ nodes: data.nodes, links: data.links });
 
-    // Set camera position based on number of nodes
+    // Set camera position: use saved position if provided, else default by node count
     if (data.nodes.length > 0) {
-      const nodeCount = data.nodes.length;
-
-      // Use the helper function to calculate optimal camera distance
-      const cameraDistance = calculateOptimalCameraDistance(nodeCount);
-
-      // Set the camera position with the calculated distance
-      graphRef.current.cameraPosition(
-        { x: 0, y: 0, z: cameraDistance },
-        { x: 0, y: 0, z: 0 },
-        0
-      );
+      if (initialCameraPosition?.position && initialCameraPosition?.target && !appliedInitialCameraRef.current) {
+        graphRef.current.cameraPosition(
+          initialCameraPosition.position,
+          initialCameraPosition.target,
+          500
+        );
+        appliedInitialCameraRef.current = true;
+      } else {
+        const nodeCount = data.nodes.length;
+        const cameraDistance = calculateOptimalCameraDistance(nodeCount);
+        graphRef.current.cameraPosition(
+          { x: 0, y: 0, z: cameraDistance },
+          { x: 0, y: 0, z: 0 },
+          0
+        );
+      }
 
 
       // Ensure the simulation is properly heated for initial load
@@ -1885,6 +1894,22 @@ const ThreeGraphVisualization = React.memo(({
       }
     };
   }, [data, onNodeClick, graphLayoutMode, hiddenCategories, searchTerm]);
+
+  // Apply saved camera position when it becomes available (e.g. loaded async after mount)
+  useEffect(() => {
+    if (!graphRef.current || !initialCameraPosition?.position || !initialCameraPosition?.target || appliedInitialCameraRef.current) return;
+    if (!data?.nodes?.length) return;
+    try {
+      graphRef.current.cameraPosition(
+        initialCameraPosition.position,
+        initialCameraPosition.target,
+        500
+      );
+      appliedInitialCameraRef.current = true;
+    } catch (e) {
+      console.warn('Failed to apply initial camera position', e);
+    }
+  }, [initialCameraPosition, data?.nodes?.length]);
 
   // Show navigation info text only when graph data is actually visible
   useEffect(() => {
@@ -4685,6 +4710,59 @@ const ThreeGraphVisualization = React.memo(({
     }
   }, [selectedNodes.size]);
 
+  // Get current camera position and target from the graph (for save position)
+  const getCurrentCameraState = useCallback(() => {
+    if (!graphRef.current) return null;
+    try {
+      const camera = graphRef.current.camera();
+      const controls = graphRef.current.controls?.();
+      if (!camera || !controls) return null;
+      const pos = new THREE.Vector3();
+      camera.getWorldPosition(pos);
+      const target = controls.target;
+      return {
+        position: { x: pos.x, y: pos.y, z: pos.z },
+        target: { x: target.x, y: target.y, z: target.z },
+      };
+    } catch (e) {
+      return null;
+    }
+  }, []);
+
+  const resetCameraToInitial = useCallback(() => {
+    if (!graphRef.current) return;
+    try {
+      const graphData = graphRef.current.graphData();
+      const nodeCount = graphData?.nodes?.length ?? 0;
+      const cameraDistance = nodeCount > 0 ? calculateOptimalCameraDistance(nodeCount) : 200;
+      graphRef.current.cameraPosition(
+        { x: 0, y: 0, z: cameraDistance },
+        { x: 0, y: 0, z: 0 },
+        500
+      );
+    } catch (e) {
+      console.warn('Reset camera failed', e);
+    }
+  }, []);
+
+  const handleSavePosition = useCallback(async () => {
+    const state = getCurrentCameraState();
+    if (!state || !onSavePosition) return;
+    setSavePositionStatus('saving');
+    try {
+      await onSavePosition(state);
+      if (isMountedRef.current) setSavePositionStatus('saved');
+      setTimeout(() => { if (isMountedRef.current) setSavePositionStatus(null); }, 2000);
+    } catch (e) {
+      if (isMountedRef.current) setSavePositionStatus('error');
+      setTimeout(() => { if (isMountedRef.current) setSavePositionStatus(null); }, 2000);
+    }
+  }, [getCurrentCameraState, onSavePosition]);
+
+  useImperativeHandle(ref, () => ({
+    getCurrentCameraState,
+    resetCameraToInitial,
+  }), [getCurrentCameraState, resetCameraToInitial]);
 
   // Show error state if WebGL initialization failed
   if (webglError) {
@@ -4769,6 +4847,20 @@ const ThreeGraphVisualization = React.memo(({
             />
           </svg>
         )}
+        {/* Save XYZ position button - top right (only when onSavePosition provided) */}
+        {typeof onSavePosition === 'function' && (
+          <div className="absolute top-4 right-4 z-[1100] pointer-events-auto">
+            <button
+              type="button"
+              onClick={handleSavePosition}
+              disabled={savePositionStatus === 'saving' || !data?.nodes?.length}
+              className="px-3 py-1.5 rounded-sm text-xs font-medium bg-[#09090B]/95 border border-[#3F3F46] text-[#E4E4E7] hover:bg-[#18181B] hover:border-[#71717A] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              title="Save current camera position to restore next time you sign in"
+            >
+              {savePositionStatus === 'saving' ? 'Saving…' : savePositionStatus === 'saved' ? 'Saved' : savePositionStatus === 'error' ? 'Error' : 'Save XYZ position'}
+            </button>
+          </div>
+        )}
       </div>
       {/* Territory/Selection summary overlay */}
       <div className="pointer-events-none absolute bottom-4 left-12 z-[1100]">
@@ -4806,7 +4898,7 @@ const ThreeGraphVisualization = React.memo(({
       <NodeTooltipEnhanced node={hoveredNode} position={tooltipPosition} graphData={data} />
     </>
   );
-});
+}));
 // NOTE: Removed custom comparison function to allow onSelectedNodesChange and onSelectedEdgesChange callbacks to update
 // Can add back later with optimized comparison if needed
 

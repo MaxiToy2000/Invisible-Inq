@@ -23,7 +23,11 @@ const LeftSidebar = ({
   graphData = { nodes: [], links: [] },
   graphDescription = null,
   sectionDescription = null,
-  onEntityHighlight = null
+  onEntityHighlight = null,
+  showSavePositionButton = false,
+  onSavePositionClick = null,
+  savePositionStatus = null,
+  onResetPositionClick = null,
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
@@ -500,6 +504,32 @@ const LeftSidebar = ({
         )}
       </div>
 
+        {/* Save / Reset XYZ position - when graph is shown (showSavePositionButton) and at least one handler provided */}
+        {showSavePositionButton && (typeof onSavePositionClick === 'function' || typeof onResetPositionClick === 'function') && (
+          <div className="pt-3 pl-3 pr-3 flex flex-col gap-2">
+            {typeof onSavePositionClick === 'function' && (
+              <button
+                type="button"
+                onClick={onSavePositionClick}
+                disabled={savePositionStatus === 'saving'}
+                className="w-full px-3 py-2 rounded-[5px] text-sm font-medium border border-[#666666] bg-[#131315] text-[#EFEFF0] hover:bg-[#1a1a1a] hover:border-[#71717A] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                title="Save current camera position to restore next time you sign in"
+              >
+                {savePositionStatus === 'saving' ? 'Saving…' : savePositionStatus === 'saved' ? 'Saved' : savePositionStatus === 'error' ? 'Error' : 'Save XYZ position'}
+              </button>
+            )}
+            {typeof onResetPositionClick === 'function' && (
+              <button
+                type="button"
+                onClick={onResetPositionClick}
+                className="w-full px-3 py-2 rounded-[5px] text-sm font-medium border border-[#666666] bg-[#131315] text-[#EFEFF0] hover:bg-[#1a1a1a] hover:border-[#71717A] transition-colors"
+                title="Reset camera to initial view"
+              >
+                Reset XYZ position
+              </button>
+            )}
+          </div>
+        )}
       {}
       <div className={`${isCollapsed ? 'hidden' : 'block'} lg:block mt-auto pt-3 pb-3 px-3`}>
         {}

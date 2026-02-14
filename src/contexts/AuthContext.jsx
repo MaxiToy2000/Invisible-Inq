@@ -22,41 +22,40 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Load user from token on mount
+  // Build user object from JWT payload (avoids /api/auth/me request on refresh)
+  const userFromToken = (decoded) => {
+    if (!decoded || decoded.exp * 1000 < Date.now()) return null;
+    return {
+      id: decoded.sub,
+      email: decoded.email ?? '',
+      full_name: decoded.full_name ?? null,
+      profile_picture: decoded.profile_picture ?? null,
+      is_active: decoded.is_active !== false,
+      is_admin: decoded.is_admin === true,
+      role: decoded.role ?? 'user',
+      status: decoded.status ?? 'active',
+      auth_provider: decoded.auth_provider ?? 'local',
+    };
+  };
+
+  // Load user from token on mount (decode only; no /api/auth/me request)
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (token && !isTokenExpired(token)) {
-      fetchCurrentUser(token);
-    } else {
-      localStorage.removeItem('token');
-      setLoading(false);
-    }
-  }, []);
-
-  // Fetch current user info
-  const fetchCurrentUser = async (token) => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-
-      if (response.ok) {
-        const userData = await response.json();
+      try {
+        const decoded = jwtDecode(token);
+        const userData = userFromToken(decoded);
         setUser(userData);
-      } else {
+      } catch (error) {
         localStorage.removeItem('token');
         setUser(null);
       }
-    } catch (error) {
-      console.error('Error fetching user:', error);
-      localStorage.removeItem('token');
+    } else {
+      if (token) localStorage.removeItem('token');
       setUser(null);
-    } finally {
-      setLoading(false);
     }
-  };
+    setLoading(false);
+  }, []);
 
   // Register new user
   const register = async (email, password, fullName) => {
