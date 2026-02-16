@@ -196,9 +196,21 @@ const HomePage = () => {
     }
   }, [isAuthenticated, handleSaveGraphCameraPosition]);
 
-  const handleResetPositionClick = useCallback(() => {
+  // Reset camera to initial view, then save the actual camera position after reset to DB
+  const handleResetPositionClick = useCallback(async () => {
     graphRef.current?.resetCameraToInitial?.();
-  }, []);
+    if (!isAuthenticated) return;
+    const resetTransitionMs = 500;
+    await new Promise((r) => setTimeout(r, resetTransitionMs + 100));
+    const state = graphRef.current?.getCurrentCameraState?.();
+    if (!state) return;
+    try {
+      await handleSaveGraphCameraPosition(state);
+      setSavedGraphCameraPosition(state);
+    } catch {
+      // camera was still reset visually
+    }
+  }, [isAuthenticated, handleSaveGraphCameraPosition]);
 
   // Close user menu when clicking outside
   useEffect(() => {
