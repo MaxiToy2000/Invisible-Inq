@@ -3056,24 +3056,29 @@ const ThreeGraphVisualization = React.memo(forwardRef(({
     // Check if any axis is enabled
     const isAnyAxisEnabled = hierarchyTreeAxis.x || hierarchyTreeAxis.y || hierarchyTreeAxis.z;
     if (!isAnyAxisEnabled) {
-      // If no axis is enabled and not in tree layout, restore normal forces
+      // Always unpin nodes when hierarchy axis is cleared (e.g. "Default Layout") so graph can return to default
+      const graphData = graphRef.current.graphData();
+      if (graphData && graphData.nodes) {
+        graphData.nodes.forEach(node => {
+          node.fx = null;
+          node.fy = null;
+          node.fz = null;
+        });
+      }
+      prevHierarchyTreeAxisRef.current = { x: false, y: false, z: false };
+      // Restore standard forces and restart only when not in tree layout (tree has its own forces)
       if (graphLayoutMode !== 'tree') {
-        const graphData = graphRef.current.graphData();
-        if (graphData && graphData.nodes) {
-          graphData.nodes.forEach(node => {
-            node.fx = null;
-            node.fy = null;
-            node.fz = null;
-          });
-        }
-        // Restore standard forces
         graphRef.current.d3Force('x', d3.forceX(0).strength(normalizedAxisForce));
         graphRef.current.d3Force('y', d3.forceY(0).strength(normalizedAxisForce));
         graphRef.current.d3Force('z', d3.forceZ(0).strength(normalizedAxisForce));
         if (graphRef.current._simulation) {
           graphRef.current._simulation.alpha(0.3).restart();
         }
+      } else if (graphRef.current._simulation) {
+        graphRef.current._simulation.alpha(0.3).restart();
       }
+      if (graphData) graphRef.current.graphData(graphData);
+      graphRef.current.refresh();
       return;
     }
 

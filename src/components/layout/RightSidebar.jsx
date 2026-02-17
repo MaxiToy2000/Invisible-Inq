@@ -1683,8 +1683,10 @@ const RightSidebar = ({
                           type="checkbox"
                           checked={calendarAxis.x}
                           onChange={() => {
-                            setCalendarAxis({ ...calendarAxis, x: !calendarAxis.x });
-                            onSceneContainerChange('calendar');
+                            const next = { ...calendarAxis, x: !calendarAxis.x };
+                            setCalendarAxis(next);
+                            if (!next.x && !next.y) onSceneContainerChange(null);
+                            else onSceneContainerChange('calendar');
                           }}
                           className="w-3.5 h-3.5 rounded border border-[#363D46] bg-[#24282F] checked:bg-[#3A3A3A] checked:border-[#707070]"
                         />
@@ -1695,8 +1697,10 @@ const RightSidebar = ({
                           type="checkbox"
                           checked={calendarAxis.y}
                           onChange={() => {
-                            setCalendarAxis({ ...calendarAxis, y: !calendarAxis.y });
-                            onSceneContainerChange('calendar');
+                            const next = { ...calendarAxis, y: !calendarAxis.y };
+                            setCalendarAxis(next);
+                            if (!next.x && !next.y) onSceneContainerChange(null);
+                            else onSceneContainerChange('calendar');
                           }}
                           className="w-3.5 h-3.5 rounded border border-[#363D46] bg-[#24282F] checked:bg-[#3A3A3A] checked:border-[#707070]"
                         />
@@ -1707,8 +1711,11 @@ const RightSidebar = ({
                       <button
                         onClick={() => {
                           resetSceneStates('calendar');
-                          setCalendarMode({ linear: !calendarMode.linear, truncated: false });
-                          onSceneContainerChange('calendar');
+                          const nextLinear = !calendarMode.linear;
+                          setCalendarMode({ linear: nextLinear, truncated: false });
+                          const noCalendarActive = !nextLinear && !calendarAxis.x && !calendarAxis.y;
+                          if (noCalendarActive) onSceneContainerChange(null);
+                          else onSceneContainerChange('calendar');
                         }}
                         className={`px-3 py-0.5 rounded-[20px] text-[10px] lowercase transition-colors ${
                           calendarMode.linear
@@ -1721,8 +1728,11 @@ const RightSidebar = ({
                       <button
                         onClick={() => {
                           resetSceneStates('calendar');
-                          setCalendarMode({ linear: false, truncated: !calendarMode.truncated });
-                          onSceneContainerChange('calendar');
+                          const nextTruncated = !calendarMode.truncated;
+                          setCalendarMode({ linear: false, truncated: nextTruncated });
+                          const noCalendarActive = !nextTruncated && !calendarAxis.x && !calendarAxis.y;
+                          if (noCalendarActive) onSceneContainerChange(null);
+                          else onSceneContainerChange('calendar');
                         }}
                         className={`px-3 py-0.5 rounded-[20px] text-[10px] lowercase transition-colors ${
                           calendarMode.truncated
@@ -1748,7 +1758,9 @@ const RightSidebar = ({
                     <button
                       onClick={() => {
                         resetSceneStates('hierarchy');
-                        handleHierarchyTreeAxisChange({ ...hierarchyTreeAxis, x: !hierarchyTreeAxis.x });
+                        const next = { ...hierarchyTreeAxis, x: !hierarchyTreeAxis.x };
+                        handleHierarchyTreeAxisChange(next);
+                        if (!next.x && !next.y && !next.z) onSceneContainerChange(null);
                       }}
                       className={`w-[22px] h-[20px] rounded-[20px] flex items-center justify-center text-xs transition-colors ${
                         hierarchyTreeAxis.x
@@ -1762,7 +1774,9 @@ const RightSidebar = ({
                     <button
                       onClick={() => {
                         resetSceneStates('hierarchy');
-                        handleHierarchyTreeAxisChange({ ...hierarchyTreeAxis, y: !hierarchyTreeAxis.y });
+                        const next = { ...hierarchyTreeAxis, y: !hierarchyTreeAxis.y };
+                        handleHierarchyTreeAxisChange(next);
+                        if (!next.x && !next.y && !next.z) onSceneContainerChange(null);
                       }}
                       className={`w-[22px] h-[20px] rounded-[20px] flex items-center justify-center text-xs transition-colors ${
                         hierarchyTreeAxis.y
@@ -1776,7 +1790,9 @@ const RightSidebar = ({
                     <button
                       onClick={() => {
                         resetSceneStates('hierarchy');
-                        handleHierarchyTreeAxisChange({ ...hierarchyTreeAxis, z: !hierarchyTreeAxis.z });
+                        const next = { ...hierarchyTreeAxis, z: !hierarchyTreeAxis.z };
+                        handleHierarchyTreeAxisChange(next);
+                        if (!next.x && !next.y && !next.z) onSceneContainerChange(null);
                       }}
                       className={`w-[22px] h-[20px] rounded-[20px] flex items-center justify-center text-xs transition-colors ${
                         hierarchyTreeAxis.z
@@ -1808,8 +1824,14 @@ const RightSidebar = ({
                   <div className="flex gap-2 flex-wrap">
                     <button
                     onClick={() => {
-                      resetSceneStates('map');
-                      handleMapViewChange('flat');
+                      if (mapView === 'flat') {
+                        setMapView(null);
+                        onMapViewChange(null);
+                        onSceneContainerChange(null);
+                      } else {
+                        resetSceneStates('map');
+                        handleMapViewChange('flat');
+                      }
                     }}
                       className={`px-3 py-0.5 rounded-[20px] text-[10px] transition-colors ${
                         mapView === 'flat'
@@ -1821,8 +1843,14 @@ const RightSidebar = ({
                     </button>
                     <button
                     onClick={() => {
-                      resetSceneStates('map');
-                      handleMapViewChange('spherical');
+                      if (mapView === 'spherical') {
+                        setMapView(null);
+                        onMapViewChange(null);
+                        onSceneContainerChange(null);
+                      } else {
+                        resetSceneStates('map');
+                        handleMapViewChange('spherical');
+                      }
                     }}
                       className={`px-3 py-0.5 rounded-[20px] text-[10px] transition-colors ${
                         mapView === 'spherical'
@@ -1895,6 +1923,8 @@ const RightSidebar = ({
                         onClusterConfigChange(clusterMethod, property);
                         if (property || clusterMethod) {
                           onSceneContainerChange('cluster');
+                        } else {
+                          onSceneContainerChange(null);
                         }
                       }}
                     >

@@ -310,6 +310,7 @@ const LeftSidebar = ({
     }).filter(Boolean); // Remove null elements
   };
 
+  
   return (
     <div ref={sidebarRef} className="bg-[#09090B] flex flex-col h-full w-full relative overflow-hidden overflow-x-hidden">
       {}
