@@ -9,7 +9,6 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const navigate = useNavigate();
 
   // Check if token is expired
@@ -60,7 +59,6 @@ export const AuthProvider = ({ children }) => {
   // Register new user
   const register = async (email, password, fullName) => {
     try {
-      setError(null);
       const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
         method: 'POST',
         headers: {
@@ -80,12 +78,10 @@ export const AuthProvider = ({ children }) => {
         setUser(data.user);
         return { success: true };
       } else {
-        setError(data.detail || 'Registration failed');
         return { success: false, error: data.detail || 'Registration failed' };
       }
-    } catch (error) {
-      const errorMessage = error.message || 'Network error during registration';
-      setError(errorMessage);
+    } catch (err) {
+      const errorMessage = err.message || 'Network error during registration';
       return { success: false, error: errorMessage };
     }
   };
@@ -93,7 +89,6 @@ export const AuthProvider = ({ children }) => {
   // Login with email and password
   const login = async (email, password) => {
     try {
-      setError(null);
       const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
         method: 'POST',
         headers: {
@@ -112,12 +107,10 @@ export const AuthProvider = ({ children }) => {
         setUser(data.user);
         return { success: true };
       } else {
-        setError(data.detail || 'Login failed');
         return { success: false, error: data.detail || 'Login failed' };
       }
-    } catch (error) {
-      const errorMessage = error.message || 'Network error during login';
-      setError(errorMessage);
+    } catch (err) {
+      const errorMessage = err.message || 'Network error during login';
       return { success: false, error: errorMessage };
     }
   };
@@ -125,7 +118,6 @@ export const AuthProvider = ({ children }) => {
   // Login with Google
   const loginWithGoogle = async (credential) => {
     try {
-      setError(null);
       const response = await fetch(`${API_BASE_URL}/api/auth/google`, {
         method: 'POST',
         headers: {
@@ -143,12 +135,10 @@ export const AuthProvider = ({ children }) => {
         setUser(data.user);
         return { success: true };
       } else {
-        setError(data.detail || 'Google login failed');
         return { success: false, error: data.detail || 'Google login failed' };
       }
-    } catch (error) {
-      const errorMessage = error.message || 'Network error during Google login';
-      setError(errorMessage);
+    } catch (err) {
+      const errorMessage = err.message || 'Network error during Google login';
       return { success: false, error: errorMessage };
     }
   };
@@ -157,13 +147,7 @@ export const AuthProvider = ({ children }) => {
   const logout = () => {
     localStorage.removeItem('token');
     setUser(null);
-    setError(null);
     navigate('/');
-  };
-
-  // Get auth token
-  const getToken = () => {
-    return localStorage.getItem('token');
   };
 
   // Check if user is authenticated
@@ -174,12 +158,10 @@ export const AuthProvider = ({ children }) => {
   const value = {
     user,
     loading,
-    error,
     register,
     login,
     loginWithGoogle,
     logout,
-    getToken,
     isAuthenticated
   };
 

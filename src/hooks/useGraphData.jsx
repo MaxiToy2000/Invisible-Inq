@@ -298,10 +298,7 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
                                  err.name === 'TypeError';
 
         if (!hasLoggedError) {
-          if (isConnectionError) {
-            // Connection errors are already handled in loadStories, so we can be quieter here
-            console.debug('Graph data fetch failed (backend unavailable)');
-          } else {
+          if (!isConnectionError) {
             console.error('Error loading substory data:', err.message);
           }
           hasLoggedError = true;

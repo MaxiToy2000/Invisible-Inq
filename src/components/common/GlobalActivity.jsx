@@ -31,7 +31,7 @@ const countryNameMap = {
   'NZL': ['New Zealand', 'NZL']
 };
 
-const GlobalActivity = ({ graphData, currentSubstory, onSectionClick, onHighlightCountries, selectedSection: _selectedSection }) => {
+const GlobalActivity = ({ graphData, currentSubstory, onSectionClick, onHighlightCountries }) => {
   const [activeCountries] = useState([
     'USA', 'CAN', 'MEX', 'BRA', 'ARG', 'CHL',
     'GBR', 'FRA', 'DEU', 'ESP', 'ITA', 'SWE',

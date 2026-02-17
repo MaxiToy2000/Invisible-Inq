@@ -37,18 +37,13 @@ export const ToastProvider = ({ children }) => {
     return addToast({ type: 'warning', message, title, ...options });
   }, [addToast]);
 
-  const showInfo = useCallback((message, title = 'Info', options = {}) => {
-    return addToast({ type: 'info', message, title, ...options });
-  }, [addToast]);
-
   const value = {
     toasts,
     addToast,
     removeToast,
     showSuccess,
     showError,
-    showWarning,
-    showInfo
+    showWarning
   };
 
   return (
