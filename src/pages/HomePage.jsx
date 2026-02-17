@@ -673,7 +673,10 @@ const HomePage = () => {
   // Handle scene container changes coming from RightSidebar (map/timeline/calendar/cluster)
   const handleSceneContainerChange = useCallback((container) => {
     setSelectedSceneContainer(container);
-    updateURL({ scene: container });
+    updateURL({ scene: container });    // When deselecting scene container, ensure viewMode is Graph so Graph view and Save/Reset XYZ show
+    if (!container) {
+      setViewMode('Graph');
+    }
     // If switching away from map, clear mapView? keep mapView; leave as is to preserve selection
   }, [updateURL]);
 
@@ -1249,16 +1252,22 @@ const HomePage = () => {
     if (needsUpdate) {
       isReadingFromURL.current = true;
 
-      // Update view mode from URL
-      if (viewParam && ['Graph', 'Table', 'JSON'].includes(viewParam)) {
-        setViewMode(viewParam);
-      }
-
-      // Update scene container from URL
-      if (sceneParam && ['map', 'cluster', 'timeline', 'calendar'].includes(sceneParam)) {
-        setSelectedSceneContainer(sceneParam);
-      } else if (!sceneParam) {
+      // When no story context in URL (e.g. fresh load / default route), always show Graph and no scene
+      const hasStoryContextInURL = !!(storyTitleParam || storyIdFromURL);
+      if (!hasStoryContextInURL) {
+        setViewMode('Graph');
         setSelectedSceneContainer(null);
+      } else {
+        // Update view mode from URL only when we have story context
+        if (viewParam && ['Graph', 'Table', 'JSON'].includes(viewParam)) {
+          setViewMode(viewParam);
+        }
+        // Update scene container from URL only when we have story context
+        if (sceneParam && ['map', 'cluster', 'timeline', 'calendar'].includes(sceneParam)) {
+          setSelectedSceneContainer(sceneParam);
+        } else {
+          setSelectedSceneContainer(null);
+        }
       }
 
       // Handle story/chapter/substory selection from URL
