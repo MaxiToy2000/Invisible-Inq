@@ -27,11 +27,11 @@ def verify_password(plain_password: str, hashed_password: str | bytes) -> bool:
     try:
         hash_type = type(hashed_password).__name__
         hash_len = len(hashed_password) if hashed_password else 0
-        logger.info(f"[auth/verify_password] Checking: hash_type={hash_type}, hash_len={hash_len}")
+        logger.debug(f"[auth/verify_password] Checking: hash_type={hash_type}, hash_len={hash_len}")
         password_bytes = plain_password.encode('utf-8')
         hashed_bytes = hashed_password.encode('utf-8') if isinstance(hashed_password, str) else hashed_password
         ok = bcrypt.checkpw(password_bytes, hashed_bytes)
-        logger.info(f"[auth/verify_password] result={ok}")
+        logger.debug(f"[auth/verify_password] result={ok}")
         return ok
     except Exception as e:
         logger.error(f"[auth/verify_password] Error: {e}")
