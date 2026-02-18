@@ -989,30 +989,6 @@ const GraphViewByMap = ({ mapView = 'flat', graphData = { nodes: [], links: [] }
       animatePulse();
     }
 
-    // // Add labels for nodes (hide label for country node to match map style)
-    // node.append('text')
-    //   .text(d => d.name || d.id || 'Node')
-    //   .attr('dx', d => {
-    //     const isMatchingCountry = matchingCountryNode && (d.id === matchingCountryNode.id || d.gid === matchingCountryNode.gid);
-    //     return isMatchingCountry ? 0 : 16; // No offset for country node (no label)
-    //   })
-    //   .attr('dy', 5)
-    //   .attr('font-size', d => {
-    //     const isMatchingCountry = matchingCountryNode && (d.id === matchingCountryNode.id || d.gid === matchingCountryNode.gid);
-    //     return isMatchingCountry ? '0px' : '12px'; // Hide label for country node
-    //   })
-    //   .attr('fill', d => {
-    //     const isMatchingCountry = matchingCountryNode && (d.id === matchingCountryNode.id || d.gid === matchingCountryNode.gid);
-    //     return isMatchingCountry ? 'transparent' : '#FFFFFF'; // Hide label for country node
-    //   })
-    //   .attr('font-weight', 'normal')
-    //   .attr('font-family', 'system-ui, sans-serif')
-    //   .attr('pointer-events', 'none')
-    //   .attr('opacity', d => {
-    //     const isMatchingCountry = matchingCountryNode && (d.id === matchingCountryNode.id || d.gid === matchingCountryNode.gid);
-    //     return isMatchingCountry ? 0 : 1; // Hide label for country node
-    //   });
-
     // Position nodes and links according to hierarchical layout
     // Since simulation is stopped, manually position everything
     const updatePositions = () => {

@@ -503,9 +503,6 @@ const ThreeGraphVisualization = React.memo(forwardRef(({
   initialCameraPosition = null, // { position: {x,y,z}, target: {x,y,z} } to restore saved view
   onSavePosition = null, // (state) => void; when provided, "Save XYZ position" button is shown inside graph
 }, ref) => {
-  // Callback validation (only log once on mount or when callbacks change)
-  // console.log('🟣 ThreeGraphVisualization - selectionMode:', selectionMode);
-
   const containerRef = useRef();
   const graphRef = useRef();
   const pinnedNodesRef = useRef(new Set()); // Tracks manually moved nodes that are pinned

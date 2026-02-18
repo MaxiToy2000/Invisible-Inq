@@ -203,7 +203,6 @@ const BaseTooltipLayout = ({ node, color, graphData }) => {
 };
 
 // Entity-specific layout - displays node information (wikidata fetched in RightSidebar on click)
-// Entity-specific layout - displays node information (wikidata fetched in RightSidebar on click)
 const EntityTooltipLayout = ({ node, color }) => {
   const [imageError, setImageError] = useState(false);
   
@@ -253,17 +252,8 @@ const EntityTooltipLayout = ({ node, color }) => {
               alt={entityName}
               className="w-full h-full object-cover block"
               loading="lazy"
-              onLoad={() => {
-                console.log('✅ Image loaded successfully:', imageUrl);
-              }}
-              onError={(e) => { 
-                console.error('❌ Image failed to load:', {
-                  url: imageUrl,
-                  error: e,
-                  target: e.target
-                });
-                setImageError(true);
-              }}
+              onLoad={() => {}}
+              onError={() => setImageError(true)}
             />
           ) : (
             <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-400 to-gray-500">

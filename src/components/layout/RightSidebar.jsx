@@ -37,7 +37,6 @@ const RightSidebar = ({
   onSectionClick = () => {},
   graphData = { nodes: [], links: [] },
   filteredGraphData = null,
-  selectedSection = null,
   connectedDataCache = {},
   connectedDataLoading = false,
   connectedDataError = null,
@@ -1419,7 +1418,7 @@ const RightSidebar = ({
         {activeTab === 'data-visualization' && (
           <div className="w-full h-full flex flex-col overflow-y-auto overflow-x-hidden">
             <div className="w-full flex-shrink-0 min-h-[300px] max-h-[300px]">
-              <GlobalActivity graphData={graphData} currentSubstory={currentSubstory} selectedSection={selectedSection} />
+              <GlobalActivity graphData={graphData} currentSubstory={currentSubstory} />
             </div>
             <div className="w-full flex-shrink-0 mt-0 mb-1 aspect-square min-h-full">
               <ConnectedData 

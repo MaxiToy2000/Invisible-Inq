@@ -100,16 +100,13 @@ def get_user_by_email(email: str) -> Optional[Dict]:
         FROM users
         WHERE LOWER(email) = LOWER(%s)
         """
-        logger.info(f"[auth/get_user_by_email] Querying for email={normalized_email!r}")
+        logger.debug(f"[auth/get_user_by_email] Querying for email={normalized_email!r}")
         result = neon_db.execute_query(query, (normalized_email,))
 
         if result and len(result) > 0:
             user_row = result[0]
-            has_hash = user_row.get('hashed_password') is not None
-            logger.info(
-                f"[auth/get_user_by_email] Found user: id={user_row.get('id')}, email={user_row.get('email')!r}, "
-                f"auth_provider={user_row.get('auth_provider')!r}, is_active={user_row.get('is_active')}, "
-                f"hashed_password_set={has_hash}, row_count=1"
+            logger.debug(
+                f"[auth/get_user_by_email] Found user: id={user_row.get('id')}, email={user_row.get('email')!r}"
             )
             return {
                 "id": str(user_row['id']),
@@ -125,7 +122,7 @@ def get_user_by_email(email: str) -> Optional[Dict]:
                 "updated_at": user_row.get('updated_at'),
                 "auth_provider": user_row.get('auth_provider') or 'local',
             }
-        logger.info(f"[auth/get_user_by_email] No user found for email={normalized_email!r}, row_count=0")
+        logger.debug(f"[auth/get_user_by_email] No user found for email={normalized_email!r}")
         return None
     except Exception as e:
         logger.error(f"[auth/get_user_by_email] Error for email={email!r}: {e}")
@@ -183,7 +180,7 @@ def authenticate_user(email: str, password: str) -> Optional[Dict]:
         User data dict if authentication successful, None otherwise
     """
     email_for_log = (email or "").strip()
-    logger.info(f"[auth/authenticate_user] Starting for email={email_for_log!r}")
+    logger.debug(f"[auth/authenticate_user] Starting for email={email_for_log!r}")
 
     try:
         user = get_user_by_email(email)
@@ -192,7 +189,7 @@ def authenticate_user(email: str, password: str) -> Optional[Dict]:
             logger.warning(f"[auth/authenticate_user] Abort: user not found for email={email_for_log!r}")
             return None
 
-        logger.info(f"[auth/authenticate_user] User found id={user.get('id')}, auth_provider={user.get('auth_provider')!r}, is_active={user.get('is_active')}")
+        logger.debug(f"[auth/authenticate_user] User found id={user.get('id')}, auth_provider={user.get('auth_provider')!r}")
 
         # Check if user uses local authentication (treat None/NULL as local)
         auth_provider = user.get('auth_provider') or 'local'
@@ -211,9 +208,9 @@ def authenticate_user(email: str, password: str) -> Optional[Dict]:
             logger.warning(f"[auth/authenticate_user] Abort: no hashed_password in DB for email={email_for_log!r}")
             return None
 
-        logger.info(f"[auth/authenticate_user] Calling verify_password (hashed type={type(hashed_password).__name__})")
+        logger.debug(f"[auth/authenticate_user] Calling verify_password (hashed type={type(hashed_password).__name__})")
         password_ok = verify_password(password, hashed_password)
-        logger.info(f"[auth/authenticate_user] verify_password result={password_ok}")
+        logger.debug(f"[auth/authenticate_user] verify_password result={password_ok}")
 
         if not password_ok:
             logger.warning(f"[auth/authenticate_user] Abort: password mismatch for email={email_for_log!r}")
@@ -221,7 +218,7 @@ def authenticate_user(email: str, password: str) -> Optional[Dict]:
 
         # Remove password from returned user data
         user.pop('hashed_password', None)
-        logger.info(f"[auth/authenticate_user] Success for email={email_for_log!r}, user_id={user.get('id')}")
+        logger.debug(f"[auth/authenticate_user] Success for email={email_for_log!r}, user_id={user.get('id')}")
         return user
     except Exception as e:
         error_msg = str(e)

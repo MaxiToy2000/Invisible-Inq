@@ -53,7 +53,6 @@ const Layout = ({
   clusterMethod = '',
   clusterProperty = '',
   onSectionClick = () => {},
-  selectedSection = null,
   filteredGraphData = null,
   connectedDataCache = {},
   connectedDataLoading = false,
@@ -227,7 +226,6 @@ const Layout = ({
           onSectionClick={onSectionClick}
           graphData={graphData}
           filteredGraphData={filteredGraphData}
-          selectedSection={selectedSection}
           connectedDataCache={connectedDataCache}
           connectedDataLoading={connectedDataLoading}
           connectedDataError={connectedDataError}
