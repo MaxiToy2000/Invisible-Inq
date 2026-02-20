@@ -148,7 +148,8 @@ The queries in `queries.py` expect the following Neo4j structure:
 
 ### Relationships
 
-- `Story-[:HAS_CHAPTER]->Chapter`
+- `Chapter-[:IN_STORY]->Story` (chapter belongs to story)
+- `Section-[:IN_CHAPTER]->Chapter` (section belongs to chapter)
 - `Chapter-[:HAS_SUBSTORY]->Substory`
 - `Substory-[:HAS_NODE|BELONGS_TO|CONTAINS*]->Entity`
 - `Entity-[:RELATIONSHIP_TYPE]->Entity` (for links/edges)
@@ -160,7 +161,7 @@ The queries in `queries.py` expect the following Neo4j structure:
 Edit `queries.py` to match your Neo4j schema:
 
 1. Adjust node labels (e.g., `:Story`, `:Chapter`, `:Substory`)
-2. Adjust relationship types (e.g., `:HAS_CHAPTER`, `:HAS_SUBSTORY`)
+2. Adjust relationship types (e.g., `:IN_STORY`, `:IN_CHAPTER`, `:HAS_SUBSTORY`)
 3. Modify property names to match your node/relationship properties
 4. Update the graph data query to match how nodes and links are connected to substories
 
