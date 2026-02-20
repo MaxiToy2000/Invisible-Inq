@@ -8,7 +8,7 @@ def get_all_stories_query():
 
     1. gr_id unified schema (primary):
        - All entities are :gr_id nodes; category distinguishes "story", "chapter", "section".
-       - Relationships: Story -[:HAS_CHAPTER]-> Chapter -[:HAS_SECTION]-> Section.
+       - Relationships: Chapter -[:IN_STORY]-> Story; Section -[:IN_CHAPTER]-> Chapter.
        - Returns one row per story with key "story" containing nested chapters/sections.
 
     2. Legacy schema (fallback):
@@ -19,9 +19,9 @@ def get_all_stories_query():
     return """
     MATCH (story:gr_id)
     WHERE toLower(trim(coalesce(story.category, ''))) = 'story'
-    OPTIONAL MATCH (story)-[:HAS_CHAPTER]-(chapter:gr_id)
+    OPTIONAL MATCH (story)<-[:IN_STORY]-(chapter:gr_id)
     WHERE toLower(trim(coalesce(chapter.category, ''))) = 'chapter'
-    OPTIONAL MATCH (chapter)-[:HAS_SECTION]-(section:gr_id)
+    OPTIONAL MATCH (chapter)<-[:IN_CHAPTER]-(section:gr_id)
     WHERE toLower(trim(coalesce(section.category, ''))) = 'section'
     WITH story, chapter, section,
          toInteger(coalesce(toFloat(story.order), toFloat(story.`Story Number`), toFloat(story.`Story Number_new`), 0)) AS story_order,
@@ -117,7 +117,7 @@ def get_all_stories_query_legacy():
     """
 
 def get_story_statistics_query(story_gid: Optional[str] = None, story_title: Optional[str] = None):
-    """Statistics for a story. New schema: gr_id nodes with HAS_CHAPTER, HAS_SECTION."""
+    """Statistics for a story. New schema: gr_id nodes with IN_STORY, IN_CHAPTER."""
     if story_gid:
         match_clause = """
         MATCH (story:gr_id)
@@ -139,9 +139,9 @@ def get_story_statistics_query(story_gid: Optional[str] = None, story_title: Opt
     # Use relationship-based matching (section)-[*1..5]-(n) - same as graph data query
     query = f"""
     {match_clause}
-    OPTIONAL MATCH (story)-[:HAS_CHAPTER]-(chapter:gr_id)
+    OPTIONAL MATCH (story)<-[:IN_STORY]-(chapter:gr_id)
     WHERE toLower(trim(coalesce(chapter.category, ''))) = 'chapter'
-    OPTIONAL MATCH (chapter)-[:HAS_SECTION]-(section:gr_id)
+    OPTIONAL MATCH (chapter)<-[:IN_CHAPTER]-(section:gr_id)
     WHERE toLower(trim(coalesce(section.category, ''))) = 'section'
     WITH story, COLLECT(DISTINCT section) AS sections
     UNWIND CASE WHEN size(sections) = 0 OR sections[0] IS NULL THEN [null] ELSE sections END AS section
