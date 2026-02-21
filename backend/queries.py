@@ -278,6 +278,7 @@ def get_graph_data_by_section_query(section_gid: Optional[str] = None, section_q
     RETURN {{
       nodes: [n IN all_nodes | n {{
         .*,
+        date: coalesce(n.date, n.`Date`, n.`Relationship Date`, n.`Action Date`, n.`Process Date`, n.`Disb Date`),
         elementId: elementId(n),
         labels: labels(n),
         node_type: head(labels(n))
@@ -352,6 +353,7 @@ def get_graph_data_by_section_query_legacy(section_gid: Optional[str] = None, se
     RETURN {{
       nodes: [n IN all_nodes | n {{
         .*,
+        date: coalesce(n.date, n.`Date`, n.`Relationship Date`, n.`Action Date`, n.`Process Date`, n.`Disb Date`),
         elementId: elementId(n),
         labels: labels(n),
         node_type: head(labels(n))
@@ -523,6 +525,7 @@ def get_graph_data_by_section_and_country_query(section_query: str, country_name
     RETURN {
       nodes: [n IN all_nodes | n {
         .*,
+        date: coalesce(n.date, n.`Date`, n.`Relationship Date`, n.`Action Date`, n.`Process Date`, n.`Disb Date`),
         elementId: elementId(n),
         labels: labels(n),
         node_type: head(labels(n))

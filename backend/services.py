@@ -73,6 +73,12 @@ def format_node(node_data: Dict[str, Any]) -> Dict[str, Any]:
             continue
         if key in node:
             continue
+        # Normalize date-like values so frontend always gets a string (Neo4j Date/DateTime are JSON-serializable but normalize for consistency)
+        if key in ("date", "Date", "Relationship Date", "Action Date", "Process Date", "Disb Date", "date_start", "date_end"):
+            if hasattr(value, "isoformat"):
+                value = value.isoformat()
+            elif hasattr(value, "strftime"):
+                value = value.strftime("%Y-%m-%d")
         node[key] = value
 
     return node
