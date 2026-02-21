@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { GoogleOAuthProvider } from '@react-oauth/google';
 import { ToastProvider } from './contexts/ToastContext';
 import { AuthProvider } from './contexts/AuthContext';
+import { StoriesProvider } from './contexts/StoriesContext';
 import HomePage from './pages/HomePage';
 import AboutPage from './pages/AboutPage';
 import ContactPage from './pages/ContactPage';
@@ -19,6 +20,7 @@ function App() {
       <ToastProvider>
         <Router>
           <AuthProvider>
+            <StoriesProvider>
             <Routes>
               {/* Public routes - shown before authentication */}
               <Route path="/login" element={<LoginPage />} />
@@ -46,6 +48,7 @@ function App() {
                 </ProtectedRoute>
               } />
             </Routes>
+            </StoriesProvider>
           </AuthProvider>
         </Router>
       </ToastProvider>

@@ -37,9 +37,6 @@ const RightSidebar = ({
   onSectionClick = () => {},
   graphData = { nodes: [], links: [] },
   filteredGraphData = null,
-  connectedDataCache = {},
-  connectedDataLoading = false,
-  connectedDataError = null,
   onSortConfigChange = () => {},
   sortBy: externalSortBy = null,
   sortOrder: externalSortOrder = 'asc',
@@ -1426,9 +1423,6 @@ const RightSidebar = ({
                 graphData={graphData} 
                 filteredGraphData={filteredGraphData} 
                 currentSubstory={currentSubstory}
-                connectedDataCache={connectedDataCache}
-                connectedDataLoading={connectedDataLoading}
-                connectedDataError={connectedDataError}
               />
             </div>
           </div>

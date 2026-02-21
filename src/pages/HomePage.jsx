@@ -85,10 +85,6 @@ const HomePage = () => {
   const [showFilters, setShowFilters] = useState(false);
   const [showSortControls, setShowSortControls] = useState(false);
 
-  // Connected Data API state and caching
-  const [connectedDataCache, setConnectedDataCache] = useState({});
-  const [connectedDataLoading, setConnectedDataLoading] = useState(false);
-  const [connectedDataError, setConnectedDataError] = useState(null);
   const [sectionDescription, setSectionDescription] = useState(null);
   const [savedGraphCameraPosition, setSavedGraphCameraPosition] = useState(null); // { position: {x,y,z}, target: {x,y,z} } for restore
   const [savePositionStatus, setSavePositionStatus] = useState(null); // 'saving' | 'saved' | 'error' | null (for LeftSidebar button)
@@ -131,17 +127,20 @@ const HomePage = () => {
 
   const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
-  // Load saved graph camera position when user is authenticated
+  // Load saved graph camera position when authenticated (timeout to avoid infinite pending)
   useEffect(() => {
-    if (!isAuthenticated) {
+    if (!isAuthenticated()) {
       setSavedGraphCameraPosition(null);
       return;
     }
     const token = localStorage.getItem('token');
     if (!token) return;
     let cancelled = false;
+    const ac = new AbortController();
+    const timeoutId = setTimeout(() => ac.abort(), 8000);
     fetch(`${apiBaseUrl}/api/graph-camera-position`, {
       headers: { Authorization: `Bearer ${token}` },
+      signal: ac.signal,
     })
       .then((res) => {
         if (!res.ok) return null;
@@ -155,9 +154,14 @@ const HomePage = () => {
           target: { x: data.target_x, y: data.target_y, z: data.target_z },
         });
       })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, [isAuthenticated, apiBaseUrl]);
+      .catch(() => {})
+      .finally(() => clearTimeout(timeoutId));
+    return () => {
+      cancelled = true;
+      ac.abort();
+      clearTimeout(timeoutId);
+    };
+  }, [isAuthenticated, apiBaseUrl, user]);
 
   const handleSaveGraphCameraPosition = useCallback(async (state) => {
     const token = localStorage.getItem('token');
@@ -334,37 +338,11 @@ const HomePage = () => {
     }
   }, [navigate, normalizeTitleForURL, stories]);
 
-  // Wrapper handlers that update both state and URL
-  const handleStorySelect = useCallback((storyId, option) => {
-    if (!storyId) return;
-
-    // Mark that we're updating from user action, not URL
-    isReadingFromURL.current = false;
-    
-    // Get story title from option object - use label (displayed text) first, then title
-    let storyTitle = option?.label || option?.title || null;
-    if (!storyTitle && stories.length > 0) {
-      const story = stories.find(s => s.id === storyId);
-      storyTitle = story?.title || null;
-    }
-
-    if (storyTitle) {
-      updateURLWithSelections(storyId, null, null, storyTitle);
-    } else {
-      console.warn('[handleStorySelect] No story title found, updating URL with ID only');
-      updateURLWithSelections(storyId, null, null);
-    }
-    
-    // Update state after URL update
-    selectStory(storyId);
-  }, [selectStory, updateURLWithSelections, stories]);
-
+  // Wrapper handlers: define handleChapterSelect first so handleStorySelect can call it
   const handleChapterSelect = useCallback((chapterId, option) => {
-    // Mark that we're updating from user action, not URL
     isReadingFromURL.current = false;
-    
+
     if (!chapterId) {
-      // Update URL to remove chapter and substory
       const currentStoryId = currentStory?.id || null;
       if (currentStoryId) {
         const storyTitle = currentStory?.title || null;
@@ -378,19 +356,16 @@ const HomePage = () => {
       return;
     }
 
-    // Get chapter title from option object - use label (displayed text) first, then title
     let chapterTitle = option?.label || option?.title || null;
     let selectedChapter = option || null;
 
-    // If not in option, find the chapter from the stories array (try currentStory first, then search all stories)
     if (!chapterTitle && currentStory && currentStory.chapters) {
       selectedChapter = currentStory.chapters.find(c => c.id === chapterId);
       if (selectedChapter && selectedChapter.title) {
         chapterTitle = selectedChapter.title;
       }
     }
-    
-    // If still not found, search all stories
+
     if (!chapterTitle && stories.length > 0) {
       for (const story of stories) {
         if (story && story.chapters) {
@@ -403,33 +378,24 @@ const HomePage = () => {
         }
       }
     }
-    
-    // If chapter title still not found, we can't update URL properly - log warning and still select
+
     if (!chapterTitle) {
       console.warn(`Chapter title not found for chapterId: ${chapterId}, currentStoryId: ${currentStoryId}, stories count: ${stories.length}`);
-      // Still select the chapter even if title is missing, but don't update URL
       selectChapter(chapterId);
       return;
     }
-    
-    // Ensure we have a storyId to include in URL
-    // If currentStoryId is not set, try to find it from the chapter we just found
+
     let storyIdForURL = currentStoryId;
     if (!storyIdForURL) {
-      const foundStory = stories.find(s => 
-        s.chapters && s.chapters.some(c => c.id === chapterId)
-      );
+      const foundStory = stories.find(s => s.chapters && s.chapters.some(c => c.id === chapterId));
       storyIdForURL = foundStory?.id || null;
     }
-    
-    // Always automatically select the first section if available
+
     const firstSubstory = selectedChapter?.substories?.[0];
     const firstSubstoryId = firstSubstory?.id || null;
     const firstSubstoryTitle = firstSubstory?.title || null;
-    
-    // Ensure we have a storyId to include in URL
     const finalStoryId = storyIdForURL || currentStoryId;
-    
+
     if (!finalStoryId) {
       console.warn(`[handleChapterSelect] Story ID not found for chapterId: ${chapterId}`);
       selectChapter(chapterId);
@@ -438,17 +404,42 @@ const HomePage = () => {
 
     const storyTitle = stories.find(s => s.id === finalStoryId)?.title || null;
     updateURLWithSelections(finalStoryId, chapterTitle, firstSubstoryTitle || null, storyTitle || null);
-    
-    // Update state
     selectChapter(chapterId);
-    
-    // If there's a first section, select it after a brief delay
+
     if (firstSubstoryId) {
       setTimeout(() => {
         selectSubstory(firstSubstoryId);
       }, 50);
     }
   }, [selectChapter, selectSubstory, updateURLWithSelections, currentStoryId, currentStory, stories]);
+
+  const handleStorySelect = useCallback((storyId, option) => {
+    if (!storyId) return;
+
+    isReadingFromURL.current = false;
+
+    let storyTitle = option?.label || option?.title || null;
+    const story = stories.find(s => s.id === storyId);
+    if (!storyTitle && story) {
+      storyTitle = story?.title || null;
+    }
+
+    if (storyTitle) {
+      updateURLWithSelections(storyId, null, null, storyTitle);
+    } else {
+      console.warn('[handleStorySelect] No story title found, updating URL with ID only');
+      updateURLWithSelections(storyId, null, null);
+    }
+
+    selectStory(storyId);
+
+    if (story?.chapters?.length > 0) {
+      const firstChapter = story.chapters[0];
+      setTimeout(() => {
+        handleChapterSelect(firstChapter.id, firstChapter);
+      }, 50);
+    }
+  }, [selectStory, updateURLWithSelections, stories, handleChapterSelect]);
 
   const handleSubstorySelect = useCallback((substoryId, option) => {
     // Mark that we're updating from user action, not URL
@@ -915,73 +906,10 @@ const HomePage = () => {
     }
   }, [graphData, currentSubstory, selectEntityById]);
 
-  // Fetch ConnectedData API in HomePage when section changes (with caching)
+  // Section description comes from the same graph response as graphData (useGraphData)
   useEffect(() => {
-    const fetchConnectedData = async () => {
-      const queryToUse = currentSubstory?.section_query || currentSubstory?.id;
-      
-      if (!queryToUse) {
-        setSectionDescription(null);
-        return;
-      }
-
-      // Check if data is already cached
-      if (connectedDataCache[queryToUse]) {
-        // Extract description from cached data
-        const cachedData = connectedDataCache[queryToUse];
-        if (cachedData.description) {
-          setSectionDescription(cachedData.description);
-        } else {
-          setSectionDescription(null);
-        }
-        return;
-      }
-
-      setConnectedDataLoading(true);
-      setConnectedDataError(null);
-
-      try {
-        const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
-        const url = `${apiBaseUrl}/api/graph?graph_path=${encodeURIComponent(queryToUse)}`;
-        
-        const response = await fetch(url, {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        });
-
-        if (!response.ok) {
-          throw new Error(`Failed to fetch graph data: ${response.status} ${response.statusText}`);
-        }
-
-        const data = await response.json();
-        
-        // Extract and store description from response
-        if (data.description) {
-          setSectionDescription(data.description);
-        } else {
-          setSectionDescription(null);
-        }
-        
-        // Store in cache
-        setConnectedDataCache(prev => ({
-          ...prev,
-          [queryToUse]: data
-        }));
-      } catch (err) {
-        console.error('[HomePage] Error fetching ConnectedData:', err);
-        const errorMsg = err.message || 'Failed to load connected data';
-        setConnectedDataError(errorMsg);
-        setSectionDescription(null);
-        showError(errorMsg, 'Connected Data Error');
-      } finally {
-        setConnectedDataLoading(false);
-      }
-    };
-
-    fetchConnectedData();
-  }, [currentSubstory?.section_query, currentSubstory?.id, connectedDataCache]);
+    setSectionDescription(graphDescription ?? null);
+  }, [graphDescription]);
 
   // Read URL parameters on mount and when URL changes (e.g., back button)
   // URL now uses titles for chapter and substory instead of IDs
@@ -1336,6 +1264,21 @@ const HomePage = () => {
   }, [location.search, selectStory, selectChapter, selectSubstory, currentStoryId, currentChapterId, currentSubstoryId, currentStory, currentChapter, currentSubstory, stories, findTitleByNormalized, normalizeTitleForURL]);
   // Note: viewMode and selectedSceneContainer removed from deps to prevent race conditions
   // This effect should only run when the URL changes, not when view state changes
+
+  // On first load at "/" with no story in URL: auto-select first story so APIs run and content shows (avoids blank page)
+  const hasAutoSelectedInitialRef = useRef(false);
+  useEffect(() => {
+    if (hasAutoSelectedInitialRef.current || !stories?.length || currentStoryId) return;
+    const params = new URLSearchParams(location.search);
+    if (params.has('story')) return;
+    hasAutoSelectedInitialRef.current = true;
+    const firstStory = stories[0];
+    if (firstStory?.chapters?.length > 0) {
+      handleStorySelect(firstStory.id, firstStory);
+    } else {
+      selectStory(firstStory.id);
+    }
+  }, [stories, currentStoryId, location.search, handleStorySelect, selectStory]);
 
   // Note: URL updates are now handled directly in the handlers (handleStorySelect, handleChapterSelect, handleSubstorySelect)
   // This useEffect is removed to prevent conflicts and race conditions
@@ -2491,9 +2434,6 @@ const HomePage = () => {
       onClusterConfigChange={handleClusterConfigChange}
       clusterMethod={clusterMethod}
       clusterProperty={clusterProperty}
-      connectedDataCache={connectedDataCache}
-      connectedDataLoading={connectedDataLoading}
-      connectedDataError={connectedDataError}
       onSortConfigChange={handleSortConfigChange}
       sortBy={sortBy}
       sortOrder={sortOrder}

@@ -214,11 +214,15 @@ def get_graph_data_by_section_query(section_gid: Optional[str] = None, section_q
     """
     Query to fetch graph data (nodes and links) for a section.
 
-    Primary: gr_id schema — section is :gr_id with category='section'; match by id/g_id (section_gid)
-    or id, g_id, name, Section Name, graph name (section_query/section_title). Traverse (section)-[*1..10]-(node),
-    excluding nodes labeled gr_id; return nodes and relationships between those nodes.
+    Primary: gr_id schema — section is :gr_id with category='section'. We scope nodes by the
+    section's graph/id (same idea as legacy: only nodes that "belong" to this section), so we get
+    a small section-specific subgraph (tens of nodes), not the whole DB.
 
-    Fallback: legacy :section schema (section.`graph name` / node.gr_id) is in get_graph_data_by_section_query_legacy.
+    - Section scope = section.`graph name` or section.g_id / section.gid / section.id.
+    - Include only nodes whose gr_id/g_id/gid matches that scope (or that are 1 hop from section).
+    - Then relationships between those nodes only.
+
+    Fallback: legacy :section schema in get_graph_data_by_section_query_legacy.
     """
     if section_gid:
         match_clause = """
@@ -249,14 +253,26 @@ def get_graph_data_by_section_query(section_gid: Optional[str] = None, section_q
     else:
         raise ValueError("At least one of section_gid, section_query, or section_title must be provided")
 
+    # Get section's immediate subgraph: nodes within 1..2 hops (keeps result small, tens of nodes).
+    # Also include nodes that match section scope by gr_id if any (for schemas where that is set).
     query = f"""
     {match_clause}
     WITH section
-    // All nodes connected to the section within 1..10 hops, excluding other gr_id hierarchy nodes
-    MATCH (section)-[*1..10]-(node)
+    // Nodes within 2 hops of section (section-specific subgraph) — exclude other gr_id hierarchy nodes
+    OPTIONAL MATCH (section)-[*1..2]-(node)
     WHERE NONE(l IN labels(node) WHERE toLower(l) = 'gr_id')
-    WITH COLLECT(DISTINCT node) AS all_nodes
-    // Relationships between those nodes (pattern comprehension; works when no rels exist)
+    WITH section, COLLECT(DISTINCT node) AS hopNodes
+    WITH section, [n IN hopNodes WHERE n IS NOT NULL] AS fromHops
+    // Also include nodes that belong to section by gr_id/g_id/gid (legacy-style scope)
+    WITH section, fromHops,
+         toString(coalesce(section.`graph name`, section.name, section.g_id, section.gid, section.id)) AS section_scope
+    OPTIONAL MATCH (node)
+    WHERE NONE(l IN labels(node) WHERE toLower(l) = 'gr_id')
+      AND toString(coalesce(node.gr_id, node.g_id, node.gid, node.id)) = section_scope
+    WITH section_scope, fromHops, COLLECT(DISTINCT node) AS scopeNodes
+    WITH [n IN scopeNodes WHERE n IS NOT NULL] + fromHops AS combined
+    UNWIND combined AS n
+    WITH COLLECT(DISTINCT n) AS all_nodes
     WITH all_nodes,
          [(a)-[rel]-(b) WHERE a IN all_nodes AND b IN all_nodes AND id(a) < id(b) | {{ rel: rel, from: a, to: b }}] AS all_rels
     RETURN {{
