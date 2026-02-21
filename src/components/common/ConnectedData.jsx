@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as d3 from 'd3';
 import StringConstants from '../StringConstants';
-import Loader from './Loader';
 
 // Mockup data matching the exact relationships from the image
 // Structure: 7 entities in SRC (left), 4 entities in TRG (right), 3 funding entities, 4 actions
@@ -51,14 +50,11 @@ const truncateEntityText = (text) => {
   return text.substring(0, 13) + '...';
 };
 
-const ConnectedData = ({ 
-  onSectionClick, 
-  graphData = { nodes: [], links: [] }, 
-  currentSubstory = null, 
+const ConnectedData = ({
+  onSectionClick,
+  graphData = { nodes: [], links: [] },
+  currentSubstory = null,
   filteredGraphData = null,
-  connectedDataCache = {},
-  connectedDataLoading = false,
-  connectedDataError = null
 }) => {
   const svgRef = useRef(null);
   const containerRef = useRef(null);
@@ -66,14 +62,8 @@ const ConnectedData = ({
   const [svgHeight, setSvgHeight] = useState(400);
   const [viewBox, setViewBox] = useState('0 0 500 400');
 
-  // Get cached data from props (fetched in HomePage)
-  const apiGraphData = React.useMemo(() => {
-    const queryToUse = currentSubstory?.section_query || currentSubstory?.id;
-    if (!queryToUse) return null;
-    
-    const cachedData = connectedDataCache[queryToUse];
-    return cachedData || null;
-  }, [currentSubstory?.section_query, currentSubstory?.id, connectedDataCache]);
+  // Use current section's graphData from useGraphData (single source; no duplicate fetch)
+  const apiGraphData = graphData?.nodes?.length > 0 ? graphData : null;
 
   // Transform API graph data into source-middle-target relationships
   const transformGraphDataToRelationships = (data) => {
@@ -929,28 +919,6 @@ const ConnectedData = ({
         .attr('fill', 'none');
     });
   };
-
-  // Show loading or error state (from props)
-  if (connectedDataLoading) {
-    return (
-      <div className='bg-[#0E0E0E] border border-[#202020] rounded-[5px] mt-[16px] pb-[2px]'>
-        <div className="w-full p-4">
-          <div className="mb-4">
-            <div className="text-center">
-              <span className="text-white text-[14px] font-medium">{StringConstants.HOMEPAGE.CONNECTED_DATA}</span>
-            </div>
-          </div>
-          <div className="w-full flex flex-col items-center justify-center gap-3 min-h-[200px]">
-            <Loader size={48} />
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (connectedDataError) {
-    return null; // Error is shown via toast in HomePage
-  }
 
   return (
     <div className='bg-[#0E0E0E] border border-[#202020] rounded-[5px] mt-[16px] pb-[2px]'>

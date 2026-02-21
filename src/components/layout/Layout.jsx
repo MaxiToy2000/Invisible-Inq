@@ -54,9 +54,6 @@ const Layout = ({
   clusterProperty = '',
   onSectionClick = () => {},
   filteredGraphData = null,
-  connectedDataCache = {},
-  connectedDataLoading = false,
-  connectedDataError = null,
   onSortConfigChange = () => {},
   sortBy = null,
   sortOrder = 'asc',
@@ -226,9 +223,6 @@ const Layout = ({
           onSectionClick={onSectionClick}
           graphData={graphData}
           filteredGraphData={filteredGraphData}
-          connectedDataCache={connectedDataCache}
-          connectedDataLoading={connectedDataLoading}
-          connectedDataError={connectedDataError}
           onSortConfigChange={onSortConfigChange}
           sortBy={sortBy}
           sortOrder={sortOrder}
