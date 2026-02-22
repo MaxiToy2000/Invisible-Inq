@@ -1,9 +1,28 @@
 import { useEffect, useRef, useState } from 'react';
 import * as d3 from 'd3';
 import * as topojson from 'topojson-client';
-import { formatGraphData } from '../../utils/dataUtils';
 import { getNodeTypeColor } from '../../utils/colorUtils';
+import { StringConstants } from '../StringConstants';
 import Loader from './Loader';
+
+const getColorAt33Percent = (hexColor) => {
+  const hex = String(hexColor).replace('#', '');
+  if (hex.length !== 6) return hexColor;
+  const r = parseInt(hex.substring(0, 2), 16);
+  const g = parseInt(hex.substring(2, 4), 16);
+  const b = parseInt(hex.substring(4, 6), 16);
+  const toHex = (n) => { const h = Math.max(0, Math.min(255, n)).toString(16); return h.length === 1 ? '0' + h : h; };
+  return `#${toHex(Math.round(r * 0.33))}${toHex(Math.round(g * 0.33))}${toHex(Math.round(b * 0.33))}`;
+};
+
+const getNodeTypeDisplayName = (node) => {
+  const t = String(node?.node_type ?? node?.type ?? 'entity').toLowerCase().trim();
+  if (t === 'action') return StringConstants.MAP_VIEW_NODE_TYPES.ACTION;
+  if (t === 'entity') return StringConstants.MAP_VIEW_NODE_TYPES.ENTITY;
+  if (t === 'country') return StringConstants.MAP_VIEW_NODE_TYPES.COUNTRY;
+  if (t === 'relationship') return StringConstants.MAP_VIEW_NODE_TYPES.RELATIONSHIP;
+  return node?.node_type ?? node?.type ?? 'entity';
+};
 
 const GraphViewByMap = ({ mapView = 'flat', graphData = { nodes: [], links: [] }, currentSubstoryId = null, currentSubstory = null }) => {
   const containerRef = useRef(null);
@@ -154,6 +173,41 @@ const GraphViewByMap = ({ mapView = 'flat', graphData = { nodes: [], links: [] }
       }
     });
   }, [graphData]);
+
+  // Build country subgraph from current section graphData (nodes + links within 2 hops of country node)
+  const buildCountrySubgraphFromSection = (sectionGraphData, countryName) => {
+    if (!sectionGraphData?.nodes?.length || !countryName) return { nodes: [], links: [] };
+    const normalize = (name) => (name ?? '').toString().toLowerCase().trim().replace(/\s+/g, ' ');
+    const targetNorm = normalize(countryName);
+    const countryNode = sectionGraphData.nodes.find(node => {
+      const nodeType = node.node_type || node.type;
+      if (!nodeType || String(nodeType).toLowerCase() !== 'country') return false;
+      const n = normalize(node.country_name || node.name || node['Country Name'] || '');
+      return n === targetNorm || targetNorm.includes(n) || n.includes(targetNorm);
+    });
+    if (!countryNode) return { nodes: [], links: [] };
+    const nodeIds = new Set([String(countryNode.id ?? countryNode.gid)]);
+    const links = sectionGraphData.links || [];
+    for (let hop = 0; hop < 2; hop++) {
+      links.forEach(link => {
+        const src = link.sourceId ?? link.source ?? link.from_gid;
+        const tgt = link.targetId ?? link.target ?? link.to_gid;
+        const srcId = typeof src === 'object' ? (src?.id ?? src?.gid) : src;
+        const tgtId = typeof tgt === 'object' ? (tgt?.id ?? tgt?.gid) : tgt;
+        if (nodeIds.has(String(srcId))) nodeIds.add(String(tgtId));
+        if (nodeIds.has(String(tgtId))) nodeIds.add(String(srcId));
+      });
+    }
+    const subNodes = sectionGraphData.nodes.filter(n => nodeIds.has(String(n.id ?? n.gid)));
+    const subLinks = links.filter(link => {
+      const src = link.sourceId ?? link.source ?? link.from_gid;
+      const tgt = link.targetId ?? link.target ?? link.to_gid;
+      const srcId = typeof src === 'object' ? (src?.id ?? src?.gid) : src;
+      const tgtId = typeof tgt === 'object' ? (tgt?.id ?? tgt?.gid) : tgt;
+      return nodeIds.has(String(srcId)) && nodeIds.has(String(tgtId));
+    });
+    return { nodes: subNodes, links: subLinks };
+  };
 
   // Update container dimensions and calculate map dimensions
   useEffect(() => {
@@ -377,48 +431,22 @@ const GraphViewByMap = ({ mapView = 'flat', graphData = { nodes: [], links: [] }
                 isRotationPausedRef.current = false;
                 d3.select(this).attr('stroke', '#525978');
               } else {
-                // Clicking a different highlighted country - select and show graph
+                // Clicking a different highlighted country - select and show graph from current section only
                 setSelectedCountryId(featureId);
                 setSelectedCountryName(countryName);
                 isRotationPausedRef.current = true;
-                
-                if (centroid && svgRef.current) {
-                  // Get the map SVG's actual bounding rect (accounts for centering)
+
+                if (centroid && svgRef.current && containerRef.current) {
                   const mapSvgRect = svgRef.current.getBoundingClientRect();
-                  const absolutePosition = {
-                    x: centroid[0] + mapSvgRect.left,
-                    y: centroid[1] + mapSvgRect.top
-                  };
-                  setSelectedCountryPosition(absolutePosition);
+                  const containerRect = containerRef.current.getBoundingClientRect();
+                  setSelectedCountryPosition({
+                    x: centroid[0] + mapSvgRect.left - containerRect.left,
+                    y: centroid[1] + mapSvgRect.top - containerRect.top
+                  });
                 }
-                
-                // Only fetch country-specific graph data if clicking a different country
-                if (currentSubstory && currentSubstory.section_query && countryName) {
-                  setLoadingCountryData(true);
-                  try {
-                    const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
-                    const sectionQuery = currentSubstory.section_query || currentSubstoryId;
-                    const url = `${apiBaseUrl}/api/graph/${encodeURIComponent(sectionQuery)}/country/${encodeURIComponent(countryName)}`;
-                    
-                    const response = await fetch(url, {
-                      method: 'GET',
-                      headers: { 'Content-Type': 'application/json' },
-                    });
-                    
-                    if (response.ok) {
-                      const rawData = await response.json();
-                      const formattedData = formatGraphData(rawData);
-                      setCountryGraphData(formattedData);
-                    } else {
-                      setCountryGraphData({ nodes: [], links: [] });
-                    }
-                  } catch (error) {
-                    console.error('Error fetching country graph data:', error);
-                    setCountryGraphData({ nodes: [], links: [] });
-                  } finally {
-                    setLoadingCountryData(false);
-                  }
-                }
+
+                const subgraph = buildCountrySubgraphFromSection(graphData, countryName);
+                setCountryGraphData(subgraph);
                 
                 const svgSelection = d3.select(svgRef.current);
                 svgSelection.selectAll('.countries path').each(function(d) {
@@ -515,7 +543,31 @@ const GraphViewByMap = ({ mapView = 'flat', graphData = { nodes: [], links: [] }
         .attr('opacity', 0.5);
     }
 
-  }, [mapView, worldData, mapDimensions, highlightedCountries, selectedCountryId, graphData, currentSubstory, currentSubstoryId]);
+    // Keep selected dot position in sync with container (so line stays attached on resize)
+    if (selectedCountryId && worldData.features && containerRef.current && svgRef.current) {
+      for (let i = 0; i < worldData.features.length; i++) {
+        const feature = worldData.features[i];
+        if (resolvedView === 'flat') {
+          const featureName = (feature.properties?.NAME || feature.properties?.name || '').toLowerCase();
+          if (featureName.includes('antarctica') || featureName.includes('antarctic')) continue;
+        }
+        const featureId = getCountryId(feature, i);
+        if (featureId === selectedCountryId) {
+          const centroid = path.centroid(feature);
+          if (centroid && !isNaN(centroid[0]) && !isNaN(centroid[1])) {
+            const mapSvgRect = svgRef.current.getBoundingClientRect();
+            const containerRect = containerRef.current.getBoundingClientRect();
+            setSelectedCountryPosition({
+              x: centroid[0] + mapSvgRect.left - containerRect.left,
+              y: centroid[1] + mapSvgRect.top - containerRect.top
+            });
+          }
+          break;
+        }
+      }
+    }
+
+  }, [mapView, worldData, mapDimensions, highlightedCountries, selectedCountryId, graphData, currentSubstory, currentSubstoryId, containerDimensions]);
 
   // Render graph in remaining space (excluding map) when country is selected
   useEffect(() => {
@@ -534,29 +586,39 @@ const GraphViewByMap = ({ mapView = 'flat', graphData = { nodes: [], links: [] }
     const width = containerDimensions.width;
     const height = containerDimensions.height;
 
-    // Process links to ensure source and target are node objects
-    const processedLinks = (countryGraphData.links || []).map(link => {
-      const sourceNode = countryGraphData.nodes.find(n => 
-        n.id === link.sourceId || 
-        n.id === link.source || 
-        n.gid === link.from_gid ||
+    // Only show country, action, entity (no relationship or other types)
+    const ALLOWED_CARD_TYPES = new Set(['country', 'action', 'entity']);
+    const displayNodes = countryGraphData.nodes.filter(n => {
+      const t = String(n.node_type || n.type || '').toLowerCase().trim();
+      return ALLOWED_CARD_TYPES.has(t);
+    });
+    if (displayNodes.length === 0) {
+      const svgEl = d3.select(graphSvgRef.current);
+      if (!svgEl.empty()) svgEl.selectAll('*').remove();
+      return;
+    }
+    const displayNodeIds = new Set(displayNodes.map(n => String(n.id ?? n.gid)));
+    const displayLinks = (countryGraphData.links || []).filter(link => {
+      const src = link.sourceId ?? link.source ?? link.from_gid;
+      const tgt = link.targetId ?? link.target ?? link.to_gid;
+      const srcId = typeof src === 'object' ? (src?.id ?? src?.gid) : src;
+      const tgtId = typeof tgt === 'object' ? (tgt?.id ?? tgt?.gid) : tgt;
+      return displayNodeIds.has(String(srcId)) && displayNodeIds.has(String(tgtId));
+    });
+
+    // Process links to ensure source and target are node objects (from displayNodes only)
+    const processedLinks = displayLinks.map(link => {
+      const sourceNode = displayNodes.find(n =>
+        n.id === link.sourceId || n.id === link.source || n.gid === link.from_gid ||
         (typeof link.source === 'string' && n.id === link.source) ||
-        (typeof link.source === 'object' && link.source.id && n.id === link.source.id)
+        (typeof link.source === 'object' && link.source?.id != null && n.id === link.source.id)
       );
-      
-      const targetNode = countryGraphData.nodes.find(n => 
-        n.id === link.targetId || 
-        n.id === link.target || 
-        n.gid === link.to_gid ||
+      const targetNode = displayNodes.find(n =>
+        n.id === link.targetId || n.id === link.target || n.gid === link.to_gid ||
         (typeof link.target === 'string' && n.id === link.target) ||
-        (typeof link.target === 'object' && link.target.id && n.id === link.target.id)
+        (typeof link.target === 'object' && link.target?.id != null && n.id === link.target.id)
       );
-      
-      return {
-        ...link,
-        source: sourceNode || link.source,
-        target: targetNode || link.target
-      };
+      return { ...link, source: sourceNode || link.source, target: targetNode || link.target };
     }).filter(link => {
       const hasValidSource = link.source && (typeof link.source === 'object' || typeof link.source === 'string');
       const hasValidTarget = link.target && (typeof link.target === 'object' || typeof link.target === 'string');
@@ -574,100 +636,280 @@ const GraphViewByMap = ({ mapView = 'flat', graphData = { nodes: [], links: [] }
     };
 
     const selectedCountryNormalized = normalizeCountryName(selectedCountryName);
-    const matchingCountryNode = countryGraphData.nodes.find(node => {
-      // Make case-insensitive check for country nodes
+    const matchingCountryNode = displayNodes.find(node => {
       const nodeType = node.node_type || node.type;
       if (!nodeType || String(nodeType).toLowerCase() !== 'country') return false;
       const nodeCountryName = node.country_name || node.name || node['Country Name'] || '';
       const normalizedNodeName = normalizeCountryName(nodeCountryName);
-      return normalizedNodeName === selectedCountryNormalized || 
+      return normalizedNodeName === selectedCountryNormalized ||
              selectedCountryNormalized.includes(normalizedNodeName) ||
              normalizedNodeName.includes(selectedCountryNormalized);
     });
 
-    // Create hierarchical layout centered on the country node
-    const centerX = width / 2;
-    const centerY = height / 2;
-    const radiusStep = 150; // Distance between hierarchy levels
+    // Card layout: smaller cards, flexible placement (top/bottom/left/right wherever fits)
+    const CARD_WIDTH = 132;
+    const CARD_HEIGHT = 36;
+    const ROW_GAP = 14;
+    const COL_GAP = 14;
+    const MAIN_PADDING = 20;
 
-    // Position the country node at the center
-    if (matchingCountryNode) {
-      matchingCountryNode.x = centerX;
-      matchingCountryNode.y = centerY;
-      matchingCountryNode.fx = centerX;
-      matchingCountryNode.fy = centerY;
-    }
-
-    // Find all nodes connected to the country node and organize them by hierarchy level
-    const connectedNodesByLevel = [];
-    const visited = new Set();
-    
-    if (matchingCountryNode) {
-      visited.add(matchingCountryNode.id || matchingCountryNode.gid);
-      let currentLevel = [matchingCountryNode];
-      
-      // Build hierarchy levels using BFS
-      while (currentLevel.length > 0) {
-        const nextLevel = [];
-        
-        currentLevel.forEach(node => {
-          const nodeId = node.id || node.gid;
-          
-          // Find all connected nodes
-          processedLinks.forEach(link => {
-            const sourceId = (link.source?.id || link.source?.gid || link.source);
-            const targetId = (link.target?.id || link.target?.gid || link.target);
-            
-            let connectedNodeId = null;
-            if (String(sourceId) === String(nodeId)) {
-              connectedNodeId = targetId;
-            } else if (String(targetId) === String(nodeId)) {
-              connectedNodeId = sourceId;
-            }
-            
-            if (connectedNodeId && !visited.has(connectedNodeId)) {
-              const connectedNode = countryGraphData.nodes.find(n => 
-                String(n.id || n.gid) === String(connectedNodeId)
-              );
-              if (connectedNode) {
-                nextLevel.push(connectedNode);
-                visited.add(connectedNodeId);
-              }
-            }
-          });
-        });
-        
-        if (nextLevel.length > 0) {
-          connectedNodesByLevel.push(nextLevel);
+    const mapOffsetX = (width - mapDimensions.width) / 2;
+    const mapOffsetY = (height - mapDimensions.height) / 2;
+    const mapLeft = mapOffsetX;
+    const mapTop = mapOffsetY;
+    const mapRight = mapOffsetX + mapDimensions.width;
+    const mapBottom = mapOffsetY + mapDimensions.height;
+    const MAP_MARGIN = 16;
+    // Compute dot position in container coords so line stays connected (avoids async state mismatch)
+    let dotX = selectedCountryPosition?.x != null ? selectedCountryPosition.x : width / 2;
+    let dotY = selectedCountryPosition?.y != null ? selectedCountryPosition.y : height / 2;
+    if (selectedCountryId && worldData?.features && mapDimensions.width > 0 && mapView === 'flat') {
+      const mapW = mapDimensions.width;
+      const mapH = mapDimensions.height;
+      const featuresWithoutAntarctica = worldData.features.filter(f => {
+        const name = (f.properties?.NAME || f.properties?.name || '').toLowerCase();
+        return !name.includes('antarctica') && !name.includes('antarctic');
+      });
+      const filteredGeoJson = { type: 'FeatureCollection', features: featuresWithoutAntarctica };
+      const proj = d3.geoMercator().fitSize([mapW - 40, mapH - 40], filteredGeoJson);
+      const path = d3.geoPath().projection(proj);
+      for (let i = 0; i < worldData.features.length; i++) {
+        const feature = worldData.features[i];
+        if (getCountryId(feature, i) === selectedCountryId) {
+          const centroid = path.centroid(feature);
+          if (centroid && !isNaN(centroid[0]) && !isNaN(centroid[1])) {
+            dotX = mapOffsetX + centroid[0];
+            dotY = mapOffsetY + centroid[1];
+          }
+          break;
         }
-        currentLevel = nextLevel;
       }
     }
 
-    // Position nodes in circular hierarchical layout
-    connectedNodesByLevel.forEach((levelNodes, levelIndex) => {
-      const radius = radiusStep * (levelIndex + 1);
-      const angleStep = (2 * Math.PI) / levelNodes.length;
-      
-      levelNodes.forEach((node, index) => {
-        const angle = angleStep * index;
-        node.x = centerX + radius * Math.cos(angle);
-        node.y = centerY + radius * Math.sin(angle);
-        node.fx = node.x;
-        node.fy = node.y;
+    const countryId = matchingCountryNode ? String(matchingCountryNode.id ?? matchingCountryNode.gid) : null;
+    const actionNodes = displayNodes.filter(n => {
+      if (!countryId) return false;
+      const t = String(n.node_type || n.type || '').toLowerCase();
+      return t === 'action' && processedLinks.some(link => {
+        const a = String(link.source?.id ?? link.source?.gid ?? link.source);
+        const b = String(link.target?.id ?? link.target?.gid ?? link.target);
+        return (a === countryId || b === countryId) && (a === String(n.id ?? n.gid) || b === String(n.id ?? n.gid));
       });
     });
+    const entityNodes = displayNodes.filter(n => {
+      const t = String(n.node_type || n.type || '').toLowerCase().trim();
+      if (t === 'entity') {
+        const nid = String(n.id ?? n.gid);
+        return processedLinks.some(link => {
+          const a = String(link.source?.id ?? link.source?.gid ?? link.source);
+          const b = String(link.target?.id ?? link.target?.gid ?? link.target);
+          return (a === nid || b === nid) && actionNodes.some(act => String(act.id ?? act.gid) === a || String(act.id ?? act.gid) === b);
+        });
+      }
+      return false;
+    });
+    // Country always at bottom; entity + action in the rest of the screen (can be anywhere including on the map). No overlap.
+    const BAND_GAP = 16;
+    const countryBandTop = mapBottom + MAP_MARGIN;
+    const countryBandH = Math.max(40, height - MAIN_PADDING - countryBandTop);
+    const countryBandCenterY = countryBandTop + countryBandH / 2;
+    const areaForOtherTop = MAIN_PADDING;
+    const areaForOtherBottom = countryBandTop - BAND_GAP;
+    const availableHeightForOther = Math.max(0, areaForOtherBottom - areaForOtherTop);
+    const totalGaps = 2 * BAND_GAP;
+    const remainderAbove = Math.max(0, availableHeightForOther - totalGaps);
+    const minBand = 20;
+    const entityBandH = Math.max(minBand, Math.min(Math.floor(remainderAbove * 0.4), remainderAbove - minBand));
+    const actionBandH = Math.max(minBand, remainderAbove - entityBandH - totalGaps);
+    const entityBandTop = areaForOtherTop;
+    const actionBandTop = entityBandTop + entityBandH + BAND_GAP;
+    const actionBandCenterY = actionBandTop + actionBandH / 2;
+    const entityBandCenterY = entityBandTop + entityBandH / 2;
 
-    // Create a minimal simulation just for rendering (no forces, positions are already set)
-    const simulation = d3.forceSimulation(countryGraphData.nodes)
+    const halfW = 110;
+    const halfH = 32;
+    const contentMinX = MAIN_PADDING + halfW;
+    const contentMaxX = width - MAIN_PADDING - halfW;
+    const screenCenterX = width / 2;
+    const placeThreshold = 0.2 * width;
+    const centerX = (() => {
+      if (dotX < screenCenterX - placeThreshold) return (dotX + contentMaxX) / 2;
+      if (dotX > screenCenterX + placeThreshold) return (contentMinX + dotX) / 2;
+      return dotX < screenCenterX ? (dotX + contentMaxX) / 2 : (contentMinX + dotX) / 2;
+    })();
+    const nodesCenterX = Math.max(contentMinX, Math.min(contentMaxX, centerX));
+    const jitter = (i, seed) => ((i * 7 + seed) % 17) - 8;
+    const contentMinYTop = areaForOtherTop + halfH;
+    const contentMaxYTop = areaForOtherBottom - halfH;
+    const contentMinYCountry = countryBandTop + halfH;
+    const contentMaxYCountry = height - MAIN_PADDING - halfH;
+
+    if (matchingCountryNode) {
+      matchingCountryNode.x = nodesCenterX;
+      matchingCountryNode.y = countryBandCenterY;
+      matchingCountryNode.fx = matchingCountryNode.x;
+      matchingCountryNode.fy = matchingCountryNode.y;
+    }
+
+    const ACTION_ROWS = 2;
+    const ENTITY_ROWS = 3;
+    actionNodes.forEach((node, i) => {
+      const n = actionNodes.length;
+      const rows = Math.min(ACTION_ROWS, n);
+      const cols = Math.max(1, Math.ceil(n / rows));
+      const row = Math.floor(i / cols);
+      const col = i % cols;
+      const stepX = cols <= 1 ? 0 : Math.max(80, (width - MAIN_PADDING * 2 - 80) / (cols - 1));
+      const stepY = 40;
+      const baseX = nodesCenterX + (col - (cols - 1) / 2) * stepX + jitter(i, 1);
+      const baseY = actionBandCenterY + (row - (rows - 1) / 2) * stepY + jitter(i, 3);
+      node.x = Math.max(contentMinX, Math.min(contentMaxX, baseX));
+      node.y = Math.max(contentMinYTop, Math.min(contentMaxYTop, actionBandTop + actionBandH - 20, baseY));
+      node.fx = node.x;
+      node.fy = node.y;
+    });
+
+    entityNodes.forEach((node, i) => {
+      const n = entityNodes.length;
+      const rows = Math.min(ENTITY_ROWS, n);
+      const cols = Math.max(1, Math.ceil(n / rows));
+      const row = Math.floor(i / cols);
+      const col = i % cols;
+      const stepX = cols <= 1 ? 0 : Math.max(80, (width - MAIN_PADDING * 2 - 80) / (cols - 1));
+      const stepY = 38;
+      const baseX = nodesCenterX + (col - (cols - 1) / 2) * stepX + jitter(i, 5);
+      const baseY = entityBandCenterY + (row - (rows - 1) / 2) * stepY + jitter(i, 7);
+      node.x = Math.max(contentMinX, Math.min(contentMaxX, baseX));
+      node.y = Math.max(contentMinYTop, Math.min(contentMaxYTop, entityBandTop + entityBandH - 16, baseY));
+      node.fx = node.x;
+      node.fy = node.y;
+    });
+
+    const getBbox = () => {
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      displayNodes.forEach(n => {
+        if (n.x != null && n.y != null) {
+          minX = Math.min(minX, n.x - halfW);
+          maxX = Math.max(maxX, n.x + halfW);
+          minY = Math.min(minY, n.y - halfH);
+          maxY = Math.max(maxY, n.y + halfH);
+        }
+      });
+      return { minX, maxX, minY, maxY };
+    };
+
+    // Collision resolution: ensure minimum clearance so no node overlaps another
+    const MIN_CENTER_DIST = 150;
+    const isCountryNode = (n) => countryId != null && (String(n.id ?? n.gid) === countryId);
+    const isEntity = (n) => entityNodes.includes(n);
+    const isAction = (n) => actionNodes.includes(n);
+    const sameBand = (a, b) => (isEntity(a) && isEntity(b)) || (isAction(a) && isAction(b));
+    for (let iter = 0; iter < 80; iter++) {
+      let moved = false;
+      for (let i = 0; i < displayNodes.length; i++) {
+        for (let j = i + 1; j < displayNodes.length; j++) {
+          const a = displayNodes[i];
+          const b = displayNodes[j];
+          if (a.x == null || a.y == null || b.x == null || b.y == null) continue;
+          const dx = b.x - a.x;
+          const dy = b.y - a.y;
+          const d = Math.hypot(dx, dy);
+          if (d < MIN_CENTER_DIST && d > 0.01) {
+            const fixA = isCountryNode(a);
+            const fixB = isCountryNode(b);
+            if (sameBand(a, b)) {
+              const targetMinDx = MIN_CENTER_DIST;
+              const newDx = Math.abs(dx) < targetMinDx ? (dx >= 0 ? targetMinDx : -targetMinDx) : dx;
+              const sepX = newDx - dx;
+              const moveA = fixA ? 0 : -sepX / 2;
+              const moveB = fixB ? 0 : sepX / 2;
+              if (!fixA) {
+                a.x += moveA;
+                a.fx = a.x;
+              }
+              if (!fixB) {
+                b.x += moveB;
+                b.fx = b.x;
+              }
+            } else {
+              const overlap = MIN_CENTER_DIST - d;
+              const ux = dx / d;
+              const uy = dy / d;
+              if (fixA && !fixB) {
+                b.x += ux * overlap;
+                b.y += uy * overlap;
+                b.fx = b.x;
+                b.fy = b.y;
+              } else if (!fixA && fixB) {
+                a.x -= ux * overlap;
+                a.y -= uy * overlap;
+                a.fx = a.x;
+                a.fy = a.y;
+              } else {
+                a.x -= ux * (overlap / 2);
+                a.y -= uy * (overlap / 2);
+                a.fx = a.x;
+                a.fy = a.y;
+                b.x += ux * (overlap / 2);
+                b.y += uy * (overlap / 2);
+                b.fx = b.x;
+                b.fy = b.y;
+              }
+            }
+            moved = true;
+          }
+        }
+      }
+      // Clamp all nodes to content bounds (no overflow, stay within main area)
+      if (matchingCountryNode && matchingCountryNode.x != null) {
+        matchingCountryNode.x = Math.max(contentMinX, Math.min(contentMaxX, matchingCountryNode.x));
+        matchingCountryNode.y = Math.max(contentMinYCountry, Math.min(contentMaxYCountry, matchingCountryNode.y));
+        matchingCountryNode.fx = matchingCountryNode.x;
+        matchingCountryNode.fy = matchingCountryNode.y;
+      }
+      actionNodes.forEach(n => {
+        if (n.x != null && n.y != null) {
+          n.x = Math.max(contentMinX, Math.min(contentMaxX, n.x));
+          n.y = Math.max(contentMinYTop, Math.min(contentMaxYTop, n.y));
+          n.fx = n.x;
+          n.fy = n.y;
+        }
+      });
+      entityNodes.forEach(n => {
+        if (n.x != null && n.y != null) {
+          n.x = Math.max(contentMinX, Math.min(contentMaxX, n.x));
+          n.y = Math.max(contentMinYTop, Math.min(contentMaxYTop, n.y));
+          n.fx = n.x;
+          n.fy = n.y;
+        }
+      });
+      if (!moved) break;
+    }
+
+    // Final clamp so no node can be off-screen (no shift; nodes already in bands)
+    displayNodes.forEach(n => {
+      if (n.x == null || n.y == null) return;
+      const isCountry = matchingCountryNode && (String(n.id ?? n.gid) === countryId);
+      n.x = Math.max(contentMinX, Math.min(contentMaxX, n.x));
+      n.y = isCountry
+        ? Math.max(contentMinYCountry, Math.min(contentMaxYCountry, n.y))
+        : Math.max(contentMinYTop, Math.min(contentMaxYTop, n.y));
+      n.fx = n.x;
+      n.fy = n.y;
+    });
+    const countryCenterXFinal = matchingCountryNode?.x ?? nodesCenterX;
+    const countryCenterYFinal = matchingCountryNode?.y ?? countryBandCenterY;
+    const countryCardTopY = matchingCountryNode
+      ? countryCenterYFinal - (matchingCountryNode.countryCardHalfHeight ?? 18)
+      : countryCenterYFinal;
+
+    const simulation = d3.forceSimulation(displayNodes)
       .force('link', null)
       .force('charge', null)
       .force('center', null)
-      .force('collision', null)
       .alpha(0)
       .stop();
 
-    // Create links container (pointer-events so clicks reach graph when SVG has pointer-events-none)
     const linkContainer = svg.append('g')
       .attr('class', 'graph-links')
       .attr('pointer-events', 'auto');
@@ -744,7 +986,7 @@ const GraphViewByMap = ({ mapView = 'flat', graphData = { nodes: [], links: [] }
       .attr('class', 'graph-nodes')
       .attr('pointer-events', 'auto')
       .selectAll('g')
-      .data(countryGraphData.nodes)
+      .data(displayNodes)
       .enter()
       .append('g')
       .attr('class', d => {
@@ -772,31 +1014,15 @@ const GraphViewByMap = ({ mapView = 'flat', graphData = { nodes: [], links: [] }
             }
           });
         }
-        // Highlight node on hover (but keep country node at 2px, Entity nodes have different styling)
-        const isMatchingCountry = matchingCountryNode && (d.id === matchingCountryNode.id || d.gid === matchingCountryNode.gid);
-        const nodeType = String(d.node_type || d.type || 'entity').toLowerCase();
-        const isEntity = nodeType === 'entity';
-        if (!isMatchingCountry && !isEntity) {
-          d3.select(this).select('circle')
-            .attr('stroke-width', 3.5)
-            .attr('opacity', 1);
-        } else if (isEntity) {
-          // Entity badge opacity stays at 1 on hover (already at 1)
-        }
+        const el = d3.select(this);
+        if (!el.select('rect').empty()) el.select('rect').attr('stroke', '#6EA4F4').attr('stroke-width', 1.5);
+        if (!el.select('circle').empty()) el.select('circle').attr('stroke-width', 2.5);
       })
-      .on('mouseleave', function(event, d) {
+      .on('mouseleave', function() {
         setGraphTooltip(null);
-        // Restore original node style (country node stays at 2px, Entity nodes have different styling)
-        const isMatchingCountry = matchingCountryNode && (d.id === matchingCountryNode.id || d.gid === matchingCountryNode.gid);
-        const nodeType = String(d.node_type || d.type || 'entity').toLowerCase();
-        const isEntity = nodeType === 'entity';
-        if (!isMatchingCountry && !isEntity) {
-          d3.select(this).select('circle')
-            .attr('stroke-width', 2.5)
-            .attr('opacity', 0.9);
-        } else if (isEntity) {
-          // Entity badge opacity stays at 1 (already at 1)
-        }
+        const el = d3.select(this);
+        if (!el.select('rect').empty()) el.select('rect').attr('stroke', '#525978').attr('stroke-width', 1);
+        if (!el.select('circle').empty()) el.select('circle').attr('stroke-width', 2);
       })
       .on('mousemove', function(event) {
         setGraphTooltip(prev => {
@@ -817,176 +1043,163 @@ const GraphViewByMap = ({ mapView = 'flat', graphData = { nodes: [], links: [] }
         .on('drag', dragged)
         .on('end', dragended));
 
-    // Create gradient for country node to match map highlight dots
-    const countryGradientId = 'country-node-gradient';
-    const countryGradient = svg.append('defs')
-      .append('radialGradient')
-      .attr('id', countryGradientId)
-      .attr('cx', '50%')
-      .attr('cy', '50%')
-      .attr('r', '50%');
-    
-    countryGradient.append('stop')
-      .attr('offset', '0%')
-      .attr('stop-color', '#FFFFFF')
-      .attr('stop-opacity', 0.8);
-    
-    countryGradient.append('stop')
-      .attr('offset', '50%')
-      .attr('stop-color', '#D9D9D9')
-      .attr('stop-opacity', 1);
-    
-    countryGradient.append('stop')
-      .attr('offset', '100%')
-      .attr('stop-color', '#D9D9D9')
-      .attr('stop-opacity', 0.6);
+    // Country node: full card. Other nodes: rounded pill/badge (text only, like graph view)
+    const accentBarW = 3;
+    const cardPad = 6;
+    const cardRx = 4;
+    const cardH = CARD_HEIGHT;
 
-    // Create gradient for Entity node accent bar
-    const entityAccentGradientId = 'entity-accent-gradient';
-    const entityAccentGradient = svg.append('defs')
-      .append('linearGradient')
-      .attr('id', entityAccentGradientId)
-      .attr('x1', '0%')
-      .attr('y1', '0%')
-      .attr('x2', '0%')
-      .attr('y2', '100%');
-    
-    entityAccentGradient.append('stop')
-      .attr('offset', '0%')
-      .attr('stop-color', 'rgba(0, 0, 0, 0)');
-    
-    entityAccentGradient.append('stop')
-      .attr('offset', '100%')
-      .attr('stop-color', 'rgba(0, 0, 0, 1)');
+    const getNodeLabel = (d) => d.country_name || d.name || d.entity_name || d['Country Name'] || d.id || d.gid || '—';
+    const getNodeTypeLabel = getNodeTypeDisplayName;
+    const MAX_CHARS_PER_LINE = 20;
+    const wrapTextLines = (str, maxChars = MAX_CHARS_PER_LINE) => {
+      if (!str) return [''];
+      const s = String(str);
+      if (s.length <= maxChars) return [s];
+      const lines = [];
+      for (let i = 0; i < s.length; i += maxChars) lines.push(s.slice(i, i + maxChars));
+      return lines;
+    };
 
-    // Add shapes for nodes - circles for non-Entity nodes, rectangular badges for Entity nodes
-    const nodeShapes = node.each(function(d) {
+    node.each(function(d) {
       const nodeGroup = d3.select(this);
-      const isMatchingCountry = matchingCountryNode && (d.id === matchingCountryNode.id || d.gid === matchingCountryNode.gid);
-      const nodeType = String(d.node_type || d.type || 'entity').toLowerCase();
-      const isEntity = nodeType === 'entity';
-      
-      if (isMatchingCountry) {
-        // Country node: invisible larger hit area for easier clicking, then 2px circle
-        nodeGroup.append('circle')
-          .attr('r', 14)
-          .attr('fill', 'transparent')
-          .attr('stroke', 'none')
-          .attr('pointer-events', 'all');
-        nodeGroup.append('circle')
-          .attr('r', 2)
-          .attr('fill', `url(#${countryGradientId})`)
-          .attr('stroke', '#D9D9D9')
+      const nodeTypeLower = String(d.node_type || d.type || '').toLowerCase().trim();
+      const isCountry =
+        matchingCountryNode &&
+        (d.id === matchingCountryNode.id || d.gid === matchingCountryNode.gid) &&
+        nodeTypeLower === 'country';
+
+      if (isCountry) {
+        const label = getNodeLabel(d);
+        const typeLabel = getNodeTypeLabel(d);
+        const labelLines = wrapTextLines(label, MAX_CHARS_PER_LINE);
+        const lineHeight = 14;
+        const titleBlockH = labelLines.length * lineHeight;
+        const cardHActual = Math.max(cardH, cardPad * 2 + titleBlockH + 14);
+        d.countryCardHalfHeight = cardHActual / 2;
+        const tempSub = nodeGroup.append('text').text(`Type: ${typeLabel}`).attr('font-size', '9px').attr('opacity', 0).attr('visibility', 'hidden');
+        let tw = 48;
+        labelLines.forEach(line => {
+          const t = nodeGroup.append('text').text(line).attr('font-size', '11px').attr('font-weight', 600).attr('opacity', 0).attr('visibility', 'hidden');
+          tw = Math.max(tw, t.node().getBBox().width);
+          t.remove();
+        });
+        const sw = tempSub.node().getBBox().width;
+        tempSub.remove();
+        const cardW = Math.min(220, Math.max(CARD_WIDTH, cardPad + accentBarW + 6 + Math.max(tw, sw) + cardPad));
+
+        nodeGroup.append('rect')
+          .attr('x', -cardW / 2)
+          .attr('y', -cardHActual / 2)
+          .attr('width', cardW)
+          .attr('height', cardHActual)
+          .attr('rx', cardRx)
+          .attr('ry', cardRx)
+          .attr('fill', '#273145')
+          .attr('stroke', '#525978')
           .attr('stroke-width', 1)
-          .attr('opacity', 0.9)
           .attr('pointer-events', 'all');
-      } else if (isEntity) {
-        // Entity node: render as rectangular badge matching Figma design
-        const nodeName = d.name || d.id || 'Entity';
-        const accentBarWidth = 4;
-        const accentBarHeight = 12;
-        const padding = 3;
-        const gap = 2;
-        const badgeHeight = 18; // Based on padding 3px top/bottom + 12px text height
-        
-        // Create a temporary text element to measure actual text width
-        const tempText = nodeGroup.append('text')
-          .text(nodeName)
-          .attr('font-family', 'Archivo, sans-serif')
-          .attr('font-weight', 500)
-          .attr('font-size', '14px')
-          .attr('letter-spacing', '-0.01em')
-          .attr('opacity', 0)
-          .attr('visibility', 'hidden');
-        
-        // Get the actual text width
-        const textBBox = tempText.node().getBBox();
-        const textWidth = textBBox.width;
-        
-        // Calculate badge width based on actual text width + padding + accent bar + gap
-        const badgeWidth = padding + accentBarWidth + gap + textWidth + padding;
-        
-        // Remove temporary text element
-        tempText.remove();
-        
-        // Background rectangle
         nodeGroup.append('rect')
-          .attr('x', -badgeWidth / 2)
-          .attr('y', -badgeHeight / 2)
-          .attr('width', badgeWidth)
-          .attr('height', badgeHeight)
-          .attr('rx', 4)
-          .attr('ry', 4)
-          .attr('fill', 'rgba(44, 100, 157, 0.23)')
-          .attr('stroke', 'none')
-          .attr('opacity', 1)
-          .attr('pointer-events', 'all');
-        
-        // Left accent bar with gradient
-        const accentBarX = -badgeWidth / 2 + padding;
-        const accentBarY = -accentBarHeight / 2;
-        
-        nodeGroup.append('rect')
-          .attr('x', accentBarX)
-          .attr('y', accentBarY)
-          .attr('width', accentBarWidth)
-          .attr('height', accentBarHeight)
-          .attr('rx', accentBarWidth / 2)
-          .attr('ry', accentBarWidth / 2)
-          .attr('fill', '#2C649D')
-          .attr('opacity', 1);
-        
-        // Text
-        nodeGroup.append('text')
-          .text(nodeName)
-          .attr('x', accentBarX + accentBarWidth + gap)
-          .attr('y', 4) // Vertical centering adjustment
+          .attr('x', -cardW / 2 + cardPad)
+          .attr('y', -cardHActual / 2 + (cardHActual - 10) / 2)
+          .attr('width', accentBarW)
+          .attr('height', 10)
+          .attr('rx', 2)
+          .attr('ry', 2)
+          .attr('fill', '#FD7E14')
+          .attr('pointer-events', 'none');
+        const countryText = nodeGroup.append('text')
+          .attr('x', -cardW / 2 + cardPad + accentBarW + 6)
+          .attr('y', -cardHActual / 2 + cardPad + 11)
           .attr('font-family', 'Archivo, sans-serif')
-          .attr('font-weight', 500)
-          .attr('font-size', '12px')
+          .attr('font-size', '11px')
+          .attr('font-weight', 600)
           .attr('fill', '#FFFFFF')
-          .attr('letter-spacing', '-0.01em')
+          .attr('pointer-events', 'none');
+        labelLines.forEach((line, i) => {
+          countryText.append('tspan')
+            .attr('x', -cardW / 2 + cardPad + accentBarW + 6)
+            .attr('dy', i === 0 ? 0 : lineHeight)
+            .text(line);
+        });
+        nodeGroup.append('text')
+          .text(`Type: ${typeLabel}`)
+          .attr('x', -cardW / 2 + cardPad + accentBarW + 6)
+          .attr('y', -cardHActual / 2 + cardPad + titleBlockH + 10)
+          .attr('font-family', 'Archivo, sans-serif')
+          .attr('font-size', '9px')
+          .attr('fill', '#9F9FA9')
           .attr('pointer-events', 'none');
       } else {
-        // Other node types: render as circle
-        nodeGroup.append('circle')
-          .attr('r', 12)
-          .attr('fill', getNodeTypeColor(nodeType))
-          .attr('stroke', '#fff')
-          .attr('stroke-width', 2.5)
-          .attr('opacity', 0.9)
+        // Order Map By style for action/entity: dimmed bg, left color bar, white text; full text with wrap every 20 chars
+        const label = getNodeLabel(d);
+        const labelLines = wrapTextLines(label, MAX_CHARS_PER_LINE);
+        const color = getNodeTypeColor(d.node_type || d.type || 'Entity');
+        const bgColor = getColorAt33Percent(color);
+        const barW = 4;
+        const barH = 12;
+        const padH = 6;
+        const padV = 6;
+        const gap = 4;
+        const pillRx = 5;
+        const lineHeight = 14;
+        let textW = 0;
+        labelLines.forEach(line => {
+          const t = nodeGroup.append('text').text(line).attr('font-size', '12px').attr('font-weight', 500).attr('font-family', 'Archivo, sans-serif').attr('opacity', 0).attr('visibility', 'hidden');
+          textW = Math.max(textW, Math.min(180, t.node().getBBox().width));
+          t.remove();
+        });
+        if (labelLines.length === 0) textW = 40;
+        const pillW = padH + barW + gap + textW + padH;
+        const pillH = Math.max(20, padV * 2 + labelLines.length * lineHeight);
+        nodeGroup.append('rect')
+          .attr('x', -pillW / 2)
+          .attr('y', -pillH / 2)
+          .attr('width', pillW)
+          .attr('height', pillH)
+          .attr('rx', pillRx)
+          .attr('ry', pillRx)
+          .attr('fill', bgColor)
+          .attr('stroke', '#525978')
+          .attr('stroke-width', 1)
           .attr('pointer-events', 'all');
+        nodeGroup.append('rect')
+          .attr('x', -pillW / 2 + padH)
+          .attr('y', -barH / 2)
+          .attr('width', barW)
+          .attr('height', barH)
+          .attr('rx', 2)
+          .attr('ry', 2)
+          .attr('fill', color)
+          .attr('pointer-events', 'none');
+        const pillText = nodeGroup.append('text')
+          .attr('x', -pillW / 2 + padH + barW + gap)
+          .attr('y', -pillH / 2 + padV + lineHeight / 2)
+          .attr('font-size', '12px')
+          .attr('font-weight', 500)
+          .attr('fill', '#FFFFFF')
+          .attr('font-family', 'Archivo, sans-serif')
+          .attr('pointer-events', 'none');
+        labelLines.forEach((line, i) => {
+          pillText.append('tspan')
+            .attr('x', -pillW / 2 + padH + barW + gap)
+            .attr('dy', i === 0 ? 0 : lineHeight)
+            .text(line);
+        });
       }
     });
 
-    // Get circles for pulse animation (only country nodes have circles)
-    const nodeCircles = nodeShapes.selectAll('circle');
-
-    // Add pulse animation to country node to match map highlight dots
-    if (matchingCountryNode) {
-      const countryCircle = nodeCircles.filter(d => 
-        (d.id === matchingCountryNode.id || d.gid === matchingCountryNode.gid) &&
-        (d.node_type === 'Country' || d.type === 'Country')
-      );
-      
-      const animatePulse = () => {
-        countryCircle
-          .transition('pulse')
-          .duration(600)
-          .ease(d3.easeQuadInOut)
-          .attr('r', 3.4)
-          .transition('pulse')
-          .duration(600)
-          .ease(d3.easeQuadInOut)
-          .attr('r', 2.4)
-          .transition('pulse')
-          .duration(600)
-          .ease(d3.easeQuadInOut)
-          .attr('r', 2)
-          .on('end', animatePulse);
-      };
-      
-      animatePulse();
+    // Line from map dot to bottom of country card (stays attached when node is dragged)
+    if (matchingCountryNode && selectedCountryId) {
+      const lineGroup = svg.append('g').attr('class', 'dot-to-country-line').attr('pointer-events', 'none');
+      lineGroup.append('line')
+        .attr('x1', dotX)
+        .attr('y1', dotY)
+        .attr('x2', countryCenterXFinal)
+        .attr('y2', countryCardTopY)
+        .attr('stroke', '#DBDBDB')
+        .attr('stroke-width', 2)
+        .attr('stroke-opacity', 0.8);
     }
 
     // Position nodes and links according to hierarchical layout
@@ -996,22 +1209,22 @@ const GraphViewByMap = ({ mapView = 'flat', graphData = { nodes: [], links: [] }
       link.selectAll('line')
         .attr('x1', d => {
           const source = typeof d.source === 'object' && d.source !== null ? d.source : 
-                        (typeof d.source === 'string' ? countryGraphData.nodes.find(n => n.id === d.source) : null);
+                        (typeof d.source === 'string' ? displayNodes.find(n => n.id === d.source) : null);
           return source && source.x !== undefined ? source.x : 0;
         })
         .attr('y1', d => {
           const source = typeof d.source === 'object' && d.source !== null ? d.source : 
-                        (typeof d.source === 'string' ? countryGraphData.nodes.find(n => n.id === d.source) : null);
+                        (typeof d.source === 'string' ? displayNodes.find(n => n.id === d.source) : null);
           return source && source.y !== undefined ? source.y : 0;
         })
         .attr('x2', d => {
           const target = typeof d.target === 'object' && d.target !== null ? d.target : 
-                        (typeof d.target === 'string' ? countryGraphData.nodes.find(n => n.id === d.target) : null);
+                        (typeof d.target === 'string' ? displayNodes.find(n => n.id === d.target) : null);
           return target && target.x !== undefined ? target.x : 0;
         })
         .attr('y2', d => {
           const target = typeof d.target === 'object' && d.target !== null ? d.target : 
-                        (typeof d.target === 'string' ? countryGraphData.nodes.find(n => n.id === d.target) : null);
+                        (typeof d.target === 'string' ? displayNodes.find(n => n.id === d.target) : null);
           return target && target.y !== undefined ? target.y : 0;
         });
 
@@ -1020,6 +1233,15 @@ const GraphViewByMap = ({ mapView = 'flat', graphData = { nodes: [], links: [] }
         const y = d.y !== undefined && d.y !== null ? d.y : 0;
         return `translate(${x},${y})`;
       });
+
+      // Keep dot-to-country line attached to top of country card when node is dragged
+      const dotLine = svg.select('.dot-to-country-line line');
+      if (!dotLine.empty() && matchingCountryNode && matchingCountryNode.x != null && matchingCountryNode.y != null) {
+        const topY = matchingCountryNode.y - (matchingCountryNode.countryCardHalfHeight ?? 18);
+        dotLine
+          .attr('x2', matchingCountryNode.x)
+          .attr('y2', topY);
+      }
     };
     
     // Call once to apply hierarchical positioning immediately
@@ -1032,12 +1254,15 @@ const GraphViewByMap = ({ mapView = 'flat', graphData = { nodes: [], links: [] }
     }
 
     function dragged(event, d) {
-      d.fx = event.x;
-      d.fy = event.y;
-      d.x = event.x;
-      d.y = event.y;
-      
-      // Manually update positions since simulation is stopped
+      const isCountry = isCountryNode(d);
+      const minY = isCountry ? contentMinYCountry : contentMinYTop;
+      const maxY = isCountry ? contentMaxYCountry : contentMaxYTop;
+      const x = Math.max(contentMinX, Math.min(contentMaxX, event.x));
+      const y = Math.max(minY, Math.min(maxY, event.y));
+      d.fx = x;
+      d.fy = y;
+      d.x = x;
+      d.y = y;
       updatePositions();
     }
 
@@ -1107,14 +1332,13 @@ const GraphViewByMap = ({ mapView = 'flat', graphData = { nodes: [], links: [] }
                     .attr('cx', centroid[0])
                     .attr('cy', centroid[1]);
                   
-                  if (selectedCountryId === featureId && svgRef.current) {
-                    // Get the map SVG's actual bounding rect (accounts for centering)
+                  if (selectedCountryId === featureId && svgRef.current && containerRef.current) {
                     const mapSvgRect = svgRef.current.getBoundingClientRect();
-                    const absolutePosition = {
-                      x: centroid[0] + mapSvgRect.left,
-                      y: centroid[1] + mapSvgRect.top
-                    };
-                    setSelectedCountryPosition(absolutePosition);
+                    const containerRect = containerRef.current.getBoundingClientRect();
+                    setSelectedCountryPosition({
+                      x: centroid[0] + mapSvgRect.left - containerRect.left,
+                      y: centroid[1] + mapSvgRect.top - containerRect.top
+                    });
                   }
                 }
               }
@@ -1156,7 +1380,7 @@ const GraphViewByMap = ({ mapView = 'flat', graphData = { nodes: [], links: [] }
         className="block absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[1]"
       />
       
-      {/* Graph visualization in remaining space (excluding map) */}
+      {/* Graph visualization: line from dot to country card + card nodes (top-left) */}
       <svg
         ref={graphSvgRef}
         width={containerDimensions.width || 0}
@@ -1217,7 +1441,7 @@ const GraphViewByMap = ({ mapView = 'flat', graphData = { nodes: [], links: [] }
                   {relatedNodes.slice(0, 50).map((n, i) => (
                     <li key={n.id ?? n.gid ?? i} className="text-[#E4E4E7] text-xs">
                       <span className="font-medium">{n.name ?? n.entity_name ?? n.country_name ?? n.id ?? n.gid ?? '—'}</span>
-                      <span className="text-[#707070] ml-2">{n.node_type ?? n.type ?? 'entity'}</span>
+                      <span className="text-[#707070] ml-2">{getNodeTypeDisplayName(n)}</span>
                     </li>
                   ))}
                   {relatedNodes.length > 50 && <li className="text-[#707070] text-xs">… and {relatedNodes.length - 50} more</li>}
@@ -1298,7 +1522,7 @@ const GraphViewByMap = ({ mapView = 'flat', graphData = { nodes: [], links: [] }
                 </h3>
                 <div className="space-y-1.5">
                   <div className="text-[#9F9FA9] text-[11px]">
-                    <span className="text-[#707070]">Type:</span> {graphTooltip.data.node_type || graphTooltip.data.type || 'Entity'}
+                    <span className="text-[#707070]">Type:</span> {getNodeTypeDisplayName(graphTooltip.data)}
                   </div>
                   {graphTooltip.data.id && (
                     <div className="text-[#9F9FA9] text-[11px]">
@@ -1405,7 +1629,7 @@ const GraphViewByMap = ({ mapView = 'flat', graphData = { nodes: [], links: [] }
                   )}
                   {graphTooltip.data.type && (
                     <div className="text-[#9F9FA9] text-[11px]">
-                      <span className="text-[#707070]">Type:</span> {graphTooltip.data.type}
+                      <span className="text-[#707070]">Type:</span> {getNodeTypeDisplayName(graphTooltip.data)}
                     </div>
                   )}
                 </div>
