@@ -1,32 +1,44 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   formatGraphData,
   extractEntityHighlights,
   findNodeById
 } from '../utils/dataUtils';
+import { useStories } from '../contexts/StoriesContext';
 
 const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000') => {
-  const [stories, setStories] = useState([]);
+  const storiesContext = useStories();
+  const [localStories, setLocalStories] = useState([]);
   const [currentStoryId, setCurrentStoryId] = useState(null);
   const [currentChapterId, setCurrentChapterId] = useState(null);
   const [currentSubstoryId, setCurrentSubstoryId] = useState(null);
+  const currentSubstoryIdRef = useRef(currentSubstoryId);
+  useEffect(() => {
+    currentSubstoryIdRef.current = currentSubstoryId;
+  }, [currentSubstoryId]);
   const [currentStory, setCurrentStory] = useState(null);
   const [currentChapter, setCurrentChapter] = useState(null);
   const [currentSubstory, setCurrentSubstory] = useState(null);
   const [graphData, setGraphData] = useState({ nodes: [], links: [] });
+  const [graphDescription, setGraphDescription] = useState(null);
   const [entityHighlights, setEntityHighlights] = useState([]);
   const [selectedNode, setSelectedNode] = useState(null);
   const [selectedEdge, setSelectedEdge] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const [graphLoading, setGraphLoading] = useState(false);
+  const [graphError, setGraphError] = useState(null);
+  const [localStoriesLoading, setLocalStoriesLoading] = useState(false);
+  const [localStoriesError, setLocalStoriesError] = useState(null);
+
+  const stories = storiesContext ? storiesContext.stories : localStories;
 
   useEffect(() => {
+    if (storiesContext) return;
     let isMounted = true;
     let hasLoggedError = false;
 
     const loadStories = async () => {
       try {
-        if (isMounted) setLoading(true);
+        if (isMounted) setLocalStoriesLoading(true);
 
         const url = `${apiBaseUrl}/api/stories`;
         
@@ -54,10 +66,10 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
         const data = await response.json();
 
         if (isMounted) {
-          setStories(data);
-          setLoading(false);
-          setError(null);
-          hasLoggedError = false; // Reset error flag on success
+          setLocalStories(Array.isArray(data) ? data : []);
+          setLocalStoriesLoading(false);
+          setLocalStoriesError(null);
+          hasLoggedError = false;
         }
       } catch (err) {
         // Only log connection errors once to avoid console spam
@@ -81,21 +93,16 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
         }
 
         if (isMounted) {
-          const errorMessage = isConnectionError
-            ? `Backend server unavailable. Please ensure the backend is running at ${apiBaseUrl}`
-            : `Failed to load story list: ${err.message}`;
-          setError(errorMessage);
-          setLoading(false);
+          setLocalStoriesError(isConnectionError ? `Backend server unavailable. Please ensure the backend is running at ${apiBaseUrl}` : err.message);
+          setLocalStoriesLoading(false);
+          setLocalStories([]);
         }
       }
     };
 
     loadStories();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [apiBaseUrl]);
+    return () => { isMounted = false; };
+  }, [apiBaseUrl, storiesContext]);
 
   useEffect(() => {
     if (!currentStoryId) {
@@ -139,22 +146,27 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
   useEffect(() => {
     let isMounted = true;
     let hasLoggedError = false;
+    const abortController = new AbortController();
 
     const loadSubstoryData = async () => {
-      if (!currentStoryId || !currentChapterId || !currentSubstoryId) {
-        if (isMounted) {
-          setCurrentSubstory(null);
-          setGraphData({ nodes: [], links: [] });
-          setEntityHighlights([]);
-          setError(null);
+        if (!currentStoryId || !currentChapterId || !currentSubstoryId) {
+          if (isMounted) {
+            setCurrentSubstory(null);
+            setGraphData({ nodes: [], links: [] });
+            setGraphDescription(null);
+            setEntityHighlights([]);
+            setGraphError(null);
+          }
+          return;
         }
-        return;
-      }
+
+      // Capture which section this request is for so we can ignore stale responses
+      const requestedSubstoryId = currentSubstoryId;
 
       try {
         if (isMounted) {
-          setLoading(true);
-          setError(null);
+          setGraphLoading(true);
+          setGraphError(null);
 
           setGraphData({ nodes: [], links: [] });
         }
@@ -210,7 +222,14 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
           'Jonna Mazet': 'Jona Mazet'
         };
 
-        let graphIdentifier = substory.section_query || substory.graphPath || currentSubstoryId;
+        // Prefer section id (section_gid) so backend returns nodes for this section only.
+        // Fall back to section_query/graphPath when id is not available.
+        let graphIdentifier = (substory.id != null && substory.id !== '')
+          ? String(substory.id)
+          : (currentSubstoryId != null ? String(currentSubstoryId) : null);
+        if (!graphIdentifier) {
+          graphIdentifier = substory.section_query || substory.graphPath || null;
+        }
 
         if (graphIdentifier && sectionNameMapping[graphIdentifier]) {
           graphIdentifier = sectionNameMapping[graphIdentifier];
@@ -227,6 +246,7 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
           headers: {
             'Content-Type': 'application/json',
           },
+          signal: abortController.signal,
         });
         
         if (!apiResponse.ok) {
@@ -251,17 +271,29 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
         
         const rawGraphData = await apiResponse.json();
 
+        // Ignore response if user has already switched to another section (avoid showing wrong graph)
+        if (!isMounted || currentSubstoryIdRef.current !== requestedSubstoryId) {
+          return;
+        }
+
+        // Extract description from response
+        const description = rawGraphData.description || null;
+
         let formattedGraphData;
 
         if (rawGraphData && rawGraphData.nodes && rawGraphData.nodes.length > 100) {
           const limitedNodes = rawGraphData.nodes.slice(0, 2000);
 
-          const nodeIds = new Set(limitedNodes.map(node => node.id));
+          const normId = (v) => (v != null && v !== '' ? String(v) : '');
+          const nodeIds = new Set(
+            limitedNodes
+              .map((node) => normId(node.id ?? node.gid ?? node.elementId ?? node.element_id))
+              .filter(Boolean)
+          );
 
-          const limitedLinks = (rawGraphData.links || []).filter(link => {
-            const sourceId = link.sourceId;
-            const targetId = link.targetId;
-
+          const limitedLinks = (rawGraphData.links || []).filter((link) => {
+            const sourceId = normId(link.sourceId ?? link.source ?? link.from_gid ?? '');
+            const targetId = normId(link.targetId ?? link.target ?? link.to_gid ?? '');
             return sourceId && targetId && nodeIds.has(sourceId) && nodeIds.has(targetId);
           }).slice(0, 5000);
 
@@ -276,55 +308,54 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
         const allHighlights = extractEntityHighlights(formattedGraphData);
         const highlights = allHighlights.slice(0, 20);
 
-        if (isMounted) {
+        if (isMounted && currentSubstoryIdRef.current === requestedSubstoryId) {
           setGraphData(formattedGraphData);
+          setGraphDescription(description);
           setEntityHighlights(highlights);
-          setLoading(false);
+          setGraphLoading(false);
           hasLoggedError = false; // Reset error flag on success
         }
       } catch (err) {
+        if (err.name === 'AbortError') {
+          return;
+        }
         const isConnectionError = err.message.includes('fetch') || 
                                  err.message.includes('Failed to fetch') ||
                                  err.name === 'TypeError';
 
         if (!hasLoggedError) {
-          if (isConnectionError) {
-            // Connection errors are already handled in loadStories, so we can be quieter here
-            console.debug('Graph data fetch failed (backend unavailable)');
-          } else {
+          if (!isConnectionError) {
             console.error('Error loading substory data:', err.message);
           }
           hasLoggedError = true;
         }
 
-        if (isMounted) {
+        if (isMounted && currentSubstoryIdRef.current === requestedSubstoryId) {
           const errorMessage = isConnectionError
             ? `Backend server unavailable. Please ensure the backend is running at ${apiBaseUrl}`
             : `Failed to load substory data: ${err.message}`;
-          setError(errorMessage);
-          setLoading(false);
+          setGraphError(errorMessage);
+          setGraphLoading(false);
 
           setGraphData({ nodes: [], links: [] });
+          setGraphDescription(null);
           setEntityHighlights([]);
         }
       }
     };
 
-    const timer = setTimeout(() => {
-      if (isMounted) {
-        loadSubstoryData();
-      }
-    }, 50);
+    // Run immediately so fetch starts before any effect re-run can clear it (avoids "no API call" when state corrects)
+    loadSubstoryData();
 
     return () => {
-      clearTimeout(timer);
+      abortController.abort();
       isMounted = false;
     };
   }, [currentStoryId, currentChapterId, currentSubstoryId, stories, apiBaseUrl]);
 
   const selectStory = useCallback((storyId) => {
 
-    setError(null);
+    setGraphError(null);
 
     setSelectedNode(null);
     setSelectedEdge(null);
@@ -341,7 +372,7 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
 
   const selectChapter = useCallback((chapterId) => {
 
-    setError(null);
+    setGraphError(null);
 
     setSelectedNode(null);
     setSelectedEdge(null);
@@ -363,7 +394,7 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
 
   const selectSubstory = useCallback((substoryId) => {
 
-    setError(null);
+    setGraphError(null);
 
     setSelectedNode(null);
     setSelectedEdge(null);
@@ -386,7 +417,7 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
 
   const goToPreviousSubstory = useCallback(() => {
 
-    setError(null);
+    setGraphError(null);
 
     if (!currentStoryId || !currentChapterId || !currentSubstoryId) return;
 
@@ -480,7 +511,7 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
 
   const goToNextSubstory = useCallback(() => {
 
-    setError(null);
+    setGraphError(null);
 
     if (!currentStoryId || !currentChapterId || !currentSubstoryId) return;
 
@@ -695,6 +726,9 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
     }
   }, [apiBaseUrl]);
 
+  const loading = (storiesContext ? storiesContext.storiesLoading : localStoriesLoading) || graphLoading;
+  const error = graphError || (storiesContext ? storiesContext.storiesError : localStoriesError);
+
   return {
     stories,
     currentStory,
@@ -704,6 +738,7 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
     currentChapterId,
     currentSubstoryId,
     graphData,
+    graphDescription,
     entityHighlights,
     selectedNode,
     selectedEdge,

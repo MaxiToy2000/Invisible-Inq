@@ -158,6 +158,14 @@ export const StringConstants = {
     SPHERICAL: 'Spherical',
   },
 
+  // Map view – node type display names (for country card and pills)
+  MAP_VIEW_NODE_TYPES: {
+    ACTION: 'Action',
+    ENTITY: 'Entity',
+    COUNTRY: 'Country',
+    RELATIONSHIP: 'Relationship',
+  },
+
   // Calendar Modes
   CALENDAR_MODES: {
     LINEAR: 'Linear',

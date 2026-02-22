@@ -4,11 +4,9 @@ from database import db
 from queries import (
     get_all_stories_query,
     get_all_stories_query_legacy,
-    get_story_by_id_query,
     get_graph_data_by_section_query,
     get_graph_data_by_section_query_legacy,
     get_graph_data_by_section_and_country_query,
-    get_section_by_id_query,
     get_story_statistics_query,
     get_story_statistics_query_legacy,
     get_all_node_types_query,
@@ -186,7 +184,7 @@ def extract_graph_data_from_cypher_results(results: List[Dict[str, Any]]) -> Gra
 
 def get_all_stories() -> List[Story]:
     try:
-        logger.info("Fetching all stories from database")
+        logger.debug("Fetching all stories from database")
         query = get_all_stories_query()
         results = db.execute_query(query)
         # Fallback to legacy :story/:chapter/:section schema if gr_id returns no rows
@@ -341,7 +339,7 @@ def get_graph_data(section_gid: Optional[str] = None, section_query: Optional[st
         for link_data in graph_data.get("links", []):
             links.append(format_link(link_data))
 
-        logger.info(f"Successfully formatted graph data: {len(nodes)} nodes, {len(links)} links")
+        logger.debug(f"Formatted graph data: {len(nodes)} nodes, {len(links)} links")
         return GraphData(nodes=nodes, links=links)
     except ValueError as e:
         # Re-raise ValueError as-is (these are expected validation errors)
@@ -354,49 +352,44 @@ def get_graph_data(section_gid: Optional[str] = None, section_query: Optional[st
         raise Exception(error_msg) from e
 
 
-def get_gr_id_description(gr_id_or_path: str) -> Optional[str]:
+def get_gr_id_description(gr_id_value: str) -> Optional[str]:
     """
-    Fetch section/substory description from Neon by gr_id or graph path.
-    Returns None if Neon is not configured, table does not exist, or no row is found.
+    Get description for a section from Neon gr_id table.
+    gr_id_value is the same id used as graph_path (e.g. gra7zcmodmlq) - the gr_id node id
+    that links the selected SECTION from Neo4j to the row in Neon gr_id.
     """
-    if not gr_id_or_path or not str(gr_id_or_path).strip():
+    if not (gr_id_value or "").strip():
         return None
     try:
         from neon_database import neon_db
         if not neon_db.is_configured():
             return None
-        # Optional: query a table like gr_id_descriptions(gr_id, description) or section_descriptions
-        # If the table does not exist, the query will fail and we return None.
-        q = """
-            SELECT description FROM gr_id
-            WHERE id = %s OR path = %s
-            LIMIT 1
-        """
-        rows = neon_db.execute_query(q, (gr_id_or_path.strip(), gr_id_or_path.strip()))
-        if rows and len(rows) > 0 and rows[0].get("description"):
-            return str(rows[0]["description"]).strip() or None
-        return None
+        key = gr_id_value.strip()
+        results = neon_db.execute_query("SELECT description FROM gr_id WHERE id = %s LIMIT 1", (key,))
+        if results and results[0]:
+            desc = (results[0].get("description") or "").strip()
+            return desc if desc else None
     except Exception as e:
-        logger.debug(f"get_gr_id_description({gr_id_or_path!r}): {e}")
-        return None
+        logger.warning(f"Could not get gr_id description from Neon: {e}")
+    return None
 
 
 def get_graph_data_by_section_and_country(section_query: str, country_name: str) -> GraphData:
     """Fetch graph data filtered by section and country"""
     try:
-        logger.info(f"Fetching graph data for section '{section_query}' and country '{country_name}'")
+        logger.debug(f"Fetching graph data for section '{section_query}' and country '{country_name}'")
         query, params = get_graph_data_by_section_and_country_query(section_query, country_name)
         logger.debug(f"Executing query with params: {params}")
-        
+
         results = db.execute_query(query, params)
-        logger.info(f"Retrieved country-filtered graph data: {len(results)} result(s)")
+        logger.debug(f"Retrieved country-filtered graph data: {len(results)} result(s)")
 
         if not results:
             logger.warning(f"No results returned for section '{section_query}' and country '{country_name}'")
             return GraphData(nodes=[], links=[])
 
         graph_data = results[0].get("graphData", {})
-        logger.info(f"Graph data structure: nodes={len(graph_data.get('nodes', []))}, links={len(graph_data.get('links', []))}")
+        logger.debug(f"Graph data structure: nodes={len(graph_data.get('nodes', []))}, links={len(graph_data.get('links', []))}")
 
         nodes = []
         for node_data in graph_data.get("nodes", []):
@@ -406,7 +399,7 @@ def get_graph_data_by_section_and_country(section_query: str, country_name: str)
         for link_data in graph_data.get("links", []):
             links.append(format_link(link_data))
 
-        logger.info(f"Successfully formatted country-filtered graph data: {len(nodes)} nodes, {len(links)} links")
+        logger.debug(f"Formatted country-filtered graph data: {len(nodes)} nodes, {len(links)} links")
         return GraphData(nodes=nodes, links=links)
     except ValueError as e:
         logger.warning(f"Validation error in get_graph_data_by_section_and_country: {str(e)}")
@@ -906,7 +899,7 @@ def get_entity_wikidata(entity_name: str) -> Dict[str, Any]:
     # Decode URL-encoded entity name and clean it
     entity_name = unquote(entity_name).strip()
     
-    logger.info(f"Fetching wikidata for entity: '{entity_name}'")
+    logger.debug(f"Fetching wikidata for entity: '{entity_name}'")
     
     # Check if Neon database is configured
     if not neon_db.is_configured():
@@ -958,18 +951,11 @@ def get_entity_wikidata(entity_name: str) -> Dict[str, Any]:
             (entity_name, search_pattern, search_pattern, entity_name, search_pattern)
         )
         
-        logger.info(f"Query returned {len(results) if results else 0} result(s)")
-        
+        logger.debug(f"Query returned {len(results) if results else 0} result(s)")
+
         if results:
             entity_data = dict(results[0])
-            
-            # Log what was found for debugging
             db_name = entity_data.get('name', 'N/A')
-            db_alias = entity_data.get('alias', 'N/A')
-            image_url = entity_data.get('image_url', 'N/A')
-            logo_url = entity_data.get('logo_url', 'N/A')
-            logger.info(f"Found entity - DB name: '{db_name}', Alias: '{db_alias}', QID: {entity_data.get('qid')}")
-            logger.info(f"Image URLs - image_url: '{image_url}', logo_url: '{logo_url}'")
             
             # Convert datetime objects to strings for JSON serialization
             # Also handle empty strings for image URLs
@@ -982,8 +968,8 @@ def get_entity_wikidata(entity_name: str) -> Dict[str, Any]:
                     # Convert empty strings to None for image URLs
                     entity_data[key] = None
                     logger.debug(f"Converted empty {key} to None")
-            
-            logger.info(f"Successfully retrieved wikidata for entity: '{entity_name}' (matched to DB name: '{db_name}')")
+
+            logger.debug(f"Retrieved wikidata for entity: '{entity_name}' (matched to DB name: '{db_name}')")
             return {"found": True, "data": entity_data}
         else:
             logger.warning(f"No wikidata found in entity_wikidata table for entity: '{entity_name}'")
@@ -1003,9 +989,7 @@ def get_entity_wikidata(entity_name: str) -> Dict[str, Any]:
                 debug_pattern = f"%{first_word}%"
                 debug_results = neon_db.execute_query(debug_query, (debug_pattern, debug_pattern))
                 if debug_results:
-                    logger.info(f"Similar entities in database (searching for '{first_word}'):")
-                    for row in debug_results:
-                        logger.info(f"  - Name: '{row.get('name')}', Alias: '{row.get('alias')}', QID: {row.get('qid')}")
+                    logger.debug(f"Similar entities in database (searching for '{first_word}'): {[row.get('name') for row in debug_results]}")
             except Exception as debug_err:
                 logger.debug(f"Debug query failed: {debug_err}")
             
@@ -1014,6 +998,60 @@ def get_entity_wikidata(entity_name: str) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Error fetching entity wikidata for '{entity_name}': {e}")
         logger.exception(e)  # Log full traceback
+        raise
+
+
+def get_wikidata_by_id(node_id: str, node_type: str = None) -> Dict[str, Any]:
+    """
+    Fetch wikidata information by entity/node id.
+    Looks up in entity_wikidata table by id or gid (Neo4j node id mapping).
+    
+    Args:
+        node_id: The node/entity id from the graph
+        node_type: Optional node type (entity, concept, data, entity_gen, framework)
+        
+    Returns:
+        Dict with 'found' boolean and 'data' containing entity details if found
+    """
+    from neon_database import neon_db
+        
+    logger.debug(f"Fetching wikidata for node_id: '{node_id}'" + (f", node_type: '{node_type}'" if node_type else ""))
+    
+    if not neon_db.is_configured():
+        logger.warning("Neon database not configured, returning empty result")
+        return {"found": False, "data": None, "error": "Wikidata database not configured"}
+    
+    if not node_id:
+        return {"found": False, "data": None}
+    
+    try:
+        # Use fixed table name 'entity' as per database schema
+        query = """
+            SELECT *
+            FROM entity
+            WHERE id = %s
+            LIMIT 1
+        """
+        results = neon_db.execute_query(query, (node_id,))
+
+        if results:
+            entity_data = dict(results[0])
+            for key, value in entity_data.items():
+                if hasattr(value, 'isoformat'):
+                    entity_data[key] = value.isoformat()
+                elif value is None:
+                    entity_data[key] = None
+                elif key in ['image_url', 'logo_url'] and value == '':
+                    entity_data[key] = None
+            
+            logger.debug(f"Found wikidata for node_id: '{node_id}'")
+            return {"found": True, "data": entity_data}
+        
+        logger.warning(f"No wikidata found for node_id: '{node_id}'")
+        return {"found": False, "data": None}
+        
+    except Exception as e:
+        logger.error(f"Error fetching wikidata for node_id '{node_id}': {e}")
         raise
 
 
@@ -1031,7 +1069,7 @@ def search_entity_wikidata(search_term: str, limit: int = 10) -> Dict[str, Any]:
     """
     from neon_database import neon_db
     
-    logger.info(f"Searching wikidata for: {search_term}")
+    logger.debug(f"Searching wikidata for: {search_term}")
     
     if not neon_db.is_configured():
         logger.warning("Neon database not configured")
@@ -1074,7 +1112,7 @@ def search_entity_wikidata(search_term: str, limit: int = 10) -> Dict[str, Any]:
                 "wikipedia_url": entity.get("wikipedia_url")
             })
         
-        logger.info(f"Found {len(entities)} wikidata matches for: {search_term}")
+        logger.debug(f"Found {len(entities)} wikidata matches for: {search_term}")
         return {"results": entities, "count": len(entities)}
         
     except Exception as e:

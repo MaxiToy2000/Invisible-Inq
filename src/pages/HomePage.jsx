@@ -25,7 +25,7 @@ import LazyJSONViewer from '../components/common/LazyJSONViewer';
 import ParticlesBackground from '../components/common/ParticlesBackground';
 import BackgroundOverlay from '../components/common/BackgroundOverlay';
 import Loader from '../components/common/Loader';
-import { FaProjectDiagram, FaTable, FaCode, FaSearch, FaDownload, FaCube, FaSquare, FaTimes, FaSearchPlus, FaSearchMinus, FaExpand, FaExpandArrowsAlt, FaEye, FaEyeSlash, FaPlus, FaFilter, FaSort, FaMousePointer, FaVectorSquare, FaChevronDown, FaSitemap } from 'react-icons/fa';
+import { FaProjectDiagram, FaTable, FaCode, FaSearch, FaDownload, FaCube, FaSquare, FaTimes, FaSearchPlus, FaSearchMinus, FaExpand, FaExpandArrowsAlt, FaPlus, FaFilter, FaSort, FaMousePointer, FaVectorSquare, FaChevronDown, FaSitemap } from 'react-icons/fa';
 import { FiUser, FiLogOut, FiChevronDown } from 'react-icons/fi';
 import { getNodeTypeColor } from '../utils/colorUtils';
 
@@ -84,14 +84,12 @@ const HomePage = () => {
   const [filterLimit, setFilterLimit] = useState(null);
   const [showFilters, setShowFilters] = useState(false);
   const [showSortControls, setShowSortControls] = useState(false);
-  const [selectedSection, setSelectedSection] = useState(null); // Track selected section for highlighting
-  const [mapOrderBy, setMapOrderBy] = useState(null); // Track selected entity type for map ordering
-  
-  // Connected Data API state and caching
-  const [connectedDataCache, setConnectedDataCache] = useState({});
-  const [connectedDataLoading, setConnectedDataLoading] = useState(false);
-  const [connectedDataError, setConnectedDataError] = useState(null);
-  
+
+  const [sectionDescription, setSectionDescription] = useState(null);
+  const [savedGraphCameraPosition, setSavedGraphCameraPosition] = useState(null); // { position: {x,y,z}, target: {x,y,z} } for restore
+  const [savePositionStatus, setSavePositionStatus] = useState(null); // 'saving' | 'saved' | 'error' | null (for LeftSidebar button)
+  const graphRef = useRef(null);
+
   // Ref to track if we're reading from URL to prevent infinite loops
   const isReadingFromURL = useRef(false);
   // Ref to track the last URL we set ourselves (to prevent reading our own updates)
@@ -106,6 +104,7 @@ const HomePage = () => {
     currentChapterId,
     currentSubstoryId,
     graphData,
+    graphDescription,
     entityHighlights,
     selectedNode,
     selectedEdge,
@@ -125,6 +124,95 @@ const HomePage = () => {
 
   // Initialize activity tracking
   useActivityTracking();
+
+  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+
+  // Load saved graph camera position when authenticated (timeout to avoid infinite pending)
+  useEffect(() => {
+    if (!isAuthenticated()) {
+      setSavedGraphCameraPosition(null);
+      return;
+    }
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    let cancelled = false;
+    const ac = new AbortController();
+    const timeoutId = setTimeout(() => ac.abort(), 8000);
+    fetch(`${apiBaseUrl}/api/graph-camera-position`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: ac.signal,
+    })
+      .then((res) => {
+        if (!res.ok) return null;
+        if (res.status === 204) return null;
+        return res.json();
+      })
+      .then((data) => {
+        if (cancelled || !data) return;
+        setSavedGraphCameraPosition({
+          position: { x: data.position_x, y: data.position_y, z: data.position_z },
+          target: { x: data.target_x, y: data.target_y, z: data.target_z },
+        });
+      })
+      .catch(() => {})
+      .finally(() => clearTimeout(timeoutId));
+    return () => {
+      cancelled = true;
+      ac.abort();
+      clearTimeout(timeoutId);
+    };
+  }, [isAuthenticated, apiBaseUrl, user]);
+
+  const handleSaveGraphCameraPosition = useCallback(async (state) => {
+    const token = localStorage.getItem('token');
+    if (!token) throw new Error('Not authenticated');
+    const res = await fetch(`${apiBaseUrl}/api/graph-camera-position`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        position_x: state.position.x,
+        position_y: state.position.y,
+        position_z: state.position.z,
+        target_x: state.target.x,
+        target_y: state.target.y,
+        target_z: state.target.z,
+      }),
+    });
+    if (!res.ok) throw new Error('Failed to save');
+  }, [apiBaseUrl]);
+
+  const handleSavePositionClick = useCallback(async () => {
+    const state = graphRef.current?.getCurrentCameraState?.();
+    if (!state || !isAuthenticated) return;
+    setSavePositionStatus('saving');
+    try {
+      await handleSaveGraphCameraPosition(state);
+      setSavePositionStatus('saved');
+      setTimeout(() => setSavePositionStatus(null), 2000);
+    } catch {
+      setSavePositionStatus('error');
+      setTimeout(() => setSavePositionStatus(null), 2000);
+    }
+  }, [isAuthenticated, handleSaveGraphCameraPosition]);
+
+  // Reset camera to initial view, then save the actual camera position after reset to DB
+  const handleResetPositionClick = useCallback(async () => {
+    graphRef.current?.resetCameraToInitial?.();
+    if (!isAuthenticated) return;
+    const resetTransitionMs = 500;
+    await new Promise((r) => setTimeout(r, resetTransitionMs + 100));
+    const state = graphRef.current?.getCurrentCameraState?.();
+    if (!state) return;
+    try {
+      await handleSaveGraphCameraPosition(state);
+      setSavedGraphCameraPosition(state);
+    } catch {
+      // camera was still reset visually
+    }
+  }, [isAuthenticated, handleSaveGraphCameraPosition]);
 
   // Close user menu when clicking outside
   useEffect(() => {
@@ -229,17 +317,7 @@ const HomePage = () => {
     const newSearch = searchParams.toString();
     const newPath = newSearch ? `/?${newSearch}` : '/';
     const currentPath = window.location.pathname + window.location.search;
-    
-    console.log('[updateURLWithSelections] URL update:', {
-      storyId,
-      chapterTitle,
-      substoryTitle,
-      storyTitleDirect,
-      newSearch,
-      newPath,
-      currentPath
-    });
-    
+
     // Normalize paths for comparison
     const normalizePath = (path) => {
       if (path === '/') return '/';
@@ -255,56 +333,16 @@ const HomePage = () => {
     // This prevents the URL sync useEffect from re-processing our own URL change
     lastURLWeSet.current = normalizedNewPath;
     
-    // Always navigate to update the URL
     if (normalizedNewPath !== normalizedCurrentPath) {
-      console.log('[updateURLWithSelections] Navigating from:', normalizedCurrentPath, 'to:', normalizedNewPath);
       navigate(newPath, { replace: true });
-      console.log('[updateURLWithSelections] ✓ Navigation called');
-    } else {
-      console.log('[updateURLWithSelections] URL unchanged, skipping navigation');
     }
   }, [navigate, normalizeTitleForURL, stories]);
 
-  // Wrapper handlers that update both state and URL
-  const handleStorySelect = useCallback((storyId, option) => {
-    if (!storyId) {
-      console.log('[handleStorySelect] Null storyId, skipping');
-      return;
-    }
-    
-    console.log('[handleStorySelect] CALLED - storyId:', storyId, 'option:', option);
-    // Mark that we're updating from user action, not URL
-    isReadingFromURL.current = false;
-    
-    // Get story title from option object - use label (displayed text) first, then title
-    let storyTitle = option?.label || option?.title || null;
-    if (!storyTitle && stories.length > 0) {
-      const story = stories.find(s => s.id === storyId);
-      storyTitle = story?.title || null;
-    }
-    console.log('[handleStorySelect] Story title found:', storyTitle);
-    
-    // Update URL IMMEDIATELY with the story title (normalized)
-    if (storyTitle) {
-      console.log('[handleStorySelect] Updating URL with story:', storyTitle);
-      updateURLWithSelections(storyId, null, null, storyTitle);
-    } else {
-      console.warn('[handleStorySelect] No story title found, updating URL with ID only');
-      updateURLWithSelections(storyId, null, null);
-    }
-    
-    // Update state after URL update
-    selectStory(storyId);
-  }, [selectStory, updateURLWithSelections, stories]);
-
+  // Wrapper handlers: define handleChapterSelect first so handleStorySelect can call it
   const handleChapterSelect = useCallback((chapterId, option) => {
-    // Mark that we're updating from user action, not URL
     isReadingFromURL.current = false;
-    
-    // Handle null case (clearing selection)
+
     if (!chapterId) {
-      console.log('[handleChapterSelect] Null chapterId, clearing selection');
-      // Update URL to remove chapter and substory
       const currentStoryId = currentStory?.id || null;
       if (currentStoryId) {
         const storyTitle = currentStory?.title || null;
@@ -317,23 +355,17 @@ const HomePage = () => {
       selectChapter(null);
       return;
     }
-    
-    console.log('[handleChapterSelect] Called with:', { chapterId, option });
-    
-    // Get chapter title from option object - use label (displayed text) first, then title
+
     let chapterTitle = option?.label || option?.title || null;
     let selectedChapter = option || null;
-    console.log('[handleChapterSelect] Chapter title from option:', chapterTitle);
-    
-    // If not in option, find the chapter from the stories array (try currentStory first, then search all stories)
+
     if (!chapterTitle && currentStory && currentStory.chapters) {
       selectedChapter = currentStory.chapters.find(c => c.id === chapterId);
       if (selectedChapter && selectedChapter.title) {
         chapterTitle = selectedChapter.title;
       }
     }
-    
-    // If still not found, search all stories
+
     if (!chapterTitle && stories.length > 0) {
       for (const story of stories) {
         if (story && story.chapters) {
@@ -346,61 +378,34 @@ const HomePage = () => {
         }
       }
     }
-    
-    // If chapter title still not found, we can't update URL properly - log warning and still select
+
     if (!chapterTitle) {
       console.warn(`Chapter title not found for chapterId: ${chapterId}, currentStoryId: ${currentStoryId}, stories count: ${stories.length}`);
-      // Still select the chapter even if title is missing, but don't update URL
       selectChapter(chapterId);
       return;
     }
-    
-    // Ensure we have a storyId to include in URL
-    // If currentStoryId is not set, try to find it from the chapter we just found
+
     let storyIdForURL = currentStoryId;
     if (!storyIdForURL) {
-      const foundStory = stories.find(s => 
-        s.chapters && s.chapters.some(c => c.id === chapterId)
-      );
+      const foundStory = stories.find(s => s.chapters && s.chapters.some(c => c.id === chapterId));
       storyIdForURL = foundStory?.id || null;
     }
-    
-    // Always automatically select the first section if available
+
     const firstSubstory = selectedChapter?.substories?.[0];
     const firstSubstoryId = firstSubstory?.id || null;
     const firstSubstoryTitle = firstSubstory?.title || null;
-    
-    // Ensure we have a storyId to include in URL
     const finalStoryId = storyIdForURL || currentStoryId;
-    
-    if (!chapterTitle) {
-      console.warn(`[handleChapterSelect] Chapter title not found for chapterId: ${chapterId}`);
-      selectChapter(chapterId);
-      return;
-    }
-    
+
     if (!finalStoryId) {
       console.warn(`[handleChapterSelect] Story ID not found for chapterId: ${chapterId}`);
       selectChapter(chapterId);
       return;
     }
-    
-    // Find story title for URL
+
     const storyTitle = stories.find(s => s.id === finalStoryId)?.title || null;
-    
-    // Update URL IMMEDIATELY with chapter and first substory
-    console.log('[handleChapterSelect] Updating URL with:', { 
-      storyId: finalStoryId, 
-      storyTitle,
-      chapterTitle, 
-      firstSubstoryTitle 
-    });
     updateURLWithSelections(finalStoryId, chapterTitle, firstSubstoryTitle || null, storyTitle || null);
-    
-    // Update state
     selectChapter(chapterId);
-    
-    // If there's a first section, select it after a brief delay
+
     if (firstSubstoryId) {
       setTimeout(() => {
         selectSubstory(firstSubstoryId);
@@ -408,13 +413,39 @@ const HomePage = () => {
     }
   }, [selectChapter, selectSubstory, updateURLWithSelections, currentStoryId, currentStory, stories]);
 
+  const handleStorySelect = useCallback((storyId, option) => {
+    if (!storyId) return;
+
+    isReadingFromURL.current = false;
+
+    let storyTitle = option?.label || option?.title || null;
+    const story = stories.find(s => s.id === storyId);
+    if (!storyTitle && story) {
+      storyTitle = story?.title || null;
+    }
+
+    if (storyTitle) {
+      updateURLWithSelections(storyId, null, null, storyTitle);
+    } else {
+      console.warn('[handleStorySelect] No story title found, updating URL with ID only');
+      updateURLWithSelections(storyId, null, null);
+    }
+
+    selectStory(storyId);
+
+    if (story?.chapters?.length > 0) {
+      const firstChapter = story.chapters[0];
+      setTimeout(() => {
+        handleChapterSelect(firstChapter.id, firstChapter);
+      }, 50);
+    }
+  }, [selectStory, updateURLWithSelections, stories, handleChapterSelect]);
+
   const handleSubstorySelect = useCallback((substoryId, option) => {
     // Mark that we're updating from user action, not URL
     isReadingFromURL.current = false;
     
-    // Handle null case (clearing selection)
     if (!substoryId) {
-      console.log('[handleSubstorySelect] Null substoryId, clearing selection');
       // Update URL to remove substory but keep story and chapter
       if (currentStoryId && currentChapterId) {
         const storyTitle = currentStory?.title || null;
@@ -428,14 +459,11 @@ const HomePage = () => {
       selectSubstory(null);
       return;
     }
-    
-    console.log('[handleSubstorySelect] Called with:', { substoryId, option });
-    
+
     // Get substory title from option object - use label (displayed text) first, then title
     let substoryTitle = option?.label || option?.title || null;
     let selectedSubstory = option || null;
-    console.log('[handleSubstorySelect] Substory title from option:', substoryTitle);
-    
+
     // If not in option, find the substory title (try currentChapter first, then search all stories)
     if (!substoryTitle && currentChapter && currentChapter.substories) {
       selectedSubstory = currentChapter.substories.find(s => s.id === substoryId);
@@ -490,14 +518,6 @@ const HomePage = () => {
     
     // Get story title for URL
     const storyTitle = currentStory?.title || stories.find(s => s.id === currentStoryId)?.title || null;
-    
-    // Update URL IMMEDIATELY with all information
-    console.log('[handleSubstorySelect] Updating URL with:', { 
-      storyId: currentStoryId,
-      storyTitle,
-      chapterTitle, 
-      substoryTitle 
-    });
     updateURLWithSelections(currentStoryId, chapterTitle, substoryTitle || null, storyTitle || null);
     
     // Update state
@@ -587,7 +607,10 @@ const HomePage = () => {
   // Handle scene container changes coming from RightSidebar (map/timeline/calendar/cluster)
   const handleSceneContainerChange = useCallback((container) => {
     setSelectedSceneContainer(container);
-    updateURL({ scene: container });
+    updateURL({ scene: container });    // When deselecting scene container, ensure viewMode is Graph so Graph view and Save/Reset XYZ show
+    if (!container) {
+      setViewMode('Graph');
+    }
     // If switching away from map, clear mapView? keep mapView; leave as is to preserve selection
   }, [updateURL]);
 
@@ -738,9 +761,6 @@ const HomePage = () => {
       return;
     }
 
-    // Set the selected entity type for map ordering
-    setMapOrderBy(entityType);
-
     // Find all nodes of the selected entity type
     const entityTypeNodes = graphData.nodes.filter(node => {
       const nodeType = node.node_type || node.type || node.category;
@@ -815,9 +835,6 @@ const HomePage = () => {
       // This is a simplified approach - in real implementation, you'd match with actual section data
     }
 
-    // Set the selected section for highlighting in GlobalActivity
-    setSelectedSection(sectionQuery || sectionLabel);
-
     // Find all nodes that belong to this section
     const sectionNodes = graphData.nodes.filter(node => {
       if (!sectionQuery) return false;
@@ -889,57 +906,10 @@ const HomePage = () => {
     }
   }, [graphData, currentSubstory, selectEntityById]);
 
-  // Fetch ConnectedData API in HomePage when section changes (with caching)
+  // Section description comes from the same graph response as graphData (useGraphData)
   useEffect(() => {
-    const fetchConnectedData = async () => {
-      const queryToUse = currentSubstory?.section_query || currentSubstory?.id;
-      
-      if (!queryToUse) {
-        return;
-      }
-
-      // Check if data is already cached
-      if (connectedDataCache[queryToUse]) {
-        return;
-      }
-
-      setConnectedDataLoading(true);
-      setConnectedDataError(null);
-
-      try {
-        const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
-        const url = `${apiBaseUrl}/api/graph?graph_path=${encodeURIComponent(queryToUse)}`;
-        
-        const response = await fetch(url, {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        });
-
-        if (!response.ok) {
-          throw new Error(`Failed to fetch graph data: ${response.status} ${response.statusText}`);
-        }
-
-        const data = await response.json();
-        
-        // Store in cache
-        setConnectedDataCache(prev => ({
-          ...prev,
-          [queryToUse]: data
-        }));
-      } catch (err) {
-        console.error('[HomePage] Error fetching ConnectedData:', err);
-        const errorMsg = err.message || 'Failed to load connected data';
-        setConnectedDataError(errorMsg);
-        showError(errorMsg, 'Connected Data Error');
-      } finally {
-        setConnectedDataLoading(false);
-      }
-    };
-
-    fetchConnectedData();
-  }, [currentSubstory?.section_query, currentSubstory?.id, connectedDataCache]);
+    setSectionDescription(graphDescription ?? null);
+  }, [graphDescription]);
 
   // Read URL parameters on mount and when URL changes (e.g., back button)
   // URL now uses titles for chapter and substory instead of IDs
@@ -1147,16 +1117,22 @@ const HomePage = () => {
     if (needsUpdate) {
       isReadingFromURL.current = true;
 
-      // Update view mode from URL
-      if (viewParam && ['Graph', 'Table', 'JSON'].includes(viewParam)) {
-        setViewMode(viewParam);
-      }
-
-      // Update scene container from URL
-      if (sceneParam && ['map', 'cluster', 'timeline', 'calendar'].includes(sceneParam)) {
-        setSelectedSceneContainer(sceneParam);
-      } else if (!sceneParam) {
+      // When no story context in URL (e.g. fresh load / default route), always show Graph and no scene
+      const hasStoryContextInURL = !!(storyTitleParam || storyIdFromURL);
+      if (!hasStoryContextInURL) {
+        setViewMode('Graph');
         setSelectedSceneContainer(null);
+      } else {
+        // Update view mode from URL only when we have story context
+        if (viewParam && ['Graph', 'Table', 'JSON'].includes(viewParam)) {
+          setViewMode(viewParam);
+        }
+        // Update scene container from URL only when we have story context
+        if (sceneParam && ['map', 'cluster', 'timeline', 'calendar'].includes(sceneParam)) {
+          setSelectedSceneContainer(sceneParam);
+        } else {
+          setSelectedSceneContainer(null);
+        }
       }
 
       // Handle story/chapter/substory selection from URL
@@ -1289,6 +1265,21 @@ const HomePage = () => {
   // Note: viewMode and selectedSceneContainer removed from deps to prevent race conditions
   // This effect should only run when the URL changes, not when view state changes
 
+  // On first load at "/" with no story in URL: auto-select first story so APIs run and content shows (avoids blank page)
+  const hasAutoSelectedInitialRef = useRef(false);
+  useEffect(() => {
+    if (hasAutoSelectedInitialRef.current || !stories?.length || currentStoryId) return;
+    const params = new URLSearchParams(location.search);
+    if (params.has('story')) return;
+    hasAutoSelectedInitialRef.current = true;
+    const firstStory = stories[0];
+    if (firstStory?.chapters?.length > 0) {
+      handleStorySelect(firstStory.id, firstStory);
+    } else {
+      selectStory(firstStory.id);
+    }
+  }, [stories, currentStoryId, location.search, handleStorySelect, selectStory]);
+
   // Note: URL updates are now handled directly in the handlers (handleStorySelect, handleChapterSelect, handleSubstorySelect)
   // This useEffect is removed to prevent conflicts and race conditions
 
@@ -1337,8 +1328,7 @@ const HomePage = () => {
             return { storyId: story.id, statistics: data };
           }
           return { storyId: story.id, statistics: { total_nodes: 0, entity_count: 0, highlighted_nodes: 0, updated_date: null } };
-        } catch (err) {
-          console.debug(`Failed to fetch statistics for story ${story.id}:`, err);
+        } catch {
           return { storyId: story.id, statistics: { total_nodes: 0, entity_count: 0, highlighted_nodes: 0, updated_date: null } };
         }
       });
@@ -1399,13 +1389,6 @@ const HomePage = () => {
       }
     }
   };
-
-  // REMOVED: This useEffect was forcing Graph view when data loads, interfering with user's view selection
-  // useEffect(() => {
-  //   if (graphData.nodes.length > 0) {
-  //     setViewMode('Graph');
-  //   }
-  // }, [graphData]);
 
   // Reset graph layout mode to 'force' when graph is redrawn with new data
   useEffect(() => {
@@ -1679,10 +1662,6 @@ const HomePage = () => {
       return { nodes: [], links: [] };
     }
 
-    // REMOVED: Section filtering - backend already handles this correctly via gr_id matching
-    // The backend filters nodes where node.gr_id == section.graph_name
-    // No need for redundant frontend filtering that was eliminating all nodes
-    
     // Apply user-defined filters (hide categories, search, etc.)
     let filteredNodes = filterNodes(graphData.nodes);
 
@@ -2441,6 +2420,8 @@ const HomePage = () => {
       onAISearch={handleAISearch}
       onAISummary={handleAISummary}
       graphData={graphData}
+      graphDescription={graphDescription}
+      sectionDescription={sectionDescription}
       filteredGraphData={filteredGraphData}
       onEntityHighlight={selectEntityById}
       rightSidebarActiveTab={rightSidebarActiveTab}
@@ -2453,10 +2434,6 @@ const HomePage = () => {
       onClusterConfigChange={handleClusterConfigChange}
       clusterMethod={clusterMethod}
       clusterProperty={clusterProperty}
-      selectedSection={selectedSection}
-      connectedDataCache={connectedDataCache}
-      connectedDataLoading={connectedDataLoading}
-      connectedDataError={connectedDataError}
       onSortConfigChange={handleSortConfigChange}
       sortBy={sortBy}
       sortOrder={sortOrder}
@@ -2466,6 +2443,10 @@ const HomePage = () => {
       selectedEdges={selectedEdges}
       hierarchyTreeAxis={hierarchyTreeAxis}
       onHierarchyTreeAxisChange={setHierarchyTreeAxis}
+      showSavePositionButton={viewMode === 'Graph' && !selectedSceneContainer}
+      onSavePositionClick={isAuthenticated ? handleSavePositionClick : undefined}
+      savePositionStatus={savePositionStatus}
+      onResetPositionClick={handleResetPositionClick}
     >
         <div className="flex flex-col h-full">
           {}
@@ -2656,6 +2637,7 @@ const HomePage = () => {
               )}
 
               <ThreeGraphVisualization
+                ref={graphRef}
                 data={filteredGraphData}
                 onNodeClick={selectNode}
                 onNodeRightClick={handleNodeRightClick}
@@ -2679,6 +2661,7 @@ const HomePage = () => {
                 onSelectedEdgesChange={setSelectedEdges}
                 graphLayoutMode={graphLayoutMode}
                 hierarchyTreeAxis={hierarchyTreeAxis}
+                initialCameraPosition={savedGraphCameraPosition}
               />
             </>
           )}

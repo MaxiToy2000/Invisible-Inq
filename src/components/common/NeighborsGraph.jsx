@@ -3,6 +3,18 @@ import * as d3 from 'd3';
 import { getNodeTypeColor } from '../../utils/colorUtils';
 import EmptyState from './EmptyState';
 
+const canonicalId = (n) => String(n?.id ?? n?.gid ?? '');
+
+function deduplicateNodesById(nodes) {
+  const seen = new Set();
+  return nodes.filter((node) => {
+    const id = canonicalId(node);
+    if (!id || seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+}
+
 // Safe deep copy function that handles circular references and functions
 // Defined outside component to avoid recreation on every render
 const safeDeepCopy = (node) => {
@@ -45,9 +57,8 @@ const NeighborsGraph = ({ selectedNode, graphData, onClose, isSubgraph = false }
         nodeTypeCounts[nodeType] = (nodeTypeCounts[nodeType] || 0) + 1;
       });
 
-      // CRITICAL: Create DEEP copies of nodes to prevent D3 simulation from modifying
-      // the original node positions in the main THREE.js graph
-      const copiedNodes = graphData.nodes.map(node => safeDeepCopy(node));
+      // Deduplicate so the same node (same id/gid) never appears twice, then deep copy
+      const copiedNodes = deduplicateNodesById(graphData.nodes).map(node => safeDeepCopy(node));
 
       // Process links to ensure source/target are node objects from our copies
       const processedLinks = graphData.links.map(link => {
@@ -101,11 +112,10 @@ const NeighborsGraph = ({ selectedNode, graphData, onClose, isSubgraph = false }
       }
     });
 
-    // Get neighbor nodes
-    const neighborNodes = graphData.nodes.filter(node => {
-      const nId = node.id || node.gid;
-      return neighborIds.has(String(nId));
-    });
+    // Get neighbor nodes (dedupe so same id never appears twice)
+    const neighborNodes = deduplicateNodesById(
+      graphData.nodes.filter(node => neighborIds.has(String(node.id || node.gid)))
+    );
 
     // Count node types
     const nodeTypeCounts = {};
@@ -117,10 +127,8 @@ const NeighborsGraph = ({ selectedNode, graphData, onClose, isSubgraph = false }
     // CRITICAL: Create DEEP copies of nodes to prevent D3 simulation from modifying
     // the original node positions in the main THREE.js graph
     const copiedSelectedNode = safeDeepCopy(selectedNode);
-
     const copiedNeighborNodes = neighborNodes.map(node => safeDeepCopy(node));
-
-    const allCopiedNodes = [copiedSelectedNode, ...copiedNeighborNodes];
+    const allCopiedNodes = deduplicateNodesById([copiedSelectedNode, ...copiedNeighborNodes]);
 
     // Create links for the neighbor graph (only between selected node and neighbors)
     const neighborLinks = connectedLinks.map(link => {
@@ -270,17 +278,39 @@ const NeighborsGraph = ({ selectedNode, graphData, onClose, isSubgraph = false }
       .force('center', d3.forceCenter(simulationWidth / 2, simulationHeight / 2))
       .force('collision', d3.forceCollide().radius(35));
 
-    // Create links
-    const link = g.append('g')
+    // Helper to get node display name
+    const nodeName = (n) => (n && (n.name || n.entity_name || n.action_summary || n.process_result || n.process_summary || n.title || n.id || n.gid || 'Node')) || 'Node';
+    const linkLabel = (d) => (d.label || d.type || d.relationship_name || d.relationship_type || '').trim() || '—';
+
+    // Create links: one group per link so we can add a wide invisible hover target for tooltip
+    const linkGroup = g.append('g')
       .attr('class', 'links')
-      .selectAll('line')
+      .selectAll('g')
       .data(neighborData.links)
       .enter()
+      .append('g')
+      .attr('class', 'link-group')
+      .style('cursor', 'pointer');
+
+    const link = linkGroup
       .append('line')
       .attr('stroke', '#9BAFBD')
       .attr('stroke-width', 2)
       .attr('opacity', 0.9)
-      .attr('marker-end', 'url(#arrowhead)');
+      .attr('marker-end', 'url(#arrowhead)')
+      .attr('pointer-events', 'none');
+
+    // Invisible wide stroke on top so hovering anywhere near the arrow shows the tooltip
+    linkGroup
+      .append('line')
+      .attr('class', 'link-hit')
+      .attr('stroke', 'transparent')
+      .attr('stroke-width', 24)
+      .attr('pointer-events', 'stroke');
+
+    linkGroup
+      .append('title')
+      .text(d => `${nodeName(d.source)} → ${nodeName(d.target)}: ${linkLabel(d)}`);
 
     // Create arrow marker
     svg.append('defs').append('marker')
@@ -346,44 +376,15 @@ const NeighborsGraph = ({ selectedNode, graphData, onClose, isSubgraph = false }
       .attr('font-weight', '400')
       .attr('pointer-events', 'none');
 
-    // Add link labels (text elements) - only show if link has a label
-    const linkLabels = g.append('g')
-      .attr('class', 'link-labels')
-      .selectAll('text')
-      .data(neighborData.links.filter(d => {
-        const label = d.label || d.type || d.relationship_name || d.relationship_type || '';
-        return label.trim() !== '';
-      }))
-      .enter()
-      .append('text')
-      .attr('class', 'link-label')
-      .attr('text-anchor', 'middle')
-      .attr('fill', '#9BAFBD')
-      .attr('font-size', '10px')
-      .attr('font-family', 'Archivo, system-ui, "Segoe UI", sans-serif')
-      .attr('font-weight', '400')
-      .attr('pointer-events', 'none')
-      .text(d => {
-        const label = d.label || d.type || d.relationship_name || d.relationship_type || '';
-        return label.length > 20 ? label.substring(0, 20) + '...' : label;
-      });
-
-    // Update positions on simulation tick
+    // Update positions on simulation tick (both visible and hit-area lines)
     simulation.on('tick', () => {
-      link
+      linkGroup.selectAll('line')
         .attr('x1', d => d.source.x)
         .attr('y1', d => d.source.y)
         .attr('x2', d => d.target.x)
         .attr('y2', d => d.target.y);
 
       node.attr('transform', d => `translate(${d.x},${d.y})`);
-
-      // Update link label positions (midpoint of the link)
-      if (linkLabels) {
-        linkLabels
-          .attr('x', d => (d.source.x + d.target.x) / 2)
-          .attr('y', d => (d.source.y + d.target.y) / 2);
-      }
     });
 
     // Zoom to fit when simulation ends (especially important for subgraphs)
@@ -421,43 +422,61 @@ const NeighborsGraph = ({ selectedNode, graphData, onClose, isSubgraph = false }
     );
   }
 
-  return (
-    <div ref={containerRef} className="w-full h-[320px] relative bg-[#09090B] border border-[#707070] border-b border-b-[#707070] rounded-[5px]">
-      {/* Close button */}
-      {onClose && (
-        <button
-          onClick={onClose}
-          className="absolute top-2 right-2 z-10 w-6 h-6 rounded-full bg-[#24282F] border border-[#707070] flex items-center justify-center text-white hover:bg-[#2A2A2A] transition-colors"
-          title="Close"
-        >
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M9 3L3 9M3 3L9 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-        </button>
-      )}
+  const getNodeDisplayName = (n) => (n && (n.name || n.entity_name || n.action_summary || n.process_result || n.process_summary || n.title || n.id || n.gid || 'Node')) || 'Node';
+  const getLinkDisplayLabel = (d) => (d.label || d.type || d.relationship_name || d.relationship_type || '').trim() || '—';
 
-      {/* Legend */}
-      <div className="absolute top-2 left-2 z-10 flex items-center gap-3">
-        {Object.entries(neighborData.nodeTypeCounts).map(([nodeType, count]) => {
-          // Use centralized color mapping from colorUtils
-          const color = getNodeTypeColor(nodeType);
-          
-          return (
-            <div key={nodeType} className="flex items-center gap-1.5">
-              <div 
-                className="w-3 h-3 rounded-full" 
-                style={{ backgroundColor: color }}
-              />
-              <span className="text-xs text-[#B4B4B4] font-normal">
-                {nodeType}({count})
-              </span>
-            </div>
-          );
-        })}
+  return (
+    <div className="w-full flex flex-col gap-2">
+      <div ref={containerRef} className="w-full h-[320px] relative bg-[#09090B] border border-[#707070] rounded-[5px] overflow-hidden flex-shrink-0">
+        {/* Close button */}
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="absolute top-2 right-2 z-10 w-6 h-6 rounded-full bg-[#24282F] border border-[#707070] flex items-center justify-center text-white hover:bg-[#2A2A2A] transition-colors"
+            title="Close"
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M9 3L3 9M3 3L9 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
+        )}
+
+        {/* Legend */}
+        <div className="absolute top-2 left-2 z-10 flex items-center gap-3">
+          {Object.entries(neighborData.nodeTypeCounts).map(([nodeType, count]) => {
+            const color = getNodeTypeColor(nodeType);
+            return (
+              <div key={nodeType} className="flex items-center gap-1.5">
+                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: color }} />
+                <span className="text-xs text-[#B4B4B4] font-normal">{nodeType}({count})</span>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* SVG Graph - no text on arrows; relationships listed below */}
+        <svg ref={svgRef} className="w-full h-full" overflow="hidden" />
       </div>
 
-      {/* SVG Graph */}
-      <svg ref={svgRef} className="w-full h-full" />
+      {/* Connections list: every arrow as one line so you can analyze without overlapping text */}
+      {neighborData.links.length > 0 && (
+        <div className="w-full flex-shrink-0 bg-[#09090B] border border-[#707070] rounded-[5px] overflow-hidden">
+          <div className="px-2 py-1.5 border-b border-[#363D46] text-xs font-semibold text-[#B4B4B4]">
+            Connections ({neighborData.links.length})
+          </div>
+          <ul className="max-h-[180px] overflow-y-auto list-none p-1.5 m-0 space-y-1">
+            {neighborData.links.map((link, i) => (
+              <li key={i} className="text-xs text-[#F4F4F5] leading-tight break-words">
+                <span className="text-[#9BAFBD]">{getNodeDisplayName(link.source)}</span>
+                <span className="text-[#707070] mx-1">→</span>
+                <span className="text-[#9BAFBD]">{getNodeDisplayName(link.target)}</span>
+                <span className="text-[#707070] mx-1">:</span>
+                <span className="text-[#B4B4B4]">{getLinkDisplayLabel(link)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 };

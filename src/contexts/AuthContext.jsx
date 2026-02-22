@@ -9,7 +9,6 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const navigate = useNavigate();
 
   // Check if token is expired
@@ -22,46 +21,44 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Load user from token on mount
+  // Build user object from JWT payload (avoids /api/auth/me request on refresh)
+  const userFromToken = (decoded) => {
+    if (!decoded || decoded.exp * 1000 < Date.now()) return null;
+    return {
+      id: decoded.sub,
+      email: decoded.email ?? '',
+      full_name: decoded.full_name ?? null,
+      profile_picture: decoded.profile_picture ?? null,
+      is_active: decoded.is_active !== false,
+      is_admin: decoded.is_admin === true,
+      role: decoded.role ?? 'user',
+      status: decoded.status ?? 'active',
+      auth_provider: decoded.auth_provider ?? 'local',
+    };
+  };
+
+  // Load user from token on mount (decode only; no /api/auth/me request)
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (token && !isTokenExpired(token)) {
-      fetchCurrentUser(token);
-    } else {
-      localStorage.removeItem('token');
-      setLoading(false);
-    }
-  }, []);
-
-  // Fetch current user info
-  const fetchCurrentUser = async (token) => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-
-      if (response.ok) {
-        const userData = await response.json();
+      try {
+        const decoded = jwtDecode(token);
+        const userData = userFromToken(decoded);
         setUser(userData);
-      } else {
+      } catch (error) {
         localStorage.removeItem('token');
         setUser(null);
       }
-    } catch (error) {
-      console.error('Error fetching user:', error);
-      localStorage.removeItem('token');
+    } else {
+      if (token) localStorage.removeItem('token');
       setUser(null);
-    } finally {
-      setLoading(false);
     }
-  };
+    setLoading(false);
+  }, []);
 
   // Register new user
   const register = async (email, password, fullName) => {
     try {
-      setError(null);
       const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
         method: 'POST',
         headers: {
@@ -81,12 +78,10 @@ export const AuthProvider = ({ children }) => {
         setUser(data.user);
         return { success: true };
       } else {
-        setError(data.detail || 'Registration failed');
         return { success: false, error: data.detail || 'Registration failed' };
       }
-    } catch (error) {
-      const errorMessage = error.message || 'Network error during registration';
-      setError(errorMessage);
+    } catch (err) {
+      const errorMessage = err.message || 'Network error during registration';
       return { success: false, error: errorMessage };
     }
   };
@@ -94,7 +89,6 @@ export const AuthProvider = ({ children }) => {
   // Login with email and password
   const login = async (email, password) => {
     try {
-      setError(null);
       const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
         method: 'POST',
         headers: {
@@ -113,12 +107,10 @@ export const AuthProvider = ({ children }) => {
         setUser(data.user);
         return { success: true };
       } else {
-        setError(data.detail || 'Login failed');
         return { success: false, error: data.detail || 'Login failed' };
       }
-    } catch (error) {
-      const errorMessage = error.message || 'Network error during login';
-      setError(errorMessage);
+    } catch (err) {
+      const errorMessage = err.message || 'Network error during login';
       return { success: false, error: errorMessage };
     }
   };
@@ -126,7 +118,6 @@ export const AuthProvider = ({ children }) => {
   // Login with Google
   const loginWithGoogle = async (credential) => {
     try {
-      setError(null);
       const response = await fetch(`${API_BASE_URL}/api/auth/google`, {
         method: 'POST',
         headers: {
@@ -144,12 +135,10 @@ export const AuthProvider = ({ children }) => {
         setUser(data.user);
         return { success: true };
       } else {
-        setError(data.detail || 'Google login failed');
         return { success: false, error: data.detail || 'Google login failed' };
       }
-    } catch (error) {
-      const errorMessage = error.message || 'Network error during Google login';
-      setError(errorMessage);
+    } catch (err) {
+      const errorMessage = err.message || 'Network error during Google login';
       return { success: false, error: errorMessage };
     }
   };
@@ -158,13 +147,7 @@ export const AuthProvider = ({ children }) => {
   const logout = () => {
     localStorage.removeItem('token');
     setUser(null);
-    setError(null);
     navigate('/');
-  };
-
-  // Get auth token
-  const getToken = () => {
-    return localStorage.getItem('token');
   };
 
   // Check if user is authenticated
@@ -175,12 +158,10 @@ export const AuthProvider = ({ children }) => {
   const value = {
     user,
     loading,
-    error,
     register,
     login,
     loginWithGoogle,
     logout,
-    getToken,
     isAuthenticated
   };
 

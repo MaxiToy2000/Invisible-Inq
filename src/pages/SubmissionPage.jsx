@@ -420,7 +420,7 @@ const SubmissionPage = () => {
               <div className="h-[600px] bg-[#09090B] rounded-lg">
                 <ThreeGraphVisualization
                   data={graphData}
-                  onNodeClick={(node) => console.log('Node clicked:', node)}
+                  onNodeClick={() => {}}
                 />
               </div>
             </div>

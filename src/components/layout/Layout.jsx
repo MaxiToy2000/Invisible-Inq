@@ -39,6 +39,8 @@ const Layout = ({
   onAISearch = null,
   onAISummary = null,
   graphData = { nodes: [], links: [] },
+  graphDescription = null,
+  sectionDescription = null,
   onEntityHighlight = null,
   rightSidebarActiveTab = 'node-properties',
   onRightSidebarActiveTabChange = () => {},
@@ -51,11 +53,7 @@ const Layout = ({
   clusterMethod = '',
   clusterProperty = '',
   onSectionClick = () => {},
-  selectedSection = null,
   filteredGraphData = null,
-  connectedDataCache = {},
-  connectedDataLoading = false,
-  connectedDataError = null,
   onSortConfigChange = () => {},
   sortBy = null,
   sortOrder = 'asc',
@@ -65,7 +63,11 @@ const Layout = ({
   selectedNodes = new Set(),
   selectedEdges = new Set(),
   hierarchyTreeAxis = { x: false, y: false, z: false },
-  onHierarchyTreeAxisChange = () => {}
+  onHierarchyTreeAxisChange = () => {},
+  showSavePositionButton = false,
+  onSavePositionClick = null,
+  savePositionStatus = null,
+  onResetPositionClick = null,
 }) => {
   const [leftSidebarCollapsed, setLeftSidebarCollapsed] = useState(false);
   const [rightSidebarCollapsed, setRightSidebarCollapsed] = useState(false);
@@ -119,7 +121,13 @@ const Layout = ({
           onAISearch={onAISearch}
           onAISummary={onAISummary}
           graphData={graphData}
+          graphDescription={graphDescription}
+          sectionDescription={sectionDescription}
           onEntityHighlight={onEntityHighlight}
+          showSavePositionButton={showSavePositionButton}
+          onSavePositionClick={onSavePositionClick}
+          savePositionStatus={savePositionStatus}
+          onResetPositionClick={onResetPositionClick}
         />
       </div>
 
@@ -215,10 +223,6 @@ const Layout = ({
           onSectionClick={onSectionClick}
           graphData={graphData}
           filteredGraphData={filteredGraphData}
-          selectedSection={selectedSection}
-          connectedDataCache={connectedDataCache}
-          connectedDataLoading={connectedDataLoading}
-          connectedDataError={connectedDataError}
           onSortConfigChange={onSortConfigChange}
           sortBy={sortBy}
           sortOrder={sortOrder}

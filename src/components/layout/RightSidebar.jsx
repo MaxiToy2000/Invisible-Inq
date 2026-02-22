@@ -37,10 +37,6 @@ const RightSidebar = ({
   onSectionClick = () => {},
   graphData = { nodes: [], links: [] },
   filteredGraphData = null,
-  selectedSection = null,
-  connectedDataCache = {},
-  connectedDataLoading = false,
-  connectedDataError = null,
   onSortConfigChange = () => {},
   sortBy: externalSortBy = null,
   sortOrder: externalSortOrder = 'asc',
@@ -67,6 +63,8 @@ const RightSidebar = ({
   const [wikidataInfo, setWikidataInfo] = useState(null);
   const [wikidataImageUrl, setWikidataImageUrl] = useState(null);
   const [wikidataLoading, setWikidataLoading] = useState(false);
+  const wikidataFetchingRef = useRef(false);
+  const lastFetchedNodeIdRef = useRef(null);
 
   // Sync external sortBy with local state
   useEffect(() => {
@@ -247,6 +245,27 @@ const RightSidebar = ({
     setIsCollapsed(!isCollapsed);
   };
 
+  // Format label: convert snake_case to Title Case, handle special cases
+  const formatLabel = (key) => {
+    if (!key) return '';
+    // Handle special cases
+    const labelMap = {
+      'node_type': 'Node Type',
+      'nodeType': 'Node Type',
+      'entityName': 'Entity Name',
+      'entity_name': 'Entity Name'
+    };
+    if (labelMap[key]) return labelMap[key];
+    // Convert snake_case to Title Case
+    return key
+      .replace(/_/g, ' ')
+      .replace(/([A-Z])/g, ' $1')
+      .trim()
+      .split(' ')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(' ');
+  };
+
   const formatValue = (value) => {
     if (value === null || value === undefined) {
       return 'TBD';
@@ -260,12 +279,35 @@ const RightSidebar = ({
   };
 
   // Determine which node/edge to display based on mode (single select vs multi-select)
-  const displayNode = isMultiSelect ? (currentItem?.type === 'node' ? currentItem.data : null) : selectedNode;
-  const displayEdge = isMultiSelect ? (currentItem?.type === 'edge' ? currentItem.data : null) : selectedEdge;
+  const displayNode = useMemo(() => {
+    return isMultiSelect ? (currentItem?.type === 'node' ? currentItem.data : null) : selectedNode;
+  }, [isMultiSelect, currentItem, selectedNode]);
   
-  // Get entity name for wikidata lookup
-  const entityName = displayNode?.name || displayNode?.['Entity Name'] || displayNode?.entity_name || displayNode?.id || null;
-  const isEntityNode = displayNode && (displayNode.node_type?.toLowerCase().includes('entity') || displayNode.type?.toLowerCase().includes('entity'));
+  const displayEdge = useMemo(() => {
+    return isMultiSelect ? (currentItem?.type === 'edge' ? currentItem.data : null) : selectedEdge;
+  }, [isMultiSelect, currentItem, selectedEdge]);
+  
+  // Wikidata lookup by node id (entity, concept, data, entity_gen, framework)
+  const entityName = useMemo(() => {
+    return displayNode?.name || displayNode?.['Entity Name'] || displayNode?.entity_name || displayNode?.id || null;
+  }, [displayNode]);
+  
+  const entityId = useMemo(() => {
+    return displayNode?.id ?? displayNode?.gid ?? null;
+  }, [displayNode]);
+  
+  const WIKIDATA_NODE_TYPES = ['entity', 'concept', 'data', 'entity_gen', 'framework'];
+  const nodeTypeLower = useMemo(() => {
+    return (displayNode?.node_type || displayNode?.type || displayNode?.category || '').toLowerCase();
+  }, [displayNode]);
+  
+  const nodeType = useMemo(() => {
+    return displayNode?.node_type || displayNode?.type || displayNode?.category || '';
+  }, [displayNode]);
+  
+  const isWikidataNode = useMemo(() => {
+    return displayNode && WIKIDATA_NODE_TYPES.some(t => nodeTypeLower.includes(t));
+  }, [displayNode, nodeTypeLower]);
   
   // Function to fetch direct image URL from Wikimedia Commons API
   const fetchDirectImageUrl = async (url) => {
@@ -327,21 +369,40 @@ const RightSidebar = ({
     }
   };
   
-  // Fetch wikidata when displayNode changes (for entity nodes)
+  // Reset wikidata when node changes
   useEffect(() => {
+    if (lastFetchedNodeIdRef.current !== entityId) {
+      setWikidataInfo(null);
+      setWikidataImageUrl(null);
+      wikidataFetchingRef.current = false; // Reset fetching flag when entity changes
+      lastFetchedNodeIdRef.current = entityId;
+    }
+  }, [entityId]);
+
+  // Fetch wikidata when displayNode changes (entity, concept, data, entity_gen, framework)
+  useEffect(() => { 
     const fetchWikidata = async () => {
-      if (!isEntityNode || !entityName || entityName === 'Unknown') {
-        setWikidataInfo(null);
-        setWikidataImageUrl(null);
+      if (!isWikidataNode || !entityId || entityId === 'Unknown' || wikidataFetchingRef.current) {
+        if (!isWikidataNode || !entityId || entityId === 'Unknown') {
+          setWikidataInfo(null);
+          setWikidataImageUrl(null);
+        }
         return;
       }
       
+      wikidataFetchingRef.current = true;
       setWikidataLoading(true);
       
       try {
+        let finalEntityId = entityId;
+        // For concept nodes, prepend 'co' to the entity ID
+        if (nodeTypeLower === 'concept') {
+          finalEntityId = 'co' + entityId;
+        }
         const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+        const url = `${apiBaseUrl}/api/wikidata/${encodeURIComponent(nodeType)}/${encodeURIComponent(finalEntityId)}`;
         const response = await fetch(
-          `${apiBaseUrl}/api/entity/wikidata/${encodeURIComponent(entityName)}`,
+          url,
           { 
             method: 'GET',
             headers: { 'Content-Type': 'application/json' }
@@ -383,43 +444,87 @@ const RightSidebar = ({
         setWikidataImageUrl(null);
       } finally {
         setWikidataLoading(false);
+        wikidataFetchingRef.current = false;
       }
     };
 
     fetchWikidata();
-  }, [entityName, isEntityNode]);
+  }, [entityId, isWikidataNode, nodeType, displayNode]);
   
   // Determine which image to display (prioritize wikidata image)
   const displayImageUrl = wikidataImageUrl || displayNode?.IMG_SRC || null;
   
+  // Node Properties tab: name, node_type; wikidata fields (description, alias, foundation, country, url) if available
   const filteredNodeProperties = displayNode
-    ? Object.entries(displayNode)
-        .filter(([key, value]) => (
-          !key.startsWith('__') &&
-          !['x', 'y', 'z', 'vx', 'vy', 'vz', 'fx', 'fy', 'fz', 'index', 'IMG_SRC', 'highlight'].includes(key) &&
-          value !== null &&
-          typeof value !== 'function' &&
-          (typeof value !== 'object' || Array.isArray(value))
-        ))
-        .slice(0, 8)
+    ? [
+        ['name', displayNode.name ?? ''],
+        ['node_type', displayNode.node_type ?? displayNode.type ?? displayNode.category ?? ''],
+        // Add wikidata fields if available (after name and node_type)
+        ...(wikidataInfo?.description != null && wikidataInfo?.description !== '' 
+          ? [['description', wikidataInfo.description]] 
+          : []),
+        // Add node's own description if not already shown from wikidata
+        ...(wikidataInfo?.description == null && displayNode.description != null && displayNode.description !== '' 
+          ? [['description', displayNode.description]] 
+          : []),
+        // Alias from wikidata
+        ...(wikidataInfo?.alias != null && wikidataInfo?.alias !== '' 
+          ? [['alias', wikidataInfo.alias]] 
+          : []),
+        // Foundation (founded_by_label or start_time) from wikidata
+        ...(wikidataInfo?.founded_by_label != null && wikidataInfo?.founded_by_label !== '' 
+          ? [['foundation', wikidataInfo.founded_by_label]] 
+          : []),
+        ...(wikidataInfo?.founded_by_label == null && wikidataInfo?.start_time != null 
+          ? [['foundation', new Date(wikidataInfo.start_time).toLocaleDateString()]] 
+          : []),
+        // Country label from wikidata
+        ...(wikidataInfo?.country_label != null && wikidataInfo?.country_label !== '' 
+          ? [['country', wikidataInfo.country_label]] 
+          : []),
+        // URL from wikidata (prioritize wikidata url over node url)
+        ...(wikidataInfo?.url != null && wikidataInfo?.url !== '' 
+          ? [['url', wikidataInfo.url]] 
+          : []),
+      ].filter(([, value]) => value !== undefined && value !== null)
     : [];
 
+  // Only show specific edge properties: Label, Relationship Summary, Category, Article URL
   const filteredEdgeProperties = displayEdge
-    ? Object.entries(displayEdge._originalData || displayEdge)
-        .filter(([key, value]) => (
-          !key.startsWith('__') &&
-          !['index', 'source', 'target', 'sourceId', 'targetId', '_originalData'].includes(key) &&
-          value !== null &&
-          typeof value !== 'function' &&
-          (typeof value !== 'object' || Array.isArray(value))
-        ))
-        .sort((a, b) => {
-          if (a[0] === 'Section') return -1;
-          if (b[0] === 'Section') return 1;
-          if (a[0] === 'Year') return -1;
-          if (b[0] === 'Year') return 1;
-          return a[0].localeCompare(b[0]);
-        })
+    ? (() => {
+        const edgeData = displayEdge._originalData || displayEdge;
+        const properties = [];
+        
+        // Label
+        const label = edgeData.label || edgeData.Label || null;
+        if (label) properties.push(['Label', label]);
+        
+        // Relationship Summary
+        const relationshipSummary = edgeData.relationship_summary || 
+                                   edgeData['Relationship Summary'] || 
+                                   edgeData.relationshipSummary ||
+                                   null;
+        if (relationshipSummary) properties.push(['Relationship Summary', relationshipSummary]);
+        
+        // Category (from type field)
+        const category = edgeData.category || 
+                        edgeData.Category || 
+                        edgeData.type ||
+                        edgeData.Type ||
+                        null;
+        if (category) properties.push(['Category', category]);
+        
+        // Article URL
+        const articleUrl = edgeData.article_url || 
+                          edgeData['Article URL'] || 
+                          edgeData.articleUrl ||
+                          edgeData.url ||
+                          edgeData.URL ||
+                          null;
+        if (articleUrl) properties.push(['Article URL', articleUrl]);
+        
+        return properties;
+      })()
     : [];
 
   return (
@@ -501,7 +606,7 @@ const RightSidebar = ({
           {}
           <div className="flex-shrink-0 w-1/3 pr-2 h-full flex items-center">
             {/* Only show image at top for non-entity nodes */}
-            {displayNode && !isEntityNode && (
+            {displayNode && !isWikidataNode && (
               <div className="p-2 bg-[#09090B] rounded shadow-sm flex justify-center border border-[#707070] w-full">
                 <div className="w-24 h-24 bg-gray-800 rounded-full overflow-hidden flex items-center justify-center">
                   {displayNode?.IMG_SRC ? (
@@ -548,7 +653,7 @@ const RightSidebar = ({
                 )}
                 
                 {/* Wikidata Information Section (for Entity Nodes) */}
-                {displayNode && isEntityNode && wikidataInfo && (
+                {displayNode && isWikidataNode && wikidataInfo && (
                   <div className="mb-4 flex flex-col space-y-3 pb-4">
                     <div className="flex flex-row">
                       {/* Left Line */}
@@ -614,88 +719,111 @@ const RightSidebar = ({
                     
                     {/* Description */}
                     {wikidataInfo.description && (
-                      <p className="text-sm text-[#F4F4F5] leading-relaxed mb-3">
-                        {wikidataInfo.description}
-                      </p>
+                      <>
+                        <span className="text-xs text-[#7D7D7D]">Description:</span>
+                        <p className="text-sm text-[#F4F4F5] leading-relaxed mb-3">
+                          {wikidataInfo.description}
+                        </p>
+                      </>
                     )}
                     
                     {/* Key-Value Pairs */}
                     <div className="flex flex-col space-y-2">
                       {wikidataInfo.country_label && (
-                        <div className="grid grid-cols-[1fr_2fr] gap-2 items-start">
+                        <>
                           <span className="text-xs text-[#7D7D7D]">Country Label:</span>
-                          <span className="text-sm text-[#F4F4F5]">{wikidataInfo.country_label}</span>
-                        </div>
+                          <p className="text-sm text-[#F4F4F5] leading-relaxed mb-3">
+                            {wikidataInfo.country_label}
+                          </p>
+                        </>
                       )}
                       {wikidataInfo.headquarters_label && (
-                        <div className="grid grid-cols-[1fr_2fr] gap-2 items-start">
+                        <>
                           <span className="text-xs text-[#7D7D7D]">Headquarters Label:</span>
-                          <span className="text-sm text-[#F4F4F5]">{wikidataInfo.headquarters_label}</span>
-                        </div>
+                          <p className="text-sm text-[#F4F4F5] leading-relaxed mb-3">
+                            {wikidataInfo.headquarters_label}
+                          </p>
+                        </>
                       )}
                       {wikidataInfo.place_of_birth_label && (
-                        <div className="grid grid-cols-[1fr_2fr] gap-2 items-start">
+                        <>
                           <span className="text-xs text-[#7D7D7D]">Place of Birth:</span>
-                          <span className="text-sm text-[#F4F4F5]">{wikidataInfo.place_of_birth_label}</span>
-                        </div>
+                          <p className="text-sm text-[#F4F4F5] leading-relaxed mb-3">
+                            {wikidataInfo.place_of_birth_label}
+                          </p>
+                        </>
                       )}
                       {wikidataInfo.founded_by_label && (
-                        <div className="grid grid-cols-[1fr_2fr] gap-2 items-start">
+                        <>
                           <span className="text-xs text-[#7D7D7D]">Founded By:</span>
-                          <span className="text-sm text-[#F4F4F5]">{wikidataInfo.founded_by_label}</span>
-                        </div>
+                          <p className="text-sm text-[#F4F4F5] leading-relaxed mb-3">
+                            {wikidataInfo.founded_by_label}
+                          </p>
+                        </>
                       )}
                       {wikidataInfo.industry_label && (
-                        <div className="grid grid-cols-[1fr_2fr] gap-2 items-start">
+                        <>
                           <span className="text-xs text-[#7D7D7D]">Industry:</span>
-                          <span className="text-sm text-[#F4F4F5]">{wikidataInfo.industry_label}</span>
-                        </div>
+                          <p className="text-sm text-[#F4F4F5] leading-relaxed mb-3">
+                            {wikidataInfo.industry_label}
+                          </p>
+                        </>
                       )}
                       {wikidataInfo.end_time && (
-                        <div className="grid grid-cols-[1fr_2fr] gap-2 items-start">
+                        <>
                           <span className="text-xs text-[#7D7D7D]">End Time:</span>
-                          <span className="text-sm text-[#F4F4F5]">
+                          <p className="text-sm text-[#F4F4F5] leading-relaxed mb-3">
                             {new Date(wikidataInfo.end_time).toLocaleDateString()}
-                          </span>
-                        </div>
+                          </p>
+                        </>
                       )}
                       {wikidataInfo.award_received_label && (
-                        <div className="grid grid-cols-[1fr_2fr] gap-2 items-start">
+                        <>
                           <span className="text-xs text-[#7D7D7D]">Awards Received:</span>
-                          <span className="text-sm text-[#F4F4F5]">{wikidataInfo.award_received_label}</span>
-                        </div>
+                          <p className="text-sm text-[#F4F4F5] leading-relaxed mb-3">
+                            {wikidataInfo.award_received_label}
+                          </p>
+                        </>
                       )}
                       {wikidataInfo.occupation_label && (
-                        <div className="grid grid-cols-[1fr_2fr] gap-2 items-start">
+                        <>
                           <span className="text-xs text-[#7D7D7D]">Occupation:</span>
-                          <span className="text-sm text-[#F4F4F5]">{wikidataInfo.occupation_label}</span>
-                        </div>
+                          <p className="text-sm text-[#F4F4F5] leading-relaxed mb-3">
+                            {wikidataInfo.occupation_label}
+                          </p>
+                        </>
                       )}
                       {wikidataInfo.position_held_label && (
-                        <div className="grid grid-cols-[1fr_2fr] gap-2 items-start">
+                        <>
                           <span className="text-xs text-[#7D7D7D]">Position:</span>
-                          <span className="text-sm text-[#F4F4F5]">{wikidataInfo.position_held_label}</span>
-                        </div>
+                          <p className="text-sm text-[#F4F4F5] leading-relaxed mb-3">
+                            {wikidataInfo.position_held_label}
+                          </p>
+                        </>
                       )}
                       {wikidataInfo.educated_at_label && (
-                        <div className="grid grid-cols-[1fr_2fr] gap-2 items-start">
+                        <>
                           <span className="text-xs text-[#7D7D7D]">Education:</span>
-                          <span className="text-sm text-[#F4F4F5]">{wikidataInfo.educated_at_label}</span>
-                        </div>
+                          <p className="text-sm text-[#F4F4F5] leading-relaxed mb-3">
+                            {wikidataInfo.educated_at_label}
+                          </p>
+                        </>
                       )}
                       {wikidataInfo.date_birth && (
-                        <div className="grid grid-cols-[1fr_2fr] gap-2 items-start">
+                        <>
                           <span className="text-xs text-[#7D7D7D]">Date of Birth:</span>
-                          <span className="text-sm text-[#F4F4F5]">
+                          <p className="text-sm text-[#F4F4F5] leading-relaxed mb-3">
                             {new Date(wikidataInfo.date_birth).toLocaleDateString()}
-                          </span>
-                        </div>
+                          </p>
+                        </>
                       )}
                       {wikidataInfo.citizenship_label && (
-                        <div className="grid grid-cols-[1fr_2fr] gap-2 items-start">
+                        <>
                           <span className="text-xs text-[#7D7D7D]">Citizenship:</span>
-                          <span className="text-sm text-[#F4F4F5]">{wikidataInfo.citizenship_label}</span>
-                        </div>
+                          <p className="text-sm text-[#F4F4F5] leading-relaxed mb-3">
+                            {wikidataInfo.citizenship_label}
+                          </p>
+                        </>
                       )}
                     </div>
                     
@@ -743,24 +871,24 @@ const RightSidebar = ({
                 )}
                 
                 {/* Node Properties - Only show for non-entity nodes, or for entity nodes when wikidata is not available */}
-                {displayNode && (!isEntityNode || (isEntityNode && !wikidataInfo)) && filteredNodeProperties.length > 0 && (
+                {displayNode && (!isWikidataNode || (isWikidataNode && !wikidataInfo)) && filteredNodeProperties.length > 0 && (
                   <div className="flex flex-col space-y-3">
                     {filteredNodeProperties.map(([key, value], index) => {
                       const isUrlProperty = key.toLowerCase().includes('url') || key.toLowerCase() === 'link' || key.toLowerCase().includes('website') || key.toLowerCase().includes('webpage');
                       return (
                         <div key={index} className="mb-1 flex-shrink-0">
-                          <h4 className="text-xs font-semibold text-[#7D7D7D] capitalize mb-1 leading-[14px]">{key}:</h4>
+                          <h4 className="text-xs font-normal text-[#7D7D7D] mb-0.5 leading-[14px]">{formatLabel(key)}:</h4>
                           {isUrlProperty && isValidUrl(String(value)) ? (
                             <a
                               href={formatUrl(String(value))}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-sm text-[#6EA4F4] hover:underline break-words leading-[14px] font-normal"
+                              className="text-sm text-[#6EA4F4] hover:underline break-words leading-[14px] font-bold ml-0 block"
                             >
                               {formatValue(value)}
                             </a>
                           ) : (
-                            <p className="text-sm text-[#F4F4F5] break-words capitalize leading-[14px] font-normal">
+                            <p className="text-sm text-[#F4F4F5] break-words leading-[14px] font-bold ml-0">
                               {formatValue(value)}
                             </p>
                           )}
@@ -777,18 +905,18 @@ const RightSidebar = ({
                       const isUrlProperty = key.toLowerCase().includes('url') || key.toLowerCase() === 'link' || key.toLowerCase().includes('website') || key.toLowerCase().includes('webpage');
                       return (
                         <div key={index} className="mb-1 flex-shrink-0">
-                          <h4 className="text-xs font-semibold text-[#7D7D7D] capitalize mb-1 leading-[14px]">{key}:</h4>
+                          <h4 className="text-xs font-normal text-[#7D7D7D] mb-0.5 leading-[14px]">{formatLabel(key)}:</h4>
                           {isUrlProperty && isValidUrl(String(value)) ? (
                             <a
                               href={formatUrl(String(value))}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-sm text-[#6EA4F4] hover:underline break-words leading-[14px] font-normal"
+                              className="text-sm text-[#6EA4F4] hover:underline break-words leading-[14px] font-bold ml-0 block"
                             >
                               {formatValue(value)}
                             </a>
                           ) : (
-                            <p className="text-sm text-[#F4F4F5] break-words capitalize leading-[14px] font-normal">
+                            <p className="text-sm text-[#F4F4F5] break-words leading-[14px] font-bold ml-0">
                               {formatValue(value)}
                             </p>
                           )}
@@ -841,7 +969,7 @@ const RightSidebar = ({
               {((selectedNode || selectedEdge) || isMultiSelect) && (
                 <div className="flex flex-col h-full">
                 {/* Only show top image for non-entity nodes */}
-                {displayNode && !isEntityNode && (
+                {displayNode && !!displayNode.IMG_SRC && (
                   <div className="mb-4 p-2 bg-[#09090B] rounded shadow-sm flex justify-center w-full border border-[#707070] flex-shrink-0">
                     <div className="w-20 h-20 bg-gray-800 overflow-hidden flex items-center justify-center">
                       {displayNode?.IMG_SRC ? (
@@ -865,7 +993,7 @@ const RightSidebar = ({
                   {activeTab === 'node-properties' && (
                     <div className="flex-1 overflow-y-auto pr-2 min-h-0">
                   {/* Wikidata Information Section (for Entity Nodes) - Desktop */}
-                  {displayNode && isEntityNode && wikidataInfo && (
+                  {displayNode && isWikidataNode && wikidataInfo && (
                     <div className="w-full flex-shrink-0 mb-4 py-2 pr-2 bg-[#09090B] rounded-md border border-[#707070]">
                       <div className="flex flex-row">
                         {/* Left Line */}
@@ -874,211 +1002,239 @@ const RightSidebar = ({
                         {/* Content */}
                         <div className="flex-1 flex flex-col">
                           {/* Entity Name */}
+                          <span className="text-xs text-[#7D7D7D]">Name:</span>
                           <h2 className="text-xl font-bold text-white mb-1">
                             {wikidataInfo.name || entityName}
                           </h2>
                       
-                      {/* Alias and Type */}
-                      <div className="flex flex-col gap-1 mb-2">
-                        {wikidataInfo.alias && (
-                          <p className="text-sm text-[#B4B4B4]">
-                            Alias: <span className="text-white">{wikidataInfo.alias}</span>
-                          </p>
-                        )}
-                        {wikidataInfo.instance_of_label && (
-                          <p className="text-sm text-[#B4B4B4]">
-                            {wikidataInfo.sex_or_gender_label ? `${wikidataInfo.sex_or_gender_label} - ` : ''}
-                            {wikidataInfo.instance_of_label}
-                          </p>
-                        )}
-                      </div>
+                          {/* Alias and Type */}
+                          <div className="flex flex-col gap-1 mb-2">
+                            {wikidataInfo.alias && (
+                              <>
+                                <span className="text-xs text-[#7D7D7D]">Alias:</span>
+                                <p className="text-sm text-[#B4B4B4]">
+                                  <span className="text-white">{wikidataInfo.alias}</span>
+                                </p>
+                              </>
+                            )}
+                            {wikidataInfo.Type && (
+                              <>
+                                <span className="text-xs text-[#7D7D7D]">Type:</span>
+                                <p className="text-sm text-[#B4B4B4]">
+                                  <span className="text-white">{wikidataInfo.type}</span>
+                                </p>
+                              </>
+                            )}
+                          </div>
                       
-                      {/* Image - Displayed after alias/type, before "Listed in" */}
-                      {displayImageUrl && (
-                        <div className="mb-3 flex justify-start">
-                          <div className="w-32 h-32 bg-gray-800 rounded-lg overflow-hidden flex items-center justify-center">
-                            {wikidataLoading ? (
-                              <div className="w-full h-full bg-gray-800 flex items-center justify-center">
-                                <svg className="animate-spin w-8 h-8 text-[#B4B4B4]" fill="none" viewBox="0 0 24 24">
-                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                </svg>
+                          {/* Image - Displayed after alias/type, before "Listed in" */}
+                          {displayImageUrl && (
+                            <div className="mb-3 flex justify-start">
+                              <div className="w-32 h-32 bg-gray-800 rounded-lg overflow-hidden flex items-center justify-center">
+                                {wikidataLoading ? (
+                                  <div className="w-full h-full bg-gray-800 flex items-center justify-center">
+                                    <svg className="animate-spin w-8 h-8 text-[#B4B4B4]" fill="none" viewBox="0 0 24 24">
+                                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                    </svg>
+                                  </div>
+                                ) : (
+                                  <img
+                                    src={displayImageUrl}
+                                    alt={wikidataInfo.name || entityName}
+                                    className="w-full h-full object-cover"
+                                    onError={(e) => {
+                                      console.error('Image failed to load in RightSidebar:', displayImageUrl);
+                                      e.target.style.display = 'none';
+                                    }}
+                                  />
+                                )}
                               </div>
-                            ) : (
-                              <img
-                                src={displayImageUrl}
-                                alt={wikidataInfo.name || entityName}
-                                className="w-full h-full object-cover"
-                                onError={(e) => {
-                                  console.error('Image failed to load in RightSidebar:', displayImageUrl);
-                                  e.target.style.display = 'none';
-                                }}
-                              />
-                            )}
-                          </div>
-                        </div>
-                      )}
+                            </div>
+                          )}
+                          
+                          {/* Listed In / Category */}
+                          {wikidataInfo.instance_of_label && (
+                            <div className="mb-2">
+                              <p className="text-xs text-[#7D7D7D] mb-1">Listed in:</p>
+                              <div className="inline-block px-1 bg-[#1A1A1A] rounded-[4px]">
+                                <div className="text-[12px] text-white p-0.5">{wikidataInfo.instance_of_label}</div>
+                              </div>
+                            </div>
+                          )}
+                          
+                          {/* Description */}
+                          
+                          {wikidataInfo.description && (
+                            <>
+                              <span className="text-xs text-[#7D7D7D]">Description:</span>
+                              <p className="text-sm text-[#F4F4F5] leading-relaxed mb-3">
+                                {wikidataInfo.description}
+                              </p>
+                            </>
+                          )}
                       
-                      {/* Listed In / Category */}
-                      {wikidataInfo.instance_of_label && (
-                        <div className="mb-2">
-                          <p className="text-xs text-[#7D7D7D] mb-1">Listed in:</p>
-                          <div className="inline-block px-1 bg-[#1A1A1A] rounded-[4px]">
-                            <div className="text-[12px] text-white p-0.5">{wikidataInfo.instance_of_label}</div>
-                          </div>
-                        </div>
-                      )}
-                      
-                      {/* Description */}
-                      {wikidataInfo.description && (
-                        <p className="text-sm text-[#F4F4F5] leading-relaxed mb-3">
-                          {wikidataInfo.description}
-                        </p>
-                      )}
-                      
-                      {/* Key-Value Pairs */}
-                      <div className="flex flex-col space-y-2">
-                        {wikidataInfo.country_label && (
-                          <div className="grid grid-cols-[1fr_2fr] gap-2 items-start">
-                            <span className="text-xs text-[#7D7D7D]">Country Label:</span>
-                            <span className="text-sm text-[#F4F4F5]">{wikidataInfo.country_label}</span>
-                          </div>
-                        )}
-                        {wikidataInfo.headquarters_label && (
-                          <div className="grid grid-cols-[1fr_2fr] gap-2 items-start">
-                            <span className="text-xs text-[#7D7D7D]">Headquarters Label:</span>
-                            <span className="text-sm text-[#F4F4F5]">{wikidataInfo.headquarters_label}</span>
-                          </div>
-                        )}
-                        {wikidataInfo.place_of_birth_label && (
-                          <div className="grid grid-cols-[1fr_2fr] gap-2 items-start">
-                            <span className="text-xs text-[#7D7D7D]">Place of Birth:</span>
-                            <span className="text-sm text-[#F4F4F5]">{wikidataInfo.place_of_birth_label}</span>
-                          </div>
-                        )}
-                        {wikidataInfo.founded_by_label && (
-                          <div className="grid grid-cols-[1fr_2fr] gap-2 items-start">
-                            <span className="text-xs text-[#7D7D7D]">Founded By:</span>
-                            <span className="text-sm text-[#F4F4F5]">{wikidataInfo.founded_by_label}</span>
-                          </div>
-                        )}
-                        {wikidataInfo.industry_label && (
-                          <div className="grid grid-cols-[1fr_2fr] gap-2 items-start">
-                            <span className="text-xs text-[#7D7D7D]">Industry:</span>
-                            <span className="text-sm text-[#F4F4F5]">{wikidataInfo.industry_label}</span>
-                          </div>
-                        )}
-                        {wikidataInfo.end_time && (
-                          <div className="grid grid-cols-[1fr_2fr] gap-2 items-start">
-                            <span className="text-xs text-[#7D7D7D]">End Time:</span>
-                            <span className="text-sm text-[#F4F4F5]">
-                              {new Date(wikidataInfo.end_time).toLocaleDateString()}
-                            </span>
-                          </div>
-                        )}
-                        {wikidataInfo.award_received_label && (
-                          <div className="grid grid-cols-[1fr_2fr] gap-2 items-start">
-                            <span className="text-xs text-[#7D7D7D]">Awards Received:</span>
-                            <span className="text-sm text-[#F4F4F5]">{wikidataInfo.award_received_label}</span>
-                          </div>
-                        )}
-                        {wikidataInfo.occupation_label && (
-                          <div className="grid grid-cols-[1fr_2fr] gap-2 items-start">
-                            <span className="text-xs text-[#7D7D7D]">Occupation:</span>
-                            <span className="text-sm text-[#F4F4F5]">{wikidataInfo.occupation_label}</span>
-                          </div>
-                        )}
-                        {wikidataInfo.position_held_label && (
-                          <div className="grid grid-cols-[1fr_2fr] gap-2 items-start">
-                            <span className="text-xs text-[#7D7D7D]">Position:</span>
-                            <span className="text-sm text-[#F4F4F5]">{wikidataInfo.position_held_label}</span>
-                          </div>
-                        )}
-                        {wikidataInfo.educated_at_label && (
-                          <div className="grid grid-cols-[1fr_2fr] gap-2 items-start">
-                            <span className="text-xs text-[#7D7D7D]">Education:</span>
-                            <span className="text-sm text-[#F4F4F5]">{wikidataInfo.educated_at_label}</span>
-                          </div>
-                        )}
-                        {wikidataInfo.date_birth && (
-                          <div className="grid grid-cols-[1fr_2fr] gap-2 items-start">
-                            <span className="text-xs text-[#7D7D7D]">Date of Birth:</span>
-                            <span className="text-sm text-[#F4F4F5]">
-                              {new Date(wikidataInfo.date_birth).toLocaleDateString()}
-                            </span>
-                          </div>
-                        )}
-                        {wikidataInfo.citizenship_label && (
-                          <div className="grid grid-cols-[1fr_2fr] gap-2 items-start">
-                            <span className="text-xs text-[#7D7D7D]">Citizenship:</span>
-                            <span className="text-sm text-[#F4F4F5]">{wikidataInfo.citizenship_label}</span>
-                          </div>
-                        )}
-                      </div>
-                      
-                      {/* URL Links Section */}
-                      {(wikidataInfo.wikipedia_url || wikidataInfo.url || wikidataInfo.qid) && (
-                        <div className="mt-3 pt-3 ">
-                          <p className="text-xs text-[#7D7D7D] mb-2">URL</p>
-                          <div className="flex flex-col gap-2">
-                            {wikidataInfo.wikipedia_url && (
-                              <a
-                                href={wikidataInfo.wikipedia_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-[12px] text-[#6EA4F4] hover:underline"
-                              >
-                                Wikipedia Link
-                              </a>
+                          {/* Key-Value Pairs */}
+                            {wikidataInfo.country_label && (
+                              <>
+                                <span className="text-xs text-[#7D7D7D]">Country Label:</span>
+                                <p className="text-sm text-[#F4F4F5] leading-relaxed mb-3">
+                                  {wikidataInfo.country_label}
+                                </p>
+                              </>
                             )}
-                            {wikidataInfo.url && (
-                              <a
-                                href={wikidataInfo.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-[12px] text-[#6EA4F4] hover:underline"
-                              >
-                                Social Link
-                              </a>
+                            {wikidataInfo.headquarters_label && (
+                              <>
+                                <span className="text-xs text-[#7D7D7D]">Headquarters Label:</span>
+                                <p className="text-sm text-[#F4F4F5] leading-relaxed mb-3">
+                                  {wikidataInfo.headquarters_label}
+                                </p>
+                              </>
                             )}
-                            {wikidataInfo.qid && (
-                              <a
-                                href={`https://www.wikidata.org/wiki/${wikidataInfo.qid}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-[12px] text-[#6EA4F4] hover:underline"
-                              >
-                                Wikidata Link
-                              </a>
+                            {wikidataInfo.place_of_birth_label && (
+                              <>
+                                <span className="text-xs text-[#7D7D7D]">Place of Birth:</span>
+                                <p className="text-sm text-[#F4F4F5] leading-relaxed mb-3">
+                                  {wikidataInfo.place_of_birth_label}
+                                </p>
+                              </>
                             )}
-                          </div>
-                        </div>
-                      )}
+                            {wikidataInfo.founded_by_label && (
+                              <>
+                                <span className="text-xs text-[#7D7D7D]">Founded By:</span>
+                                <p className="text-sm text-[#F4F4F5] leading-relaxed mb-3">
+                                  {wikidataInfo.founded_by_label}
+                                </p>
+                              </>
+                            )}
+                            {wikidataInfo.industry_label && (
+                              <>
+                                <span className="text-xs text-[#7D7D7D]">Industry:</span>
+                                <p className="text-sm text-[#F4F4F5] leading-relaxed mb-3">
+                                  {wikidataInfo.industry_label}
+                                </p>
+                              </>
+                            )}
+                            {wikidataInfo.end_time && (
+                              <>
+                                <span className="text-xs text-[#7D7D7D]">End Time:</span>
+                                <p className="text-sm text-[#F4F4F5] leading-relaxed mb-3">
+                                  {new Date(wikidataInfo.end_time).toLocaleDateString()}
+                                </p>
+                              </>
+                            )}
+                            {wikidataInfo.award_received_label && (
+                              <>
+                                <span className="text-xs text-[#7D7D7D]">Awards Received:</span>
+                                <p className="text-sm text-[#F4F4F5] leading-relaxed mb-3">
+                                  {wikidataInfo.award_received_label}
+                                </p>
+                              </>
+                            )}
+                            {wikidataInfo.occupation_label && (
+                              <>
+                                <span className="text-xs text-[#7D7D7D]">Occupation:</span>
+                                <p className="text-sm text-[#F4F4F5] leading-relaxed mb-3">
+                                  {wikidataInfo.occupation_label}
+                                </p>
+                              </>
+                            )}
+                            {wikidataInfo.position_held_label && (
+                              <>
+                                <span className="text-xs text-[#7D7D7D]">Position:</span>
+                                <p className="text-sm text-[#F4F4F5] leading-relaxed mb-3">
+                                  {wikidataInfo.position_held_label}
+                                </p>
+                              </>
+                            )}
+                            {wikidataInfo.educated_at_label && (
+                              <>
+                                <span className="text-xs text-[#7D7D7D]">Education:</span>
+                                <p className="text-sm text-[#F4F4F5] leading-relaxed mb-3">
+                                  {wikidataInfo.educated_at_label}
+                                </p>
+                              </>
+                            )}
+                            {wikidataInfo.date_birth && (
+                              <>
+                                <span className="text-xs text-[#7D7D7D]">Date of Birth:</span>
+                                <p className="text-sm text-[#F4F4F5] leading-relaxed mb-3">
+                                  {new Date(wikidataInfo.date_birth).toLocaleDateString()}
+                                </p>
+                              </>
+                            )}
+                            {wikidataInfo.citizenship_label && (
+                              <>
+                                <span className="text-xs text-[#7D7D7D]">Citizenship:</span>
+                                <p className="text-sm text-[#F4F4F5] leading-relaxed mb-3">
+                                  {wikidataInfo.citizenship_label}
+                                </p>
+                              </>
+                            )}
+                          
+                          {/* URL Links Section */}
+                          {(wikidataInfo.wikipedia_url || wikidataInfo.url || wikidataInfo.qid) && (
+                            <div className="mt-3 pt-3 ">
+                              <p className="text-xs text-[#7D7D7D] mb-2">URL</p>
+                              <div className="flex flex-col gap-2">
+                                {wikidataInfo.wikipedia_url && (
+                                  <a
+                                    href={wikidataInfo.wikipedia_url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-[12px] text-[#6EA4F4] hover:underline"
+                                  >
+                                    Wikipedia Link
+                                  </a>
+                                )}
+                                {wikidataInfo.url && (
+                                  <a
+                                    href={wikidataInfo.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-[12px] text-[#6EA4F4] hover:underline"
+                                  >
+                                    Social Link
+                                  </a>
+                                )}
+                                {wikidataInfo.qid && (
+                                  <a
+                                    href={`https://www.wikidata.org/wiki/${wikidataInfo.qid}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-[12px] text-[#6EA4F4] hover:underline"
+                                  >
+                                    Wikidata Link
+                                  </a>
+                                )}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
                   )}
                   
                   {/* Node Details - Only show for non-entity nodes, or for entity nodes when wikidata is not available */}
-                  {displayNode && (!isEntityNode || (isEntityNode && !wikidataInfo)) && filteredNodeProperties.length > 0 && (
+                  {displayNode && (!isWikidataNode || (isWikidataNode && !wikidataInfo)) && filteredNodeProperties.length > 0 && (
                     <div className="w-full flex-shrink-0 mb-4">
                       <div className="flex flex-col space-y-3">
                         {filteredNodeProperties.map(([key, value], index) => {
                           const isUrlProperty = key.toLowerCase().includes('url') || key.toLowerCase() === 'link' || key.toLowerCase().includes('website') || key.toLowerCase().includes('webpage');
                           return (
                             <div key={index} className="mb-1 flex-shrink-0">
-                              <h4 className="text-xs font-semibold text-[#7D7D7D] capitalize mb-1 leading-[14px]">{key}:</h4>
+                              <h4 className="text-xs font-normal text-[#7D7D7D] mb-0.5 leading-[14px]">{formatLabel(key)}:</h4>
                               {isUrlProperty && isValidUrl(String(value)) ? (
                                 <a
                                   href={formatUrl(String(value))}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="text-sm text-[#6EA4F4] hover:underline break-words leading-[14px] font-normal"
+                                  className="text-sm text-[#6EA4F4] hover:underline break-words leading-[14px] font-bold ml-0 block"
                                 >
                                   {formatValue(value)}
                                 </a>
                               ) : (
-                                <p className="text-sm text-[#F4F4F5] break-words capitalize leading-[14px] font-normal">
+                                <p className="text-sm text-[#F4F4F5] break-words leading-[14px] font-bold ml-0">
                                   {formatValue(value)}
                                 </p>
                               )}
@@ -1097,18 +1253,18 @@ const RightSidebar = ({
                           const isUrlProperty = key.toLowerCase().includes('url') || key.toLowerCase() === 'link' || key.toLowerCase().includes('website') || key.toLowerCase().includes('webpage');
                           return (
                             <div key={index} className="mb-1 flex-shrink-0">
-                              <h4 className="text-xs font-semibold text-[#7D7D7D] capitalize mb-1 leading-[14px]">{key}:</h4>
+                              <h4 className="text-xs font-normal text-[#7D7D7D] mb-0.5 leading-[14px]">{formatLabel(key)}:</h4>
                               {isUrlProperty && isValidUrl(String(value)) ? (
                                 <a
                                   href={formatUrl(String(value))}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="text-sm text-[#6EA4F4] hover:underline break-words leading-[14px] font-normal"
+                                  className="text-sm text-[#6EA4F4] hover:underline break-words leading-[14px] font-bold ml-0 block"
                                 >
                                   {formatValue(value)}
                                 </a>
                               ) : (
-                                <p className="text-sm text-[#F4F4F5] break-words capitalize leading-[14px] font-normal">
+                                <p className="text-sm text-[#F4F4F5] break-words leading-[14px] font-bold ml-0">
                                   {formatValue(value)}
                                 </p>
                               )}
@@ -1154,77 +1310,60 @@ const RightSidebar = ({
                   {/* This is a separate subgraph visualization in the sidebar, independent from the main THREE.js view */}
                   {/* The deep copy mechanism ensures the main THREE.js graph is not affected */}
                   {(() => {
-                    // PRIORITY 1: If displayNode exists (either from individual mode or multi-select pagination),
-                    // show the neighbors of that specific node
-                    if (displayNode) {
-                      return (
-                        <div className="w-full flex-1 min-h-0 mt-4 mb-1 flex-auto overflow-hidden">
-                          <NeighborsGraph 
-                            selectedNode={displayNode} 
-                            graphData={graphData}
-                            isSubgraph={false}
-                          />
-                        </div>
-                      );
-                    }
-                    
-                    // PRIORITY 2: In MULTI-SELECT mode without a specific displayNode,
-                    // show subgraph of all selected nodes and their connections
-                    if (isMultiSelect && (selectedNodes.size > 0 || selectedEdges.size > 0)) {
-                      // If multiSelectSubgraph is provided, use it
-                      if (multiSelectSubgraph && multiSelectSubgraph.nodes && multiSelectSubgraph.nodes.length > 0) {
-                        return (
-                          <div className="w-full flex-1 min-h-0 mt-4 mb-1 flex-auto overflow-hidden">
-                            <NeighborsGraph 
-                              selectedNode={null}
-                              graphData={multiSelectSubgraph}
-                              isSubgraph={true}
-                            />
-                          </div>
-                        );
-                      }
-                      
-                      // Otherwise, compute subgraph from selectedNodes and selectedEdges
+                    const nodeSource = filteredGraphData?.nodes || graphData?.nodes || [];
+                    const linkSource = filteredGraphData?.links || graphData?.links || [];
+                    const hasMultiSelection = selectedNodes.size > 1 || selectedEdges.size > 0;
+
+                    // PRIORITY 1: MULTI-SELECT – show selected nodes + depth-1 related nodes (direct neighbors)
+                    if (isMultiSelect && hasMultiSelection) {
                       const selectedNodesList = Array.from(selectedNodes);
                       const selectedEdgesList = Array.from(selectedEdges);
-                      
-                      // Get nodes for selected edges
+                      const norm = (id) => (id != null ? String(id) : '');
+
                       const edgeNodeIds = new Set();
                       selectedEdgesList.forEach(edgeId => {
-                        const edge = graphData.links?.find(l => 
-                          (l.id === edgeId) || 
-                          (l.source?.id === edgeId) || 
-                          (String(l.source?.id || l.source || l.sourceId) + '-' + String(l.target?.id || l.target || l.targetId) === edgeId)
-                        );
+                        const edge = linkSource.find(l => {
+                          const sid = l.source?.id ?? l.sourceId ?? l.source;
+                          const tid = l.target?.id ?? l.targetId ?? l.target;
+                          const linkId = l.id ?? `${norm(sid)}-${norm(tid)}`;
+                          return norm(linkId) === norm(edgeId) || (norm(sid) + '-' + norm(tid)) === norm(edgeId);
+                        });
                         if (edge) {
-                          const sourceId = edge.source?.id || edge.sourceId || edge.source;
-                          const targetId = edge.target?.id || edge.targetId || edge.target;
-                          edgeNodeIds.add(sourceId);
-                          edgeNodeIds.add(targetId);
+                          const sourceId = edge.source?.id ?? edge.sourceId ?? edge.source;
+                          const targetId = edge.target?.id ?? edge.targetId ?? edge.target;
+                          edgeNodeIds.add(norm(sourceId));
+                          edgeNodeIds.add(norm(targetId));
                         }
                       });
-                      
-                      // Combine selected nodes with nodes from selected edges
-                      const allNodeIds = new Set([...selectedNodesList, ...Array.from(edgeNodeIds)]);
-                      
-                      // Get actual node objects
-                      const subgraphNodes = graphData.nodes?.filter(n => allNodeIds.has(n.id || n.gid)) || [];
-                      
-                      // Get links between these nodes
-                      const subgraphLinks = graphData.links?.filter(link => {
-                        const sourceId = link.source?.id || link.sourceId || link.source;
-                        const targetId = link.target?.id || link.targetId || link.target;
-                        return allNodeIds.has(sourceId) && allNodeIds.has(targetId);
-                      }) || [];
-                      
-                      const computedSubgraph = {
-                        nodes: subgraphNodes,
-                        links: subgraphLinks
-                      };
-                      
+
+                      // Core = only the selected nodes (and nodes from selected edges)
+                      const coreNodeIds = new Set([
+                        ...selectedNodesList.map(norm),
+                        ...Array.from(edgeNodeIds)
+                      ]);
+
+                      // Nodes to show: selected + nodes that are directly linked to at least one selected node
+                      const allNodeIds = new Set(coreNodeIds);
+                      linkSource.forEach(link => {
+                        const sourceId = norm(link.source?.id ?? link.sourceId ?? link.source);
+                        const targetId = norm(link.target?.id ?? link.targetId ?? link.target);
+                        if (coreNodeIds.has(sourceId)) allNodeIds.add(targetId);
+                        if (coreNodeIds.has(targetId)) allNodeIds.add(sourceId);
+                      });
+
+                      const subgraphNodes = nodeSource.filter(n => allNodeIds.has(norm(n.id || n.gid)));
+                      // Only show links that touch a selected node (selected ↔ neighbor). Hide links between neighbors.
+                      const subgraphLinks = linkSource.filter(link => {
+                        const sourceId = norm(link.source?.id ?? link.sourceId ?? link.source);
+                        const targetId = norm(link.target?.id ?? link.targetId ?? link.target);
+                        if (!allNodeIds.has(sourceId) || !allNodeIds.has(targetId)) return false;
+                        return coreNodeIds.has(sourceId) || coreNodeIds.has(targetId);
+                      });
+
+                      const computedSubgraph = { nodes: subgraphNodes, links: subgraphLinks };
                       if (computedSubgraph.nodes.length > 0) {
                         return (
-                          <div className="w-full flex-1 min-h-0 mt-4 mb-1 flex-auto overflow-hidden">
+                          <div className="w-full flex-1 min-h-0 mt-4 mb-1 flex-auto overflow-hidden min-h-[320px]">
                             <NeighborsGraph 
                               selectedNode={null}
                               graphData={computedSubgraph}
@@ -1234,7 +1373,20 @@ const RightSidebar = ({
                         );
                       }
                     }
-                    
+
+                    // PRIORITY 2: Single node (or current page node in multi-select with only one node) – show its neighbors
+                    if (displayNode) {
+                      return (
+                        <div className="w-full flex-1 min-h-0 mt-4 mb-1 flex-auto overflow-hidden min-h-[320px]">
+                          <NeighborsGraph 
+                            selectedNode={displayNode} 
+                            graphData={graphData}
+                            isSubgraph={false}
+                          />
+                        </div>
+                      );
+                    }
+
                     return null;
                   })()}
                 </div>
@@ -1263,7 +1415,7 @@ const RightSidebar = ({
         {activeTab === 'data-visualization' && (
           <div className="w-full h-full flex flex-col overflow-y-auto overflow-x-hidden">
             <div className="w-full flex-shrink-0 min-h-[300px] max-h-[300px]">
-              <GlobalActivity graphData={graphData} currentSubstory={currentSubstory} selectedSection={selectedSection} />
+              <GlobalActivity graphData={graphData} currentSubstory={currentSubstory} />
             </div>
             <div className="w-full flex-shrink-0 mt-0 mb-1 aspect-square min-h-full">
               <ConnectedData 
@@ -1271,9 +1423,6 @@ const RightSidebar = ({
                 graphData={graphData} 
                 filteredGraphData={filteredGraphData} 
                 currentSubstory={currentSubstory}
-                connectedDataCache={connectedDataCache}
-                connectedDataLoading={connectedDataLoading}
-                connectedDataError={connectedDataError}
               />
             </div>
           </div>
@@ -1527,8 +1676,10 @@ const RightSidebar = ({
                           type="checkbox"
                           checked={calendarAxis.x}
                           onChange={() => {
-                            setCalendarAxis({ ...calendarAxis, x: !calendarAxis.x });
-                            onSceneContainerChange('calendar');
+                            const next = { ...calendarAxis, x: !calendarAxis.x };
+                            setCalendarAxis(next);
+                            if (!next.x && !next.y) onSceneContainerChange(null);
+                            else onSceneContainerChange('calendar');
                           }}
                           className="w-3.5 h-3.5 rounded border border-[#363D46] bg-[#24282F] checked:bg-[#3A3A3A] checked:border-[#707070]"
                         />
@@ -1539,8 +1690,10 @@ const RightSidebar = ({
                           type="checkbox"
                           checked={calendarAxis.y}
                           onChange={() => {
-                            setCalendarAxis({ ...calendarAxis, y: !calendarAxis.y });
-                            onSceneContainerChange('calendar');
+                            const next = { ...calendarAxis, y: !calendarAxis.y };
+                            setCalendarAxis(next);
+                            if (!next.x && !next.y) onSceneContainerChange(null);
+                            else onSceneContainerChange('calendar');
                           }}
                           className="w-3.5 h-3.5 rounded border border-[#363D46] bg-[#24282F] checked:bg-[#3A3A3A] checked:border-[#707070]"
                         />
@@ -1551,8 +1704,11 @@ const RightSidebar = ({
                       <button
                         onClick={() => {
                           resetSceneStates('calendar');
-                          setCalendarMode({ linear: !calendarMode.linear, truncated: false });
-                          onSceneContainerChange('calendar');
+                          const nextLinear = !calendarMode.linear;
+                          setCalendarMode({ linear: nextLinear, truncated: false });
+                          const noCalendarActive = !nextLinear && !calendarAxis.x && !calendarAxis.y;
+                          if (noCalendarActive) onSceneContainerChange(null);
+                          else onSceneContainerChange('calendar');
                         }}
                         className={`px-3 py-0.5 rounded-[20px] text-[10px] lowercase transition-colors ${
                           calendarMode.linear
@@ -1565,8 +1721,11 @@ const RightSidebar = ({
                       <button
                         onClick={() => {
                           resetSceneStates('calendar');
-                          setCalendarMode({ linear: false, truncated: !calendarMode.truncated });
-                          onSceneContainerChange('calendar');
+                          const nextTruncated = !calendarMode.truncated;
+                          setCalendarMode({ linear: false, truncated: nextTruncated });
+                          const noCalendarActive = !nextTruncated && !calendarAxis.x && !calendarAxis.y;
+                          if (noCalendarActive) onSceneContainerChange(null);
+                          else onSceneContainerChange('calendar');
                         }}
                         className={`px-3 py-0.5 rounded-[20px] text-[10px] lowercase transition-colors ${
                           calendarMode.truncated
@@ -1592,7 +1751,9 @@ const RightSidebar = ({
                     <button
                       onClick={() => {
                         resetSceneStates('hierarchy');
-                        handleHierarchyTreeAxisChange({ ...hierarchyTreeAxis, x: !hierarchyTreeAxis.x });
+                        const next = { ...hierarchyTreeAxis, x: !hierarchyTreeAxis.x };
+                        handleHierarchyTreeAxisChange(next);
+                        if (!next.x && !next.y && !next.z) onSceneContainerChange(null);
                       }}
                       className={`w-[22px] h-[20px] rounded-[20px] flex items-center justify-center text-xs transition-colors ${
                         hierarchyTreeAxis.x
@@ -1606,7 +1767,9 @@ const RightSidebar = ({
                     <button
                       onClick={() => {
                         resetSceneStates('hierarchy');
-                        handleHierarchyTreeAxisChange({ ...hierarchyTreeAxis, y: !hierarchyTreeAxis.y });
+                        const next = { ...hierarchyTreeAxis, y: !hierarchyTreeAxis.y };
+                        handleHierarchyTreeAxisChange(next);
+                        if (!next.x && !next.y && !next.z) onSceneContainerChange(null);
                       }}
                       className={`w-[22px] h-[20px] rounded-[20px] flex items-center justify-center text-xs transition-colors ${
                         hierarchyTreeAxis.y
@@ -1620,7 +1783,9 @@ const RightSidebar = ({
                     <button
                       onClick={() => {
                         resetSceneStates('hierarchy');
-                        handleHierarchyTreeAxisChange({ ...hierarchyTreeAxis, z: !hierarchyTreeAxis.z });
+                        const next = { ...hierarchyTreeAxis, z: !hierarchyTreeAxis.z };
+                        handleHierarchyTreeAxisChange(next);
+                        if (!next.x && !next.y && !next.z) onSceneContainerChange(null);
                       }}
                       className={`w-[22px] h-[20px] rounded-[20px] flex items-center justify-center text-xs transition-colors ${
                         hierarchyTreeAxis.z
@@ -1652,8 +1817,14 @@ const RightSidebar = ({
                   <div className="flex gap-2 flex-wrap">
                     <button
                     onClick={() => {
-                      resetSceneStates('map');
-                      handleMapViewChange('flat');
+                      if (mapView === 'flat') {
+                        setMapView(null);
+                        onMapViewChange(null);
+                        onSceneContainerChange(null);
+                      } else {
+                        resetSceneStates('map');
+                        handleMapViewChange('flat');
+                      }
                     }}
                       className={`px-3 py-0.5 rounded-[20px] text-[10px] transition-colors ${
                         mapView === 'flat'
@@ -1665,8 +1836,14 @@ const RightSidebar = ({
                     </button>
                     <button
                     onClick={() => {
-                      resetSceneStates('map');
-                      handleMapViewChange('spherical');
+                      if (mapView === 'spherical') {
+                        setMapView(null);
+                        onMapViewChange(null);
+                        onSceneContainerChange(null);
+                      } else {
+                        resetSceneStates('map');
+                        handleMapViewChange('spherical');
+                      }
                     }}
                       className={`px-3 py-0.5 rounded-[20px] text-[10px] transition-colors ${
                         mapView === 'spherical'
@@ -1739,6 +1916,8 @@ const RightSidebar = ({
                         onClusterConfigChange(clusterMethod, property);
                         if (property || clusterMethod) {
                           onSceneContainerChange('cluster');
+                        } else {
+                          onSceneContainerChange(null);
                         }
                       }}
                     >

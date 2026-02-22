@@ -191,3 +191,24 @@ class SubmissionResponse(BaseModel):
 class SubmissionUpdateRequest(BaseModel):
     subscription_tier: Optional[str] = None
     subscription_status: Optional[str] = None
+
+
+# Graph camera position (save/restore view)
+class GraphCameraPositionSave(BaseModel):
+    position_x: float
+    position_y: float
+    position_z: float
+    target_x: float
+    target_y: float
+    target_z: float
+
+
+class GraphCameraPositionResponse(BaseModel):
+    subscriber_email: str
+    position_x: float
+    position_y: float
+    position_z: float
+    target_x: float
+    target_y: float
+    target_z: float
+    saved_at: datetime

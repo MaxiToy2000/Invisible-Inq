@@ -10,14 +10,15 @@ import logging
 import os
 import aiofiles
 from config import Config
-from services import get_all_stories, get_graph_data, get_graph_data_by_section_and_country, get_gr_id_description, search_with_ai, get_story_statistics, get_all_node_types, get_calendar_data, get_cluster_data, get_entity_wikidata, search_entity_wikidata
-from models import GraphData, UserCreate, UserLogin, Token, UserResponse, GoogleAuthRequest, UserActivityCreate, UserActivityResponse, AdminLoginRequest, SubmissionCreate, SubmissionResponse, UserSubscriptionResponse, SubmissionUpdateRequest
+from services import get_all_stories, get_graph_data, get_graph_data_by_section_and_country, get_gr_id_description, search_with_ai, get_story_statistics, get_all_node_types, get_calendar_data, get_cluster_data, get_entity_wikidata, get_wikidata_by_id, search_entity_wikidata
+from models import GraphData, UserCreate, UserLogin, Token, UserResponse, GoogleAuthRequest, UserActivityCreate, UserActivityResponse, AdminLoginRequest, SubmissionCreate, SubmissionResponse, UserSubscriptionResponse, SubmissionUpdateRequest, GraphCameraPositionSave, GraphCameraPositionResponse
 from pydantic import BaseModel
 from auth import create_access_token, verify_google_token, get_current_user, get_current_admin_user
 from user_service import create_user, authenticate_user, get_user_by_email, create_or_update_google_user, get_user_by_id, get_all_users, get_user_statistics
 from activity_service import create_activity, get_activities, get_activity_statistics, get_user_activity_summary
 from submission_service import create_submission, process_submission, get_submission, get_user_submissions, get_all_submissions
 from subscription_service import get_user_subscription, update_user_subscription, get_subscription_plan, SUBSCRIPTION_PLANS
+from graph_camera_service import save_camera_position, get_camera_position
 from rate_limit_service import check_rate_limit, record_request
 from datetime import timedelta, datetime
 
@@ -75,11 +76,6 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Note: Request body size limit is controlled by uvicorn/hypercorn
-# To increase it, use: uvicorn.run(..., limit_max_requests=10000)
-# Or set environment variable: UVICORN_LIMIT_MAX_REQUESTS=10000
-# The default limit is usually sufficient, but for very large graphs,
-# you may need to increase it at the server level
 app.add_middleware(
     CORSMiddleware,
     allow_origins=Config.CORS_ORIGINS,
@@ -184,13 +180,13 @@ async def login_user(user_credentials: UserLogin):
     Login with email and password
     """
     email_for_log = (user_credentials.email or "").strip()
-    logger.info(f"[auth/login] Request received for email={email_for_log!r}")
+    logger.debug(f"[auth/login] Request for email={email_for_log!r}")
 
     try:
         # Authenticate user
         try:
             user = authenticate_user(user_credentials.email, user_credentials.password)
-            logger.info(f"[auth/login] authenticate_user returned: user_id={user['id'] if user else None}")
+            logger.debug(f"[auth/login] authenticate_user returned: user_id={user['id'] if user else None}")
         except Exception as e:
             error_msg = str(e)
             logger.exception(f"[auth/login] authenticate_user raised: {error_msg}")
@@ -232,7 +228,7 @@ async def login_user(user_credentials: UserLogin):
                 "status": user.get('status', 'active'),
             }
         )
-        logger.info(f"[auth/login] Success: user_id={user['id']}, email={user['email']}")
+        logger.debug(f"[auth/login] Success: user_id={user['id']}, email={user['email']}")
         user_response = UserResponse(
             id=user['id'],
             email=user['email'],
@@ -685,6 +681,56 @@ async def get_user_subscription_endpoint(
         logger.exception(f"Error getting subscription: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get subscription: {str(e)}")
 
+# ============== Graph camera position (save/restore view) ==============
+
+@app.post("/api/graph-camera-position")
+async def save_graph_camera_position_endpoint(
+    body: GraphCameraPositionSave,
+    current_user: dict = Depends(get_current_user),
+):
+    """Save the current graph camera position for the authenticated user (by email)."""
+    try:
+        email = current_user.get("email")
+        if not email:
+            raise HTTPException(status_code=400, detail="User email not found")
+        ok = save_camera_position(
+            subscriber_email=email,
+            position_x=body.position_x,
+            position_y=body.position_y,
+            position_z=body.position_z,
+            target_x=body.target_x,
+            target_y=body.target_y,
+            target_z=body.target_z,
+        )
+        if not ok:
+            raise HTTPException(status_code=500, detail="Failed to save camera position")
+        return {"message": "Camera position saved"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Error saving graph camera position: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/graph-camera-position", response_model=Optional[GraphCameraPositionResponse])
+async def get_graph_camera_position_endpoint(
+    current_user: dict = Depends(get_current_user),
+):
+    """Get the last saved graph camera position for the authenticated user."""
+    try:
+        email = current_user.get("email")
+        if not email:
+            raise HTTPException(status_code=400, detail="User email not found")
+        row = get_camera_position(subscriber_email=email)
+        if not row:
+            return None
+        return GraphCameraPositionResponse(**row)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Error getting graph camera position: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
 # ============== Admin Submission Endpoints ==============
 
 @app.get("/api/admin/submissions")
@@ -895,7 +941,7 @@ async def get_graph_by_substory_and_country(substory_id: str, country_name: str)
 @app.get("/api/calendar", response_model=dict)
 async def get_calendar_by_section(section_query: Optional[str] = None, section_gid: Optional[str] = None, section_title: Optional[str] = None):
     """Get calendar/timeline data for a section based on relationships with all nodes"""
-    logger.info(f"Calendar endpoint called with section_query={section_query}, section_gid={section_gid}, section_title={section_title}")
+    logger.debug(f"Calendar endpoint: section_query={section_query}, section_gid={section_gid}, section_title={section_title}")
     
     if not section_query and not section_gid and not section_title:
         logger.warning("Calendar endpoint called without any section parameter")
@@ -908,7 +954,7 @@ async def get_calendar_by_section(section_query: Optional[str] = None, section_g
             section_query=section_query,
             section_title=section_title
         )
-        logger.info(f"Successfully retrieved calendar data: {len(calendar_data.get('calendar_items', []))} items")
+        logger.debug(f"Retrieved calendar data: {len(calendar_data.get('calendar_items', []))} items")
         return calendar_data
     except ValueError as e:
         logger.warning(f"Validation error in calendar endpoint: {str(e)}")
@@ -973,6 +1019,31 @@ async def get_node_types():
             detail=f"Error fetching node types: {str(e)}"
         )
 
+# ============== Wikidata Endpoint (registered early to avoid route conflicts) ==============
+@app.get("/api/wikidata/{node_type}/{node_id}")
+async def get_wikidata_by_node(node_type: str, node_id: str):
+    """
+    Get wikidata information by node type and node id.
+    Supports node types: entity, concept, data, entity_gen, framework.
+    """
+    try:
+        from urllib.parse import unquote
+        node_type = unquote(node_type)
+        node_id = unquote(node_id)
+        if not node_id or not node_id.strip():
+            raise HTTPException(status_code=400, detail="Node id is required")
+        if not node_type or not node_type.strip():
+            raise HTTPException(status_code=400, detail="Node type is required")
+        result = get_wikidata_by_id(node_id.strip(), node_type.strip())
+        logger.debug(f"Wikidata request: node_type={node_type}, node_id={node_id}, found={result.get('found')}")
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception(f"Error fetching wikidata for node_type '{node_type}' node_id '{node_id}': {e}")
+        raise HTTPException(status_code=500, detail=f"Error fetching wikidata: {str(e)}")
+
+
 
 # ============== Entity Wikidata Endpoints ==============
 
@@ -991,12 +1062,7 @@ async def get_entity_wikidata_by_name(entity_name: str):
         if not entity_name or not entity_name.strip():
             raise HTTPException(status_code=400, detail="Entity name is required")
         
-        logger.info(f"API endpoint called - entity_name: '{entity_name}'")
-        
         result = get_entity_wikidata(entity_name.strip())
-        
-        logger.info(f"API response - found: {result.get('found')}, has_data: {bool(result.get('data'))}")
-        
         return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -1139,16 +1205,6 @@ async def execute_cypher_query(cypher_query: CypherQuery):
 
         try:
             results = db.execute_query(query)
-            
-            
-            if results:
-                for idx, record in enumerate(results):
-                    logger.info(f"[BACKEND]   Record [{idx + 1}]: {record}")
-                    logger.info(f"[BACKEND]   Record [{idx + 1}] keys: {list(record.keys()) if isinstance(record, dict) else 'N/A'}")
-            else:
-                logger.info("[BACKEND] Results: [] (empty)")
-            logger.info("=" * 80)
-            
         except Exception as db_error:
             error_msg = str(db_error)
             raise HTTPException(
@@ -1192,12 +1248,6 @@ async def execute_cypher_query(cypher_query: CypherQuery):
         # If it's a schema query, simple record, or no graph data was extracted, return raw results
         if is_schema_query or is_simple_record or not has_graph_data:
             reason = "schema query" if is_schema_query else ("simple record" if is_simple_record else "no graph data")
-            if results and len(results) > 0:
-                logger.info(f"[BACKEND] First raw result: {results[0]}")
-                logger.info(f"[BACKEND] First raw result type: {type(results[0])}")
-                if isinstance(results[0], dict):
-                    logger.info(f"[BACKEND] First raw result keys: {list(results[0].keys())}")
-            
             # Convert results to JSON-serializable format
             # Neo4j records might contain special types that need conversion
             import json
@@ -1229,16 +1279,11 @@ async def execute_cypher_query(cypher_query: CypherQuery):
             }
             return response
         
-        logger.info("[BACKEND] ✅ Returning graphData (graph data detected)")
         response = {
             "graphData": graph_data.model_dump(),
             "executedQuery": query,
-            "rawResults": None  # No raw results when graph data is present
+            "rawResults": None
         }
-        logger.info(f"[BACKEND] 📤 Response being sent to frontend:")
-        logger.info(f"[BACKEND]   - graphData nodes: {len(response['graphData']['nodes']) if response['graphData'].get('nodes') else 0}")
-        logger.info(f"[BACKEND]   - graphData links: {len(response['graphData']['links']) if response['graphData'].get('links') else 0}")
-        logger.info(f"[BACKEND]   - rawResults: {response['rawResults']}")
         return response
     except HTTPException:
         raise
@@ -1343,10 +1388,8 @@ async def create_node(node_request: CreateNodeRequest):
             props_str = ", ".join(property_assignments)
             query = f"CREATE (n:{node_label} {{{props_str}}}) RETURN n"
         
-        logger.info(f"[BACKEND] Creating node with label: {node_label}")
-        logger.info(f"[BACKEND] Query: {query}")
-        logger.info(f"[BACKEND] Parameters: {params}")
-        
+        logger.debug(f"[BACKEND] Creating node with label: {node_label}, query: {query[:80]}...")
+
         # Execute write query
         try:
             results = db.execute_write_query(query, params)
@@ -1384,8 +1427,8 @@ async def create_node(node_request: CreateNodeRequest):
                     # If conversion fails, create empty dict
                     node_data = {}
             
-            logger.info(f"[BACKEND] ✅ Node created successfully: {node_data}")
-            
+            logger.debug(f"[BACKEND] Node created: {node_data}")
+
             return {
                 "success": True,
                 "node": node_data,
@@ -1437,8 +1480,8 @@ async def delete_node(node_request: DeleteNodeRequest):
         if not node_id_str or node_id_str.lower() in ['none', 'null', 'undefined', '']:
             raise HTTPException(status_code=400, detail="Node ID is required and must be valid")
         
-        logger.info(f"[BACKEND] Deleting node with ID: {node_id_str} (type: {type(node_request.node_id)})")
-        
+        logger.debug(f"[BACKEND] Deleting node with ID: {node_id_str}")
+
         # First, try to find the node to see what properties it has
         # This helps with debugging and ensures we match correctly
         find_query = """
@@ -1456,17 +1499,12 @@ async def delete_node(node_request: DeleteNodeRequest):
         
         find_params = {"node_id": node_id_str}
         
-        logger.info(f"[BACKEND] Finding node with query: {find_query}")
-        logger.info(f"[BACKEND] Find parameters: {find_params}")
-        
         # Try to find the node first
         try:
             find_results = db.execute_query(find_query, find_params)
-            logger.info(f"[BACKEND] Find results: {find_results}")
-            
             if find_results and len(find_results) > 0:
                 node_info = find_results[0]
-                logger.info(f"[BACKEND] Found node - internal_id: {node_info.get('internal_id')}, gid_value: {node_info.get('gid_value')}, gid_string: {node_info.get('gid_string')}, labels: {node_info.get('node_labels')}")
+                logger.debug(f"[BACKEND] Found node: internal_id={node_info.get('internal_id')}, gid={node_info.get('gid_value')}, labels={node_info.get('node_labels')}")
             else:
                 logger.warning(f"[BACKEND] Node not found with initial query, trying alternative matching strategies")
         except Exception as find_error:
@@ -1492,15 +1530,10 @@ async def delete_node(node_request: DeleteNodeRequest):
         
         params = {"node_id": node_id_str}
         
-        logger.info(f"[BACKEND] Delete query: {query}")
-        logger.info(f"[BACKEND] Delete parameters: {params}")
-        
         # Execute write query
         try:
             results = db.execute_write_query(query, params)
-            
-            logger.info(f"[BACKEND] Delete query results: {results}")
-            
+
             if not results or len(results) == 0:
                 raise HTTPException(
                     status_code=404,
@@ -1508,17 +1541,15 @@ async def delete_node(node_request: DeleteNodeRequest):
                 )
             
             deleted_count = results[0].get('deleted_count', 0)
-            
-            logger.info(f"[BACKEND] Deleted count: {deleted_count}")
-            
+
             if deleted_count == 0:
                 raise HTTPException(
                     status_code=404,
                     detail=f"Node with ID '{node_id_str}' not found or already deleted (matched 0 nodes)"
                 )
             
-            logger.info(f"[BACKEND] ✅ Node deleted successfully. Count: {deleted_count}")
-            
+            logger.debug(f"[BACKEND] Node deleted. Count: {deleted_count}")
+
             return {
                 "success": True,
                 "deleted_count": deleted_count,

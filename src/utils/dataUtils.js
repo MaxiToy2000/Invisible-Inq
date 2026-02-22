@@ -204,17 +204,32 @@ export const formatGraphData = (rawData) => {
     });
   }
 
+  // Deduplicate nodes by canonical id so the same entity never appears twice (avoids
+  // "connected node + duplicate floating node" in main graph and mini-graph)
+  const seenIds = new Set();
+  const dedupedNodes = nodes.filter((node) => {
+    const canonicalId = String(node.id ?? node.gid ?? '');
+    if (!canonicalId || seenIds.has(canonicalId)) return false;
+    seenIds.add(canonicalId);
+    return true;
+  });
+
   const nodeMap = {};
-  nodes.forEach((node) => {
+  dedupedNodes.forEach((node) => {
     nodeMap[node.id] = node;
+    if (node.gid != null && String(node.gid) !== node.id) {
+      nodeMap[String(node.gid)] = node;
+    }
   });
 
   const links = [];
 
   if (Array.isArray(validRawData.links)) {
     validRawData.links.forEach((link) => {
-      const sourceId = String(link.sourceId ?? link.source ?? link.from_gid ?? '');
-      const targetId = String(link.targetId ?? link.target ?? link.to_gid ?? '');
+      const rawSource = link.sourceId ?? link.source ?? link.from_gid ?? '';
+      const rawTarget = link.targetId ?? link.target ?? link.to_gid ?? '';
+      const sourceId = typeof rawSource === 'object' ? String(rawSource?.id ?? rawSource?.gid ?? '') : String(rawSource);
+      const targetId = typeof rawTarget === 'object' ? String(rawTarget?.id ?? rawTarget?.gid ?? '') : String(rawTarget);
 
       if (!sourceId || !targetId) {
         console.warn('Skipping link with missing sourceId or targetId:', link);
@@ -240,8 +255,8 @@ export const formatGraphData = (rawData) => {
       const newLink = {
         ...link,
         id: link.id || generateRandomId(),
-        source: sourceId,
-        target: targetId,
+        source: sourceNode,
+        target: targetNode,
         sourceId: sourceId,
         targetId: targetId,
         sourceName: String(sourceName || ''),
@@ -280,7 +295,7 @@ export const formatGraphData = (rawData) => {
     });
   }
 
-  return { nodes, links };
+  return { nodes: dedupedNodes, links };
 };
 
 export const extractEntityHighlights = (graphData) => {
