@@ -25,8 +25,8 @@ def get_all_stories_query():
     WHERE toLower(trim(coalesce(section.category, ''))) = 'section'
     WITH story, chapter, section,
          toInteger(coalesce(toFloat(story.order), toFloat(story.`Story Number`), toFloat(story.`Story Number_new`), 0)) AS story_order,
-         toInteger(coalesce(toFloat(chapter.`Chapter Number`), toFloat(chapter.`Chapter Number_new`), 0)) AS chapter_number,
-         toInteger(coalesce(toFloat(section.`Section Number`), 0)) AS section_num
+         toInteger(coalesce(toFloat(chapter.`Chapter Number`), toFloat(chapter.`chapter_num`), 0)) AS chapter_number,
+         toInteger(coalesce(toFloat(section.`Section Number`), toFloat(section.`section_num`), 0)) AS section_num
     ORDER BY story_order, story.id, story.g_id, story.name, chapter_number, section_num
     WITH story, story_order, chapter, chapter_number,
          COLLECT(DISTINCT {
@@ -75,8 +75,8 @@ def get_all_stories_query_legacy():
     OPTIONAL MATCH (chapter)-[:chapter_section]-(section:section)
     WITH story, chapter, section,
          toInteger(coalesce(toFloat(story.`Story Number_new`), toFloat(story.`Story Number`), 0)) AS story_number,
-         toInteger(coalesce(toFloat(chapter.`Chapter Number_new`), toFloat(chapter.`Chapter Number`), 0)) AS chapter_number,
-         toInteger(coalesce(toFloat(section.`Section Number`), 0)) AS section_num
+         toInteger(coalesce(toFloat(chapter.`chapter_num`), toFloat(chapter.`Chapter Number`), 0)) AS chapter_number,
+         toInteger(coalesce(toFloat(section.`Section Number`), toFloat(section.`section_num`), 0)) AS section_num
     ORDER BY story_number, chapter_number, section_num
     WITH story, story_number, chapter, chapter_number,
          COLLECT(DISTINCT {
@@ -183,8 +183,8 @@ def get_story_by_id_query(story_id: str):
     OPTIONAL MATCH (story)-[:story_chapter]-(chapter:chapter)
     OPTIONAL MATCH (chapter)-[:chapter_section]-(section:section)
     WITH story, chapter, section,
-         toInteger(coalesce(toFloat(chapter.`Chapter Number_new`), toFloat(chapter.`Chapter Number`), 0)) AS chapter_number,
-         toInteger(coalesce(toFloat(section.`Section Number`), 0)) AS section_num
+         toInteger(coalesce(toFloat(chapter.`chapter_num`), toFloat(chapter.`Chapter Number`), 0)) AS chapter_number,
+         toInteger(coalesce(toFloat(section.`Section Number`), toFloat(section.`section_num`), 0)) AS section_num
     ORDER BY chapter_number, section_num
     WITH story, chapter, chapter_number,
          COLLECT(DISTINCT {
@@ -278,6 +278,7 @@ def get_graph_data_by_section_query(section_gid: Optional[str] = None, section_q
     RETURN {{
       nodes: [n IN all_nodes | n {{
         .*,
+        date: coalesce(n.date, n.`Date`, n.`Relationship Date`, n.`Action Date`, n.`Process Date`, n.`Disb Date`),
         elementId: elementId(n),
         labels: labels(n),
         node_type: head(labels(n))
@@ -352,6 +353,7 @@ def get_graph_data_by_section_query_legacy(section_gid: Optional[str] = None, se
     RETURN {{
       nodes: [n IN all_nodes | n {{
         .*,
+        date: coalesce(n.date, n.`Date`, n.`Relationship Date`, n.`Action Date`, n.`Process Date`, n.`Disb Date`),
         elementId: elementId(n),
         labels: labels(n),
         node_type: head(labels(n))
@@ -467,12 +469,12 @@ def get_section_by_id_query(section_gid: str):
     RETURN {
         gid: section.gid,
         section_title: coalesce(section.`Section Name`, section.`graph name`, toString(section.gid)),
-        section_num: toInteger(coalesce(toFloat(section.`Section Number`), 0)),
+        section_num: toInteger(coalesce(toFloat(section.`Section Number`), toFloat(section.`section_num`), 0)),
         section_query: toString(section.gid),
         brief: coalesce(section.summary, section.`Summary`, ""),
         chapter: {
             gid: chapter.gid,
-            chapter_number: toInteger(coalesce(toFloat(chapter.`Chapter Number_new`), toFloat(chapter.`Chapter Number`), 0)),
+            chapter_number: toInteger(coalesce(toFloat(chapter.`chapter_num`), toFloat(chapter.`Chapter Number`), 0)),
             chapter_title: coalesce(chapter.`Chapter Name`, toString(chapter.gid))
         }
     } AS section
@@ -523,6 +525,7 @@ def get_graph_data_by_section_and_country_query(section_query: str, country_name
     RETURN {
       nodes: [n IN all_nodes | n {
         .*,
+        date: coalesce(n.date, n.`Date`, n.`Relationship Date`, n.`Action Date`, n.`Process Date`, n.`Disb Date`),
         elementId: elementId(n),
         labels: labels(n),
         node_type: head(labels(n))

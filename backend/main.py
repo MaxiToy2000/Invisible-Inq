@@ -878,7 +878,6 @@ async def health_check():
 async def get_stories():
     try:
         stories = get_all_stories()
-
         return [story.model_dump() for story in stories]
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching stories: {str(e)}")

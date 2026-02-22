@@ -68,44 +68,30 @@ const getNodeColor = (nodeType) => {
   return '#495057'; // Default
 };
 
-// Base tooltip layout - Same style as Amount tooltip with dynamic accent bar color
+// Base tooltip layout - Show only Type, Date, Description (name as title)
 const BaseTooltipLayout = ({ node, color, graphData }) => {
   const name = node.name || node.label || node.title || node.id || 'Unknown';
   const nodeType = node.node_type || node.type || node.category || '';
   const subtype = node.subtype || node.sub_type || '';
-  const description = node.text || node.description || node.desc || node.summary || node.properties?.description || node.properties?.text || '';
+  const typeDisplay = subtype ? `${nodeType} / ${subtype}` : nodeType;
+  const dateVal = node.date || node.Date || node['Relationship Date'] || node['Action Date'] || node['Process Date'] || node['Disb Date'] || '';
+  const description = node.text || node.description || node.desc || node.summary || node['Relationship Summary'] || node.properties?.description || node.properties?.text || '';
   
-  // Calculate actual number of connected nodes from graph data
   let relatedCount = 0;
   if (graphData?.links && graphData?.nodes) {
     const nodeId = node.id;
     const connectedNodeIds = new Set();
-    
-    // Find all links connected to this node
     graphData.links.forEach(link => {
       const sourceId = link.source?.id || link.sourceId || link.source;
       const targetId = link.target?.id || link.targetId || link.target;
-      
-      // If this node is the source, add the target
-      if (sourceId === nodeId) {
-        connectedNodeIds.add(targetId);
-      }
-      // If this node is the target, add the source
-      if (targetId === nodeId) {
-        connectedNodeIds.add(sourceId);
-      }
+      if (sourceId === nodeId) connectedNodeIds.add(targetId);
+      if (targetId === nodeId) connectedNodeIds.add(sourceId);
     });
-    
     relatedCount = connectedNodeIds.size;
   }
-  
-  // Fallback to node properties if graph data not available
   if (relatedCount === 0) {
     relatedCount = node.degree || node.related_count || node.count || node.properties?.related_count || 0;
   }
-  
-  // Format type display
-  const typeDisplay = subtype ? `${nodeType} / ${subtype}` : nodeType;
 
   return (
     <div 
@@ -119,33 +105,34 @@ const BaseTooltipLayout = ({ node, color, graphData }) => {
         backdropFilter: 'blur(10px)'
       }}
     >
-      {/* Vertical Accent Bar - Color based on node type */}
       <div 
         className="absolute left-3 top-3 bottom-3 w-1.5 rounded-full"
         style={{ backgroundColor: color }}
       />
 
-      {/* Main Content Area */}
       <div className="flex-1 ml-5 min-w-0 flex flex-col">
-        {/* Node Name */}
-        <h3 className="text-white text-xl font-bold mb-1 leading-tight truncate">
+        <h3 className="text-white text-xl font-bold mb-2 leading-tight truncate">
           {name}
         </h3>
 
-        {/* Type Information */}
+        {/* Only Type, Date, Description */}
         {typeDisplay && (
-          <div className="flex items-center mb-3">
-            <span className="text-[#707070] text-xs">
-              Type: <span style={{ color }}>{typeDisplay}</span>
-            </span>
+          <div className="flex flex-wrap gap-x-2 text-sm mb-1.5">
+            <span className="text-[#707070] shrink-0">Type:</span>
+            <span className="text-[#B4B4B4]" style={{ color }}>{typeDisplay}</span>
           </div>
         )}
-
-        {/* Description */}
+        {dateVal && (
+          <div className="flex flex-wrap gap-x-2 text-sm mb-1.5">
+            <span className="text-[#707070] shrink-0">Date:</span>
+            <span className="text-[#B4B4B4]">{typeof dateVal === 'string' ? dateVal : String(dateVal)}</span>
+          </div>
+        )}
         {description && (
-          <p className="text-[#909090] text-sm leading-relaxed line-clamp-3">
-            {description}
-          </p>
+          <div className="flex flex-wrap gap-x-2 text-sm">
+            <span className="text-[#707070] shrink-0">Description:</span>
+            <p className="text-[#B4B4B4] leading-relaxed line-clamp-3 mb-0">{description}</p>
+          </div>
         )}
       </div>
 
@@ -544,15 +531,144 @@ const AmountTooltipLayout = ({ node, color, graphData }) => {
   );
 };
 
-// Relationship-specific layout (placeholder for future customization)
-const RelationshipTooltipLayout = ({ node, color, graphData }) => {
-  return <BaseTooltipLayout node={node} color={color} graphData={graphData} />;
+// Tooltip: show only Type, Date, Description (shared pick helper)
+const pickTooltip = (node, ...keys) => {
+  if (!node) return null;
+  for (const k of keys) {
+    const v = node[k] ?? node.properties?.[k];
+    if (v == null) continue;
+    if (typeof v === 'string' && v.trim() !== '') return v.trim();
+    if (typeof v === 'number' && !Number.isNaN(v)) return String(v);
+    const s = String(v).trim();
+    if (s !== '') return s;
+  }
+  return null;
 };
 
-// Action-specific layout - Shows Source → ProcessName → Target flow
+// Connector tooltip layout: show only Type, Date, Description (name as title)
+const ConnectorTooltipLayout = ({ node, color, graphData }) => {
+  const name = node.name || node.label || node.title || node['Relationship Name'] || node['Action Summary'] || node.id || 'Unknown';
+  const typeVal = pickTooltip(node, 'type', 'node_type', 'category', 'Relationship Type', 'Action Type');
+  const dateVal = pickTooltip(node, 'date', 'Date', 'Relationship Date', 'Action Date', 'Process Date', 'Disb Date');
+  const descVal = pickTooltip(node, 'description', 'text', 'desc', 'summary', 'Relationship Summary', 'Summary');
+
+  let relatedCount = 0;
+  if (graphData?.links && graphData?.nodes) {
+    const nodeId = node.id;
+    const connectedNodeIds = new Set();
+    graphData.links.forEach(link => {
+      const sourceId = link.source?.id || link.sourceId || link.source;
+      const targetId = link.target?.id || link.targetId || link.target;
+      if (sourceId === nodeId) connectedNodeIds.add(targetId);
+      if (targetId === nodeId) connectedNodeIds.add(sourceId);
+    });
+    relatedCount = connectedNodeIds.size;
+  }
+  if (relatedCount === 0) {
+    relatedCount = node.degree || node.related_count || node.count || 0;
+  }
+
+  return (
+    <div
+      className="flex flex-row rounded-[10px] relative"
+      style={{
+        width: '520px',
+        minHeight: '140px',
+        padding: '12px 15px',
+        background: '#1a1a1a',
+        border: '2px solid #1F1F22',
+        backdropFilter: 'blur(10px)',
+      }}
+    >
+      <div
+        className="absolute left-3 top-3 bottom-3 w-1.5 rounded-full"
+        style={{ backgroundColor: color }}
+      />
+      <div className="flex-1 ml-5 min-w-0 flex flex-col overflow-hidden">
+        <h3 className="text-white text-xl font-bold mb-2 leading-tight truncate">
+          {name}
+        </h3>
+        {typeVal && (
+          <div className="flex flex-wrap gap-x-2 text-sm mb-1.5">
+            <span className="text-[#707070] shrink-0">Type:</span>
+            <span className="text-[#B4B4B4]" style={{ color }}>{typeVal}</span>
+          </div>
+        )}
+        {dateVal && (
+          <div className="flex flex-wrap gap-x-2 text-sm mb-1.5">
+            <span className="text-[#707070] shrink-0">Date:</span>
+            <span className="text-[#B4B4B4]">{dateVal}</span>
+          </div>
+        )}
+        {descVal && (
+          <div className="flex flex-wrap gap-x-2 text-sm">
+            <span className="text-[#707070] shrink-0">Description:</span>
+            <p className="text-[#B4B4B4] break-words line-clamp-3 mb-0">{descVal}</p>
+          </div>
+        )}
+      </div>
+      <div className="flex flex-col items-center justify-between ml-4 flex-shrink-0 self-stretch gap-1.5">
+        <button className="flex items-center justify-center text-white hover:text-gray-300 transition-colors pt-[5px]" title="Expand">
+          <svg width="16" height="8" viewBox="0 0 16 8" fill="none">
+            <path d="M1 7L8 1L15 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+        <div className="flex-1 flex items-center justify-center">
+          <button className="flex items-center justify-center text-white hover:text-gray-300 transition-colors" title="Network">
+            <svg width="17" height="17" viewBox="0 0 17 17" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M14.8868 9.49648C14.313 9.49671 13.7642 9.73132 13.3674 10.1459L11.7565 9.46128C11.8666 9.13184 11.9246 8.78726 11.9284 8.43992C11.9245 6.57423 10.413 5.06273 8.54735 5.05888C8.26529 5.0624 7.98483 5.10168 7.71266 5.17582L6.78639 3.52685C7.57065 2.66732 7.50962 1.33475 6.65009 0.55049C5.79056 -0.233768 4.45799 -0.17274 3.67373 0.686789C2.88947 1.54632 2.9505 2.87889 3.81003 3.66315C4.19987 4.01886 4.709 4.21529 5.23677 4.21362C5.33807 4.21074 5.43907 4.20061 5.53895 4.18334L6.44971 5.80342C5.08174 6.86865 4.75702 8.80386 5.70234 10.2573L3.03696 12.836C1.94634 12.3522 0.669978 12.8441 0.186142 13.9347C-0.297694 15.0253 0.19421 16.3017 1.28483 16.7855C2.37546 17.2694 3.65182 16.7775 4.13565 15.6868C4.40476 15.0802 4.38016 14.3836 4.06888 13.7975L6.6899 11.2617C8.08241 12.1883 9.94507 11.945 11.0529 10.6919L12.7913 11.4301C12.7864 11.4899 12.7737 11.5477 12.7737 11.6083C12.7737 12.7753 13.7198 13.7214 14.8868 13.7214C16.0539 13.7214 17 12.7753 17 11.6082C17 10.4412 16.0539 9.49508 14.8868 9.49508V9.49648Z" fill="#D7D7D7" />
+            </svg>
+          </button>
+        </div>
+        <div
+          className="flex items-center justify-end gap-0.5 self-stretch"
+          style={{
+            background: '#000000',
+            border: '0.5px solid #D7D7D7',
+            borderRadius: '0 0 5px 0',
+            padding: '0 5px 0 0',
+          }}
+        >
+          <svg width="7.5" height="7.5" viewBox="0 0 10 10" fill="white">
+            <path d="M5 0V10M0 5H10" stroke="white" strokeWidth="2" />
+          </svg>
+          <span
+            style={{
+              fontFamily: 'Open Sans, sans-serif',
+              fontWeight: 600,
+              fontSize: '10px',
+              lineHeight: '1.1em',
+              letterSpacing: '-0.025em',
+              color: '#D7D7D7',
+            }}
+          >
+            {relatedCount}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Relationship-specific layout: use connector metadata (name, type, category, date, description, process, purpose, quality)
+const RelationshipTooltipLayout = ({ node, color, graphData }) => {
+  return <ConnectorTooltipLayout node={node} color={color} graphData={graphData} />;
+};
+
+// Action-specific layout: use connector metadata (name, type, category, date, description, process, purpose, quality)
 const ActionTooltipLayout = ({ node, color, graphData }) => {
+  return <ConnectorTooltipLayout node={node} color={color} graphData={graphData} />;
+};
+
+// Exchange-specific layout: use connector metadata
+const ExchangeTooltipLayout = ({ node, color, graphData }) => {
+  return <ConnectorTooltipLayout node={node} color={color} graphData={graphData} />;
+};
+
+// Legacy Action layout (Source → ProcessName → Target) - kept for reference, unused
+const _ActionTooltipLayoutLegacy = ({ node, color, graphData }) => {
   // Process/Action name (the node's actual action value/name)
-  const processName = node.name || 
+  const processName = node.name ||
                       node.action_text || 
                       node.action_name || 
                       node.label || 
@@ -812,9 +928,10 @@ const getTooltipLayout = (nodeType) => {
   if (type.includes('amount') || type.includes('transaction') || type.includes('funding')) return AmountTooltipLayout;
   if (type.includes('relationship')) return RelationshipTooltipLayout;
   if (type.includes('action')) return ActionTooltipLayout;
+  if (type.includes('exchange')) return ExchangeTooltipLayout;
   if (type.includes('result')) return ResultTooltipLayout;
   if (type.includes('process')) return ProcessTooltipLayout;
-  
+
   return BaseTooltipLayout; // Default layout
 };
 

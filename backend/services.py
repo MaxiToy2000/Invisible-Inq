@@ -73,6 +73,12 @@ def format_node(node_data: Dict[str, Any]) -> Dict[str, Any]:
             continue
         if key in node:
             continue
+        # Normalize date-like values so frontend always gets a string (Neo4j Date/DateTime are JSON-serializable but normalize for consistency)
+        if key in ("date", "Date", "Relationship Date", "Action Date", "Process Date", "Disb Date", "date_start", "date_end"):
+            if hasattr(value, "isoformat"):
+                value = value.isoformat()
+            elif hasattr(value, "strftime"):
+                value = value.strftime("%Y-%m-%d")
         node[key] = value
 
     return node
@@ -194,6 +200,41 @@ def get_all_stories() -> List[Story]:
             results = db.execute_query(query_legacy)
         logger.debug(f"Retrieved {len(results)} story records from database")
 
+        # Collect all chapter and section ids (Neo4j gr_id node id = Postgres gr_id.id)
+        all_gr_ids = []
+        for record in results:
+            story_data = record.get("story", {})
+            if not story_data:
+                continue
+            for chapter_data in story_data.get("chapters", []) or []:
+                ch_id = (chapter_data or {}).get("id") or (chapter_data or {}).get("gid")
+                if ch_id:
+                    all_gr_ids.append(str(ch_id))
+                for section_data in (chapter_data or {}).get("sections", []) or []:
+                    sec_id = (section_data or {}).get("id") or (section_data or {}).get("gid")
+                    if sec_id:
+                        all_gr_ids.append(str(sec_id))
+        # Get exact section_number and chapter_number from Postgres gr_id (match by id), replace Neo4j values
+        order_map = _get_gr_id_order_map(all_gr_ids)
+
+        def _chapter_sort_key(cid: str) -> float:
+            n = order_map.get(str(cid), {}).get("chapter_number")
+            if n is not None:
+                try:
+                    return float(n)
+                except (TypeError, ValueError):
+                    pass
+            return 999999.0
+
+        def _section_sort_key(sid: str) -> float:
+            n = order_map.get(str(sid), {}).get("section_number")
+            if n is not None:
+                try:
+                    return float(n)
+                except (TypeError, ValueError):
+                    pass
+            return 999999.0
+
         stories = []
         for record in results:
             story_data = record.get("story", {})
@@ -201,56 +242,64 @@ def get_all_stories() -> List[Story]:
                 continue
 
             story_title = story_data.get("story_title", "")
-            story_id_raw = story_data.get("story_id") or story_data.get("story_gid")
-            story_gid = story_data.get("story_gid", "")
+            story_id_raw = story_data.get("story_id")
             story_brief = story_data.get("story_brief", "")
-            
-            # Convert to string and strip whitespace
             if story_brief is not None:
                 story_brief = str(story_brief).strip()
             else:
                 story_brief = ""
-            
-            # Log story processing (debug level to avoid spam)
             logger.debug(f"Processing story: {story_title} (id: {story_id_raw}, brief length: {len(story_brief)})")
 
-            # Prefer story_id (gr_id schema), then story_gid; fallback to slug from title.
-            story_id = str(story_id_raw) if story_id_raw else (str(story_gid) if story_gid else generate_id_from_title(story_title))
+            story_id = str(story_id_raw).strip() if story_id_raw else (str(story_data.get("story_gid", "")).strip() or generate_id_from_title(story_title))
 
             chapters = []
             for chapter_data in story_data.get("chapters", []):
-                if not chapter_data or not chapter_data.get("gid"):
+                chapter_id_val = (chapter_data or {}).get("id") or (chapter_data or {}).get("gid")
+                if not chapter_data or not chapter_id_val:
                     continue
 
-                chapter_gid = chapter_data.get("gid", "")
-                chapter_number = chapter_data.get("chapter_number", 0)
+                chapter_id = str(chapter_id_val)
                 chapter_title = chapter_data.get("chapter_title", "")
                 chapter_total_nodes = chapter_data.get("total_nodes", 0) or 0
-
-                # Use Neo4j gid for stable, globally-unique chapter IDs (titles are used for URL sync).
-                chapter_id = str(chapter_gid)
+                # Replace with exact chapter_number from Postgres gr_id (match by id)
+                pg_ch = order_map.get(chapter_id, {}).get("chapter_number")
+                if pg_ch is not None:
+                    try:
+                        chapter_number = int(pg_ch)
+                    except (TypeError, ValueError):
+                        chapter_number = chapter_data.get("chapter_number", 0)
+                else:
+                    chapter_number = chapter_data.get("chapter_number", 0)
 
                 substories = []
                 for section_data in chapter_data.get("sections", []):
-                    if not section_data or not section_data.get("gid"):
+                    section_id_val = (section_data or {}).get("id") or (section_data or {}).get("gid")
+                    if not section_data or not section_id_val:
                         continue
 
-                    section_gid = section_data.get("gid", "")
+                    substory_id = str(section_id_val)
                     section_title = section_data.get("section_title", "")
-                    section_num = section_data.get("section_num", 0)
-
-                    # Use Neo4j gid for stable, globally-unique section IDs.
-                    # This also allows the frontend to pass a numeric identifier to /api/graph/{substory_id}.
-                    substory_id = str(section_gid)
+                    # Replace with exact section_number from Postgres gr_id (match by id)
+                    pg_sec = order_map.get(substory_id, {}).get("section_number")
+                    if pg_sec is not None:
+                        try:
+                            section_number = int(pg_sec)
+                        except (TypeError, ValueError):
+                            section_number = section_data.get("section_number") or section_data.get("section_num", 0)
+                    else:
+                        section_number = section_data.get("section_number") or section_data.get("section_num", 0)
 
                     substories.append(Substory(
                         id=substory_id,
-                        title=section_title or f"Section {section_num}",
-                        headline=section_title or f"Section {section_num}",
+                        title=section_title or f"Section {section_number}",
+                        headline=section_title or f"Section {section_number}",
                         brief=section_data.get("brief") or "",
                         graphPath=None,
-                        section_query=section_data.get("section_query")
+                        section_query=section_data.get("section_query"),
+                        section_number=section_number
                     ))
+
+                substories.sort(key=lambda s: (s.section_number if s.section_number is not None else 999999))
 
                 chapters.append(Chapter(
                     id=chapter_id,
@@ -258,8 +307,11 @@ def get_all_stories() -> List[Story]:
                     headline=chapter_title or f"Chapter {chapter_number}",
                     brief="",
                     substories=substories,
-                    total_nodes=int(chapter_total_nodes) if chapter_total_nodes else 0
+                    total_nodes=int(chapter_total_nodes) if chapter_total_nodes else 0,
+                    chapter_number=chapter_number
                 ))
+
+            chapters.sort(key=lambda c: (c.title or "").lower())
 
             stories.append(Story(
                 id=story_id,
@@ -269,7 +321,6 @@ def get_all_stories() -> List[Story]:
                 path=generate_id_from_title(story_title),
                 chapters=chapters
             ))
-
         logger.info(f"Successfully processed {len(stories)} stories")
         return stories
     except Exception as e:
@@ -352,11 +403,52 @@ def get_graph_data(section_gid: Optional[str] = None, section_query: Optional[st
         raise Exception(error_msg) from e
 
 
+def _get_gr_id_order_map(ids: List[str]) -> Dict[str, Dict[str, Any]]:
+    """
+    Fetch id -> { chapter_number, section_number } from Postgres gr_id table.
+    gr_id table and Neo4j gr_id node are matched by id (gr_id.id = node.id).
+    Returns exact section_number and chapter_number from Postgres to replace Neo4j values.
+    """
+    if not ids:
+        return {}
+    try:
+        from neon_database import neon_db
+        if not neon_db.is_configured():
+            return {}
+        id_list = list({str(i).strip() for i in ids if i})
+        if not id_list:
+            return {}
+        results = neon_db.execute_query(
+            "SELECT id, chapter_number, section_number FROM gr_id WHERE id = ANY(%s)",
+            (id_list,)
+        )
+        order_map = {}
+        for row in (results or []):
+            if not row or row.get("id") is None:
+                continue
+            key = str(row["id"]).strip()
+            ch_num, sec_num = row.get("chapter_number"), row.get("section_number")
+            if ch_num is not None and hasattr(ch_num, "__float__"):
+                try:
+                    ch_num = int(ch_num) if float(ch_num) == int(float(ch_num)) else float(ch_num)
+                except (TypeError, ValueError):
+                    ch_num = None
+            if sec_num is not None and hasattr(sec_num, "__float__"):
+                try:
+                    sec_num = int(sec_num) if float(sec_num) == int(float(sec_num)) else float(sec_num)
+                except (TypeError, ValueError):
+                    sec_num = None
+            order_map[key] = {"chapter_number": ch_num, "section_number": sec_num}
+        return order_map
+    except Exception as e:
+        logger.debug(f"gr_id order from Postgres not available: {e}")
+        return {}
+
+
 def get_gr_id_description(gr_id_value: str) -> Optional[str]:
     """
     Get description for a section from Neon gr_id table.
-    gr_id_value is the same id used as graph_path (e.g. gra7zcmodmlq) - the gr_id node id
-    that links the selected SECTION from Neo4j to the row in Neon gr_id.
+    gr_id_value is the id that matches gr_id.id in Postgres (same as gr_id node id in Neo4j).
     """
     if not (gr_id_value or "").strip():
         return None

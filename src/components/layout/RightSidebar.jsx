@@ -308,7 +308,13 @@ const RightSidebar = ({
   const isWikidataNode = useMemo(() => {
     return displayNode && WIKIDATA_NODE_TYPES.some(t => nodeTypeLower.includes(t));
   }, [displayNode, nodeTypeLower]);
-  
+
+  // Connector nodes (Relationship, Action, Exchange): show name, type, category, date, description, process, purpose, quality in Node Properties tab
+  const CONNECTOR_NODE_TYPES = ['relationship', 'action', 'exchange'];
+  const isConnectorNode = useMemo(() => {
+    return displayNode && CONNECTOR_NODE_TYPES.some(t => nodeTypeLower.includes(t));
+  }, [displayNode, nodeTypeLower]);
+
   // Function to fetch direct image URL from Wikimedia Commons API
   const fetchDirectImageUrl = async (url) => {
     try {
@@ -454,39 +460,76 @@ const RightSidebar = ({
   // Determine which image to display (prioritize wikidata image)
   const displayImageUrl = wikidataImageUrl || displayNode?.IMG_SRC || null;
   
-  // Node Properties tab: name, node_type; wikidata fields (description, alias, foundation, country, url) if available
+  // Node Properties tab: for connector nodes (Relationship, Action, Exchange) show name, type, category, date, description, process, purpose, quality
+  const pick = (node, ...keys) => {
+    if (!node) return null;
+    for (const k of keys) {
+      const v = node[k] ?? node.properties?.[k];
+      if (v == null) continue;
+      if (typeof v === 'string' && v.trim() !== '') return v.trim();
+      if (typeof v === 'number' && !Number.isNaN(v)) return String(v);
+      if (typeof v === 'object' && typeof v.toISOString === 'function') return v.toISOString().split('T')[0];
+      if (typeof v === 'object') continue;
+      const s = String(v).trim();
+      if (s !== '') return s;
+    }
+    return null;
+  };
+  const formatDateValue = (value) => {
+    if (value == null) return value;
+    if (typeof value === 'number') {
+      const d = new Date(value > 1e12 ? value : value * 1000);
+      return Number.isNaN(d.getTime()) ? String(value) : d.toISOString().split('T')[0];
+    }
+    if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}/.test(value)) return value.split('T')[0];
+    return value;
+  };
+  const connectorPropertyKeys = [
+    { label: 'Name', keys: ['name', 'label', 'title', 'Relationship Name', 'Action Summary'] },
+    { label: 'Type', keys: ['type', 'node_type', 'Relationship Type', 'Action Type'] },
+    { label: 'Category', keys: ['category'] },
+    { label: 'Date', keys: ['date', 'Date', 'Relationship Date', 'Action Date', 'Process Date', 'Disb Date', 'relationship_date', 'action_date', 'process_date', 'date_start'] },
+    { label: 'Description', keys: ['description', 'text', 'desc', 'summary', 'Relationship Summary', 'Summary'] },
+    { label: 'Process', keys: ['process', 'Process', 'process_result', 'process_summary', 'Process Result'] },
+    { label: 'Purpose', keys: ['Purpose', 'purpose'] },
+    { label: 'Quality', keys: ['quality', 'Quality'] },
+  ];
   const filteredNodeProperties = displayNode
-    ? [
-        ['name', displayNode.name ?? ''],
-        ['node_type', displayNode.node_type ?? displayNode.type ?? displayNode.category ?? ''],
-        // Add wikidata fields if available (after name and node_type)
-        ...(wikidataInfo?.description != null && wikidataInfo?.description !== '' 
-          ? [['description', wikidataInfo.description]] 
-          : []),
-        // Add node's own description if not already shown from wikidata
-        ...(wikidataInfo?.description == null && displayNode.description != null && displayNode.description !== '' 
-          ? [['description', displayNode.description]] 
-          : []),
-        // Alias from wikidata
-        ...(wikidataInfo?.alias != null && wikidataInfo?.alias !== '' 
-          ? [['alias', wikidataInfo.alias]] 
-          : []),
-        // Foundation (founded_by_label or start_time) from wikidata
-        ...(wikidataInfo?.founded_by_label != null && wikidataInfo?.founded_by_label !== '' 
-          ? [['foundation', wikidataInfo.founded_by_label]] 
-          : []),
-        ...(wikidataInfo?.founded_by_label == null && wikidataInfo?.start_time != null 
-          ? [['foundation', new Date(wikidataInfo.start_time).toLocaleDateString()]] 
-          : []),
-        // Country label from wikidata
-        ...(wikidataInfo?.country_label != null && wikidataInfo?.country_label !== '' 
-          ? [['country', wikidataInfo.country_label]] 
-          : []),
-        // URL from wikidata (prioritize wikidata url over node url)
-        ...(wikidataInfo?.url != null && wikidataInfo?.url !== '' 
-          ? [['url', wikidataInfo.url]] 
-          : []),
-      ].filter(([, value]) => value !== undefined && value !== null)
+    ? isConnectorNode
+      ? connectorPropertyKeys
+          .map(({ label, keys }) => {
+            let value = pick(displayNode, ...keys);
+            if (value == null) return null;
+            if (label === 'Category' && value === pick(displayNode, 'type', 'node_type', 'Relationship Type', 'Action Type')) return null;
+            if (label === 'Date') value = formatDateValue(value);
+            return [label, value];
+          })
+          .filter(Boolean)
+      : [
+          ['name', displayNode.name ?? ''],
+          ['node_type', displayNode.node_type ?? displayNode.type ?? displayNode.category ?? ''],
+          ...(wikidataInfo?.description != null && wikidataInfo?.description !== ''
+            ? [['description', wikidataInfo.description]]
+            : []),
+          ...(wikidataInfo?.description == null && displayNode.description != null && displayNode.description !== ''
+            ? [['description', displayNode.description]]
+            : []),
+          ...(wikidataInfo?.alias != null && wikidataInfo?.alias !== ''
+            ? [['alias', wikidataInfo.alias]]
+            : []),
+          ...(wikidataInfo?.founded_by_label != null && wikidataInfo?.founded_by_label !== ''
+            ? [['foundation', wikidataInfo.founded_by_label]]
+            : []),
+          ...(wikidataInfo?.founded_by_label == null && wikidataInfo?.start_time != null
+            ? [['foundation', new Date(wikidataInfo.start_time).toLocaleDateString()]]
+            : []),
+          ...(wikidataInfo?.country_label != null && wikidataInfo?.country_label !== ''
+            ? [['country', wikidataInfo.country_label]]
+            : []),
+          ...(wikidataInfo?.url != null && wikidataInfo?.url !== ''
+            ? [['url', wikidataInfo.url]]
+            : []),
+        ].filter(([, value]) => value !== undefined && value !== null)
     : [];
 
   // Only show specific edge properties: Label, Relationship Summary, Category, Article URL
@@ -877,18 +920,18 @@ const RightSidebar = ({
                       const isUrlProperty = key.toLowerCase().includes('url') || key.toLowerCase() === 'link' || key.toLowerCase().includes('website') || key.toLowerCase().includes('webpage');
                       return (
                         <div key={index} className="mb-1 flex-shrink-0">
-                          <h4 className="text-xs font-normal text-[#7D7D7D] mb-0.5 leading-[14px]">{formatLabel(key)}:</h4>
+                          <h4 className="text-base font-normal text-[#7D7D7D] mb-0.5 leading-[18px]">{formatLabel(key)}:</h4>
                           {isUrlProperty && isValidUrl(String(value)) ? (
                             <a
                               href={formatUrl(String(value))}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-sm text-[#6EA4F4] hover:underline break-words leading-[14px] font-bold ml-0 block"
+                              className="text-lg text-[#6EA4F4] hover:underline break-words leading-[18px] font-bold ml-0 block"
                             >
                               {formatValue(value)}
                             </a>
                           ) : (
-                            <p className="text-sm text-[#F4F4F5] break-words leading-[14px] font-bold ml-0">
+                            <p className="text-lg text-[#F4F4F5] break-words leading-[18px] font-bold ml-0">
                               {formatValue(value)}
                             </p>
                           )}
@@ -905,18 +948,18 @@ const RightSidebar = ({
                       const isUrlProperty = key.toLowerCase().includes('url') || key.toLowerCase() === 'link' || key.toLowerCase().includes('website') || key.toLowerCase().includes('webpage');
                       return (
                         <div key={index} className="mb-1 flex-shrink-0">
-                          <h4 className="text-xs font-normal text-[#7D7D7D] mb-0.5 leading-[14px]">{formatLabel(key)}:</h4>
+                          <h4 className="text-base font-normal text-[#7D7D7D] mb-0.5 leading-[18px]">{formatLabel(key)}:</h4>
                           {isUrlProperty && isValidUrl(String(value)) ? (
                             <a
                               href={formatUrl(String(value))}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-sm text-[#6EA4F4] hover:underline break-words leading-[14px] font-bold ml-0 block"
+                              className="text-lg text-[#6EA4F4] hover:underline break-words leading-[18px] font-bold ml-0 block"
                             >
                               {formatValue(value)}
                             </a>
                           ) : (
-                            <p className="text-sm text-[#F4F4F5] break-words leading-[14px] font-bold ml-0">
+                            <p className="text-lg text-[#F4F4F5] break-words leading-[18px] font-bold ml-0">
                               {formatValue(value)}
                             </p>
                           )}
@@ -1218,23 +1261,23 @@ const RightSidebar = ({
                   {/* Node Details - Only show for non-entity nodes, or for entity nodes when wikidata is not available */}
                   {displayNode && (!isWikidataNode || (isWikidataNode && !wikidataInfo)) && filteredNodeProperties.length > 0 && (
                     <div className="w-full flex-shrink-0 mb-4">
-                      <div className="flex flex-col space-y-3">
+                      <div className="w-full flex-shrink-0 mb-4 pl-2 py-2 pr-2 bg-[#09090B] rounded-md border border-[#707070]">
                         {filteredNodeProperties.map(([key, value], index) => {
                           const isUrlProperty = key.toLowerCase().includes('url') || key.toLowerCase() === 'link' || key.toLowerCase().includes('website') || key.toLowerCase().includes('webpage');
                           return (
                             <div key={index} className="mb-1 flex-shrink-0">
-                              <h4 className="text-xs font-normal text-[#7D7D7D] mb-0.5 leading-[14px]">{formatLabel(key)}:</h4>
+                              <h4 className="text-base font-normal text-[#7D7D7D] mb-0.5 leading-[18px]">{formatLabel(key)}:</h4>
                               {isUrlProperty && isValidUrl(String(value)) ? (
                                 <a
                                   href={formatUrl(String(value))}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="text-sm text-[#6EA4F4] hover:underline break-words leading-[14px] font-bold ml-0 block"
+                                  className="text-lg text-[#6EA4F4] hover:underline break-words leading-[18px] font-bold ml-0 block"
                                 >
                                   {formatValue(value)}
                                 </a>
                               ) : (
-                                <p className="text-sm text-[#F4F4F5] break-words leading-[14px] font-bold ml-0">
+                                <p className="text-lg text-[#F4F4F5] break-words leading-[18px] font-bold ml-0">
                                   {formatValue(value)}
                                 </p>
                               )}
@@ -1253,18 +1296,18 @@ const RightSidebar = ({
                           const isUrlProperty = key.toLowerCase().includes('url') || key.toLowerCase() === 'link' || key.toLowerCase().includes('website') || key.toLowerCase().includes('webpage');
                           return (
                             <div key={index} className="mb-1 flex-shrink-0">
-                              <h4 className="text-xs font-normal text-[#7D7D7D] mb-0.5 leading-[14px]">{formatLabel(key)}:</h4>
+                              <h4 className="text-base font-normal text-[#7D7D7D] mb-0.5 leading-[18px]">{formatLabel(key)}:</h4>
                               {isUrlProperty && isValidUrl(String(value)) ? (
                                 <a
                                   href={formatUrl(String(value))}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="text-sm text-[#6EA4F4] hover:underline break-words leading-[14px] font-bold ml-0 block"
+                                  className="text-lg text-[#6EA4F4] hover:underline break-words leading-[18px] font-bold ml-0 block"
                                 >
                                   {formatValue(value)}
                                 </a>
                               ) : (
-                                <p className="text-sm text-[#F4F4F5] break-words leading-[14px] font-bold ml-0">
+                                <p className="text-lg text-[#F4F4F5] break-words leading-[18px] font-bold ml-0">
                                   {formatValue(value)}
                                 </p>
                               )}
@@ -1363,7 +1406,7 @@ const RightSidebar = ({
                       const computedSubgraph = { nodes: subgraphNodes, links: subgraphLinks };
                       if (computedSubgraph.nodes.length > 0) {
                         return (
-                          <div className="w-full flex-1 min-h-0 mt-4 mb-1 flex-auto overflow-hidden min-h-[320px]">
+                          <div className="w-full flex-1 min-h-0 mt-2 mb-1 flex-auto overflow-hidden min-h-[320px]">
                             <NeighborsGraph 
                               selectedNode={null}
                               graphData={computedSubgraph}
@@ -1377,7 +1420,7 @@ const RightSidebar = ({
                     // PRIORITY 2: Single node (or current page node in multi-select with only one node) – show its neighbors
                     if (displayNode) {
                       return (
-                        <div className="w-full flex-1 min-h-0 mt-4 mb-1 flex-auto overflow-hidden min-h-[320px]">
+                        <div className="w-full flex-1 min-h-0 mt-2 mb-1 flex-auto overflow-hidden min-h-[320px]">
                           <NeighborsGraph 
                             selectedNode={displayNode} 
                             graphData={graphData}
