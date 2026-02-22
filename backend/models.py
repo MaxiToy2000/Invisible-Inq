@@ -10,6 +10,7 @@ class Substory(BaseModel):
     brief: str
     graphPath: Optional[str] = None
     section_query: Optional[str] = None
+    section_number: Optional[int] = None  # from Postgres gr_id (id match), overrides Neo4j
 
 class Chapter(BaseModel):
     id: str
@@ -18,6 +19,7 @@ class Chapter(BaseModel):
     brief: str
     substories: List[Substory]
     total_nodes: Optional[int] = 0
+    chapter_number: Optional[int] = None  # from Postgres gr_id (id match), overrides Neo4j
 
 class Story(BaseModel):
     id: str
