@@ -45,6 +45,27 @@ const GraphViewByMap = ({ mapView = 'flat', graphData = { nodes: [], links: [] }
   const bounceAnimationsRef = useRef(new Map());
   const isRotationPausedRef = useRef(false);
   const countryDataMap = useRef(new Map());
+  const prevSubstoryIdRef = useRef(undefined);
+
+  // On substory/section change (Map view): clear map, show loading; new map appears when data is loaded
+  useEffect(() => {
+    if (prevSubstoryIdRef.current !== undefined && prevSubstoryIdRef.current !== currentSubstoryId) {
+      setLoadingCountryData(true);
+      setSelectedCountryId(null);
+      setSelectedCountryPosition(null);
+      setSelectedCountryName(null);
+      setCountryGraphData({ nodes: [], links: [] });
+      setShowRelatedPanel(false);
+      setHighlightedCountries([]);
+      if (svgRef.current) {
+        d3.select(svgRef.current).selectAll('*').remove();
+      }
+      if (graphSvgRef.current) {
+        d3.select(graphSvgRef.current).selectAll('*').remove();
+      }
+    }
+    prevSubstoryIdRef.current = currentSubstoryId;
+  }, [currentSubstoryId]);
 
   // Helper function to get consistent country ID
   const getCountryId = (feature, index) => {
@@ -85,10 +106,11 @@ const GraphViewByMap = ({ mapView = 'flat', graphData = { nodes: [], links: [] }
     loadWorldMap();
   }, []);
 
-  // Extract countries from graphData and match them to map country IDs
+  // Extract countries from graphData and match them to map country IDs; turn off map loading when data is ready
   useEffect(() => {
     if (!worldData || !worldData.features || !graphData || !graphData.nodes) {
       setHighlightedCountries([]);
+      setLoadingCountryData(false);
       return;
     }
 
@@ -100,6 +122,7 @@ const GraphViewByMap = ({ mapView = 'flat', graphData = { nodes: [], links: [] }
 
     if (countryNodes.length === 0) {
       setHighlightedCountries([]);
+      setLoadingCountryData(false);
       return;
     }
 
@@ -109,6 +132,7 @@ const GraphViewByMap = ({ mapView = 'flat', graphData = { nodes: [], links: [] }
 
     if (countryNames.length === 0) {
       setHighlightedCountries([]);
+      setLoadingCountryData(false);
       return;
     }
 
@@ -147,6 +171,7 @@ const GraphViewByMap = ({ mapView = 'flat', graphData = { nodes: [], links: [] }
 
     const uniqueMatchedIds = [...new Set(matchedCountryIds)];
     setHighlightedCountries(uniqueMatchedIds);
+    setLoadingCountryData(false);
   }, [worldData, graphData]);
 
   // Create a map of country names to country node data
@@ -1099,18 +1124,21 @@ const GraphViewByMap = ({ mapView = 'flat', graphData = { nodes: [], links: [] }
           .attr('stroke', '#525978')
           .attr('stroke-width', 1)
           .attr('pointer-events', 'all');
+        const countryAccentBarH = cardHActual * 0.7;
         nodeGroup.append('rect')
           .attr('x', -cardW / 2 + cardPad)
-          .attr('y', -cardHActual / 2 + (cardHActual - 10) / 2)
+          .attr('y', -cardHActual / 2 + (cardHActual - countryAccentBarH) / 2)
           .attr('width', accentBarW)
-          .attr('height', 10)
+          .attr('height', countryAccentBarH)
           .attr('rx', 2)
           .attr('ry', 2)
           .attr('fill', '#FD7E14')
           .attr('pointer-events', 'none');
+        const contentBlockH = titleBlockH + 14;
+        const countryContentStartY = -cardHActual / 2 + (cardHActual - contentBlockH) / 2;
         const countryText = nodeGroup.append('text')
           .attr('x', -cardW / 2 + cardPad + accentBarW + 6)
-          .attr('y', -cardHActual / 2 + cardPad + 11)
+          .attr('y', countryContentStartY + 11)
           .attr('font-family', 'Archivo, sans-serif')
           .attr('font-size', '11px')
           .attr('font-weight', 600)
@@ -1125,7 +1153,7 @@ const GraphViewByMap = ({ mapView = 'flat', graphData = { nodes: [], links: [] }
         nodeGroup.append('text')
           .text(`Type: ${typeLabel}`)
           .attr('x', -cardW / 2 + cardPad + accentBarW + 6)
-          .attr('y', -cardHActual / 2 + cardPad + titleBlockH + 10)
+          .attr('y', countryContentStartY + titleBlockH + 10)
           .attr('font-family', 'Archivo, sans-serif')
           .attr('font-size', '9px')
           .attr('fill', '#9F9FA9')
@@ -1137,7 +1165,6 @@ const GraphViewByMap = ({ mapView = 'flat', graphData = { nodes: [], links: [] }
         const color = getNodeTypeColor(d.node_type || d.type || 'Entity');
         const bgColor = getColorAt33Percent(color);
         const barW = 4;
-        const barH = 12;
         const padH = 6;
         const padV = 6;
         const gap = 4;
@@ -1152,6 +1179,7 @@ const GraphViewByMap = ({ mapView = 'flat', graphData = { nodes: [], links: [] }
         if (labelLines.length === 0) textW = 40;
         const pillW = padH + barW + gap + textW + padH;
         const pillH = Math.max(20, padV * 2 + labelLines.length * lineHeight);
+        const barH = pillH * 0.7;
         nodeGroup.append('rect')
           .attr('x', -pillW / 2)
           .attr('y', -pillH / 2)
@@ -1172,9 +1200,16 @@ const GraphViewByMap = ({ mapView = 'flat', graphData = { nodes: [], links: [] }
           .attr('ry', 2)
           .attr('fill', color)
           .attr('pointer-events', 'none');
+        const pillTextBlockH = labelLines.length * lineHeight;
+        const pillTextY = labelLines.length <= 1
+          ? 0
+          : -pillH / 2 + (pillH - pillTextBlockH) / 2 + lineHeight;
+        const pillTextX = -pillW / 2 + padH + barW + gap;
         const pillText = nodeGroup.append('text')
-          .attr('x', -pillW / 2 + padH + barW + gap)
-          .attr('y', -pillH / 2 + padV + lineHeight / 2)
+          .attr('x', pillTextX)
+          .attr('y', pillTextY)
+          .attr('text-anchor', 'start')
+          .attr('dominant-baseline', labelLines.length <= 1 ? 'middle' : 'auto')
           .attr('font-size', '12px')
           .attr('font-weight', 500)
           .attr('fill', '#FFFFFF')
@@ -1182,7 +1217,7 @@ const GraphViewByMap = ({ mapView = 'flat', graphData = { nodes: [], links: [] }
           .attr('pointer-events', 'none');
         labelLines.forEach((line, i) => {
           pillText.append('tspan')
-            .attr('x', -pillW / 2 + padH + barW + gap)
+            .attr('x', pillTextX)
             .attr('dy', i === 0 ? 0 : lineHeight)
             .text(line);
         });
