@@ -66,6 +66,12 @@ const RightSidebar = ({
   const wikidataFetchingRef = useRef(false);
   const lastFetchedNodeIdRef = useRef(null);
 
+  // Article details state (from Postgres article table via article_chunk)
+  const [articleInfo, setArticleInfo] = useState(null);
+  const [articleLoading, setArticleLoading] = useState(false);
+  const articleFetchingRef = useRef(false);
+  const lastFetchedArticleNodeIdRef = useRef(null);
+
   // Sync external sortBy with local state
   useEffect(() => {
     setSortBy(externalSortBy);
@@ -309,6 +315,11 @@ const RightSidebar = ({
     return displayNode && WIKIDATA_NODE_TYPES.some(t => nodeTypeLower.includes(t));
   }, [displayNode, nodeTypeLower]);
 
+  // Article nodes: fetch details from Postgres (article_chunk -> article)
+  const isArticleNode = useMemo(() => {
+    return displayNode && nodeTypeLower.includes('article');
+  }, [displayNode, nodeTypeLower]);
+
   // Connector nodes (Relationship, Action, Exchange): show name, type, category, date, description, process, purpose, quality in Node Properties tab
   const CONNECTOR_NODE_TYPES = ['relationship', 'action', 'exchange'];
   const isConnectorNode = useMemo(() => {
@@ -385,6 +396,15 @@ const RightSidebar = ({
     }
   }, [entityId]);
 
+  // Reset article details when node changes
+  useEffect(() => {
+    if (lastFetchedArticleNodeIdRef.current !== entityId) {
+      setArticleInfo(null);
+      articleFetchingRef.current = false;
+      lastFetchedArticleNodeIdRef.current = entityId;
+    }
+  }, [entityId]);
+
   // Fetch wikidata when displayNode changes (entity, concept, data, entity_gen, framework)
   useEffect(() => { 
     const fetchWikidata = async () => {
@@ -456,7 +476,46 @@ const RightSidebar = ({
 
     fetchWikidata();
   }, [entityId, isWikidataNode, nodeType, displayNode]);
-  
+
+  // Fetch article details from Postgres when an article node is selected
+  useEffect(() => {
+    const fetchArticleDetails = async () => {
+      if (!isArticleNode || !entityId || entityId === 'Unknown' || articleFetchingRef.current) {
+        if (!isArticleNode || !entityId || entityId === 'Unknown') {
+          setArticleInfo(null);
+        }
+        return;
+      }
+      articleFetchingRef.current = true;
+      setArticleLoading(true);
+      try {
+        const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+        const url = `${apiBaseUrl}/api/article-details/${encodeURIComponent(entityId)}`;
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' },
+        });
+        if (response.ok) {
+          const result = await response.json();
+          if (result.found && result.data) {
+            setArticleInfo(result.data);
+          } else {
+            setArticleInfo(null);
+          }
+        } else {
+          setArticleInfo(null);
+        }
+      } catch (err) {
+        console.error('Article details fetch error:', err);
+        setArticleInfo(null);
+      } finally {
+        setArticleLoading(false);
+        articleFetchingRef.current = false;
+      }
+    };
+    fetchArticleDetails();
+  }, [entityId, isArticleNode, displayNode]);
+
   // Determine which image to display (prioritize wikidata image)
   const displayImageUrl = wikidataImageUrl || displayNode?.IMG_SRC || null;
   
@@ -494,17 +553,37 @@ const RightSidebar = ({
     { label: 'Purpose', keys: ['Purpose', 'purpose'] },
     { label: 'Quality', keys: ['quality', 'Quality'] },
   ];
+
+  // For connector nodes: get linked article URL from any edge that has this node as source or target
+  const linkedArticleUrl = useMemo(() => {
+    if (!isConnectorNode || !entityId) return null;
+    const links = filteredGraphData?.links || graphData?.links || [];
+    const id = String(entityId);
+    for (const link of links) {
+      const src = link.sourceId ?? link.source?.id ?? link.source;
+      const tgt = link.targetId ?? link.target?.id ?? link.target;
+      if (String(src) === id || String(tgt) === id) {
+        const url = link.article_url ?? link.url ?? link._originalData?.article_url ?? link._originalData?.url ?? link['Article URL'];
+        if (url != null && String(url).trim() !== '') return String(url).trim();
+      }
+    }
+    return null;
+  }, [isConnectorNode, entityId, graphData, filteredGraphData]);
+
   const filteredNodeProperties = displayNode
     ? isConnectorNode
-      ? connectorPropertyKeys
-          .map(({ label, keys }) => {
-            let value = pick(displayNode, ...keys);
-            if (value == null) return null;
-            if (label === 'Category' && value === pick(displayNode, 'type', 'node_type', 'Relationship Type', 'Action Type')) return null;
-            if (label === 'Date') value = formatDateValue(value);
-            return [label, value];
-          })
-          .filter(Boolean)
+      ? [
+          ...connectorPropertyKeys
+            .map(({ label, keys }) => {
+              let value = pick(displayNode, ...keys);
+              if (value == null) return null;
+              if (label === 'Category' && value === pick(displayNode, 'type', 'node_type', 'Relationship Type', 'Action Type')) return null;
+              if (label === 'Date') value = formatDateValue(value);
+              return [label, value];
+            })
+            .filter(Boolean),
+          ...(linkedArticleUrl ? [['Article URL', linkedArticleUrl]] : []),
+        ]
       : [
           ['name', displayNode.name ?? ''],
           ['node_type', displayNode.node_type ?? displayNode.type ?? displayNode.category ?? ''],
@@ -912,9 +991,9 @@ const RightSidebar = ({
                       </div>
                   </div>
                 )}
-                
-                {/* Node Properties - Only show for non-entity nodes, or for entity nodes when wikidata is not available */}
-                {displayNode && (!isWikidataNode || (isWikidataNode && !wikidataInfo)) && filteredNodeProperties.length > 0 && (
+
+                {/* Node Properties - Only show for non-entity nodes, or for entity nodes when wikidata/article details not available */}
+                {displayNode && (!isWikidataNode || (isWikidataNode && !wikidataInfo)) && (!isArticleNode || (isArticleNode && !articleInfo)) && filteredNodeProperties.length > 0 && (
                   <div className="flex flex-col space-y-3">
                     {filteredNodeProperties.map(([key, value], index) => {
                       const isUrlProperty = key.toLowerCase().includes('url') || key.toLowerCase() === 'link' || key.toLowerCase().includes('website') || key.toLowerCase().includes('webpage');
@@ -1258,8 +1337,57 @@ const RightSidebar = ({
                     </div>
                   )}
                   
-                  {/* Node Details - Only show for non-entity nodes, or for entity nodes when wikidata is not available */}
-                  {displayNode && (!isWikidataNode || (isWikidataNode && !wikidataInfo)) && filteredNodeProperties.length > 0 && (
+                  {/* Article details (from Postgres) - Desktop */}
+                  {displayNode && isArticleNode && (articleInfo || articleLoading) && (
+                    <div className="w-full flex-shrink-0 mb-4 py-2 pr-2 bg-[#09090B] rounded-md border border-[#707070]">
+                      <div className="flex flex-col w-full pl-2">
+                        <span className="text-ms text-[#7D7D7D]">Title</span>
+                        <h2 className="text-xl font-bold text-white mb-1">
+                          {articleLoading ? 'Loading...' : (articleInfo?.title ?? articleInfo?.name ?? entityName ?? 'Article')}
+                        </h2>
+                        {articleLoading && (
+                          <div className="flex items-center gap-2 text-sm text-[#B4B4B4] mb-2">
+                            <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            Loading article details...
+                          </div>
+                        )}
+                        {!articleLoading && articleInfo && (
+                          <>
+                            {Object.entries(articleInfo)
+                              .filter(([key]) => !['title', 'name', 'archive_url', 'created_at', 'updated_at', 'id','description', 'summary', 'url', 'article_url', 'link'].includes(key))
+                              .map(([key, value]) => value != null && String(value).trim() !== '' && (
+                                <div key={key} className="mb-1">
+                                  <span className="text-ms text-[#7D7D7D]">{formatLabel(key)}</span>
+                                  <p className="text-lg font-bold text-[#F4F4F5] break-words mb-0.5">
+                                    {key === 'date' ? formatDateValue(value) : formatValue(value)}
+                                  </p>
+                                </div>
+                              ))}
+                            {(articleInfo.url || articleInfo.article_url || articleInfo.link) && (
+                              <div className="mb-1">
+                                <p className="text-[#7D7D7D] mb-1">URL</p>
+                                <a
+                                  href={formatUrl(String(articleInfo.url ?? articleInfo.article_url ?? articleInfo.link))}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-sm text-[#6EA4F4] hover:underline break-words"
+                                >
+                                  {String(articleInfo.url ?? articleInfo.article_url ?? articleInfo.link).length > 60
+                                    ? String(articleInfo.url ?? articleInfo.article_url ?? articleInfo.link).slice(0, 60) + '...'
+                                    : articleInfo.url ?? articleInfo.article_url ?? articleInfo.link}
+                                </a>
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  {/* Node Details - Only show for non-entity nodes, or for entity nodes when wikidata/article details not available */}
+                  {displayNode && (!isWikidataNode || (isWikidataNode && !wikidataInfo)) && (!isArticleNode || (isArticleNode && !articleInfo)) && filteredNodeProperties.length > 0 && (
                     <div className="w-full flex-shrink-0 mb-4">
                       <div className="w-full flex-shrink-0 mb-4 pl-2 py-2 pr-2 bg-[#09090B] rounded-md border border-[#707070]">
                         {filteredNodeProperties.map(([key, value], index) => {

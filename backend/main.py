@@ -10,7 +10,7 @@ import logging
 import os
 import aiofiles
 from config import Config
-from services import get_all_stories, get_graph_data, get_graph_data_by_section_and_country, get_gr_id_description, search_with_ai, get_story_statistics, get_all_node_types, get_calendar_data, get_cluster_data, get_entity_wikidata, get_wikidata_by_id, search_entity_wikidata
+from services import get_all_stories, get_graph_data, get_graph_data_by_section_and_country, get_gr_id_description, get_article_details_by_node_id, search_with_ai, get_story_statistics, get_all_node_types, get_calendar_data, get_cluster_data, get_entity_wikidata, get_wikidata_by_id, search_entity_wikidata
 from models import GraphData, UserCreate, UserLogin, Token, UserResponse, GoogleAuthRequest, UserActivityCreate, UserActivityResponse, AdminLoginRequest, SubmissionCreate, SubmissionResponse, UserSubscriptionResponse, SubmissionUpdateRequest, GraphCameraPositionSave, GraphCameraPositionResponse
 from pydantic import BaseModel
 from auth import create_access_token, verify_google_token, get_current_user, get_current_admin_user
@@ -1017,6 +1017,29 @@ async def get_node_types():
             status_code=500,
             detail=f"Error fetching node types: {str(e)}"
         )
+
+# ============== Article details (Postgres: article_chunk + article) ==============
+@app.get("/api/article-details/{node_id}", response_model=dict)
+async def get_article_details_endpoint(node_id: str):
+    """
+    Get detailed article data for an article node.
+    Looks up article_chunk by node id, then article by article_id. Returns article row or 404.
+    """
+    try:
+        from urllib.parse import unquote
+        node_id = unquote(node_id)
+        if not node_id or not node_id.strip():
+            raise HTTPException(status_code=400, detail="Node id is required")
+        data = get_article_details_by_node_id(node_id.strip())
+        if data is None:
+            raise HTTPException(status_code=404, detail="Article not found for this node")
+        return {"found": True, "data": data}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Error fetching article details for node_id '{node_id}': {e}")
+        raise HTTPException(status_code=500, detail=f"Error fetching article details: {str(e)}")
+
 
 # ============== Wikidata Endpoint (registered early to avoid route conflicts) ==============
 @app.get("/api/wikidata/{node_type}/{node_id}")
