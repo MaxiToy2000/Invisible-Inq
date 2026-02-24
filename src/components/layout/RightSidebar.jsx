@@ -3,11 +3,11 @@ import GlobalActivity from '../common/GlobalActivity';
 import ConnectedData from '../common/ConnectedData';
 import NeighborsGraph from '../common/NeighborsGraph';
 import { isValidUrl, formatUrl } from '../../utils/urlUtils';
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, forwardRef, useImperativeHandle } from 'react';
 import { FaChevronUp, FaChevronDown, FaChevronLeft, FaChevronRight, FaChevronCircleUp, FaChevronCircleDown, FaSquare, FaCube, FaCalendar, FaList, FaSitemap, FaGlobe, FaLink, FaArrowUp, FaArrowDown } from 'react-icons/fa';
 import StringConstants from '../StringConstants';
 
-const RightSidebar = ({
+const RightSidebar = forwardRef(({
   selectedNode = null,
   selectedEdge = null,
   forceStrength = 35,
@@ -48,7 +48,7 @@ const RightSidebar = ({
   selectedEdges = new Set(),
   hierarchyTreeAxis: externalHierarchyTreeAxis = { x: false, y: false, z: false },
   onHierarchyTreeAxisChange = () => {}
-}) => {
+}, ref) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [activeTab, setActiveTab] = useState(externalActiveTab);
@@ -168,7 +168,41 @@ const RightSidebar = ({
   const [calendarMode, setCalendarMode] = useState({ linear: false, truncated: false });
   const [hierarchyTreeAxis, setHierarchyTreeAxis] = useState(externalHierarchyTreeAxis);
   const [mapView, setMapView] = useState(externalMapView || null); // null, 'flat', 'spherical'
-  
+
+  // Expose session state for save/restore (user_session)
+  useImperativeHandle(ref, () => ({
+    getSessionState: () => ({
+      activeTab,
+      sortBy,
+      sortOrder,
+      sortNodeCategory,
+      sortNodeProperty,
+      timelineAxis,
+      calendarAxis,
+      calendarMode,
+      hierarchyTreeAxis,
+      mapView,
+    }),
+    restoreSession: (session) => {
+      if (session?.activeTab != null) setActiveTab(session.activeTab);
+      if (session?.sortBy != null) setSortBy(session.sortBy);
+      if (session?.sortOrder != null) setSortOrder(session.sortOrder);
+      if (session?.sortNodeCategory != null) setSortNodeCategory(session.sortNodeCategory);
+      if (session?.sortNodeProperty != null) setSortNodeProperty(session.sortNodeProperty);
+      if (session?.timelineAxis != null) setTimelineAxis(session.timelineAxis);
+      if (session?.calendarAxis != null) setCalendarAxis(session.calendarAxis);
+      if (session?.calendarMode != null) setCalendarMode(session.calendarMode);
+      if (session?.hierarchyTreeAxis != null) {
+        setHierarchyTreeAxis(session.hierarchyTreeAxis);
+        onHierarchyTreeAxisChange(session.hierarchyTreeAxis);
+      }
+      if (session?.mapView !== undefined && session?.mapView !== null) {
+        setMapView(session.mapView);
+        onMapViewChange(session.mapView);
+      }
+    },
+  }), [activeTab, sortBy, sortOrder, sortNodeCategory, sortNodeProperty, timelineAxis, calendarAxis, calendarMode, hierarchyTreeAxis, mapView, onHierarchyTreeAxisChange, onMapViewChange]);
+
   // Sync with external state
   useEffect(() => {
     setHierarchyTreeAxis(externalHierarchyTreeAxis);
@@ -2022,6 +2056,8 @@ const RightSidebar = ({
       </div>
     </div>
   );
-};
+});
+
+RightSidebar.displayName = 'RightSidebar';
 
 export default RightSidebar;

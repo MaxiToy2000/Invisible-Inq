@@ -11,7 +11,7 @@ import os
 import aiofiles
 from config import Config
 from services import get_all_stories, get_graph_data, get_graph_data_by_section_and_country, get_gr_id_description, search_with_ai, get_story_statistics, get_all_node_types, get_calendar_data, get_cluster_data, get_entity_wikidata, get_wikidata_by_id, search_entity_wikidata
-from models import GraphData, UserCreate, UserLogin, Token, UserResponse, GoogleAuthRequest, UserActivityCreate, UserActivityResponse, AdminLoginRequest, SubmissionCreate, SubmissionResponse, UserSubscriptionResponse, SubmissionUpdateRequest, GraphCameraPositionSave, GraphCameraPositionResponse
+from models import GraphData, UserCreate, UserLogin, Token, UserResponse, GoogleAuthRequest, UserActivityCreate, UserActivityResponse, AdminLoginRequest, SubmissionCreate, SubmissionResponse, UserSubscriptionResponse, SubmissionUpdateRequest, GraphCameraPositionSave, GraphCameraPositionResponse, UserSessionSave, UserSessionResponse
 from pydantic import BaseModel
 from auth import create_access_token, verify_google_token, get_current_user, get_current_admin_user
 from user_service import create_user, authenticate_user, get_user_by_email, create_or_update_google_user, get_user_by_id, get_all_users, get_user_statistics
@@ -19,6 +19,7 @@ from activity_service import create_activity, get_activities, get_activity_stati
 from submission_service import create_submission, process_submission, get_submission, get_user_submissions, get_all_submissions
 from subscription_service import get_user_subscription, update_user_subscription, get_subscription_plan, SUBSCRIPTION_PLANS
 from graph_camera_service import save_camera_position, get_camera_position
+from user_session_service import save_user_session, get_latest_user_session
 from rate_limit_service import check_rate_limit, record_request
 from datetime import timedelta, datetime
 
@@ -730,6 +731,50 @@ async def get_graph_camera_position_endpoint(
     except Exception as e:
         logger.exception("Error getting graph camera position: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============== User session (full UI state save/restore) ==============
+
+@app.post("/api/user-session")
+async def save_user_session_endpoint(
+    body: UserSessionSave,
+    current_user: dict = Depends(get_current_user),
+):
+    """Save the current user session (full UI state) for the authenticated user."""
+    try:
+        email = current_user.get("email")
+        if not email:
+            raise HTTPException(status_code=400, detail="User email not found")
+        ok = save_user_session(user_email=email, session_data=body.session_data)
+        if not ok:
+            raise HTTPException(status_code=500, detail="Failed to save session")
+        return {"message": "Session saved"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Error saving user session: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/user-session", response_model=Optional[UserSessionResponse])
+async def get_user_session_endpoint(
+    current_user: dict = Depends(get_current_user),
+):
+    """Get the most recent saved user session for the authenticated user."""
+    try:
+        email = current_user.get("email")
+        if not email:
+            raise HTTPException(status_code=400, detail="User email not found")
+        row = get_latest_user_session(user_email=email)
+        if not row:
+            return None
+        return UserSessionResponse(**row)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Error getting user session: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 # ============== Admin Submission Endpoints ==============
 

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, forwardRef, useImperativeHandle } from 'react';
 import * as d3 from 'd3';
 import * as topojson from 'topojson-client';
 import { getNodeTypeColor } from '../../utils/colorUtils';
@@ -24,7 +24,7 @@ const getNodeTypeDisplayName = (node) => {
   return node?.node_type ?? node?.type ?? 'entity';
 };
 
-const GraphViewByMap = ({ mapView = 'flat', graphData = { nodes: [], links: [] }, currentSubstoryId = null, currentSubstory = null }) => {
+const GraphViewByMap = forwardRef(({ mapView = 'flat', graphData = { nodes: [], links: [] }, currentSubstoryId = null, currentSubstory = null }, ref) => {
   const containerRef = useRef(null);
   const svgRef = useRef(null);
   const [containerDimensions, setContainerDimensions] = useState({ width: 0, height: 0 });
@@ -32,6 +32,13 @@ const GraphViewByMap = ({ mapView = 'flat', graphData = { nodes: [], links: [] }
   const [worldData, setWorldData] = useState(null);
   const [highlightedCountries, setHighlightedCountries] = useState([]);
   const [selectedCountryId, setSelectedCountryId] = useState(null);
+
+  useImperativeHandle(ref, () => ({
+    getSessionState: () => ({ selectedCountryId }),
+    restoreSession: (session) => {
+      if (session?.selectedCountryId !== undefined) setSelectedCountryId(session.selectedCountryId);
+    },
+  }), [selectedCountryId]);
   const [selectedCountryPosition, setSelectedCountryPosition] = useState(null);
   const [selectedCountryName, setSelectedCountryName] = useState(null);
   const [tooltipData, setTooltipData] = useState(null);
@@ -1676,7 +1683,9 @@ const GraphViewByMap = ({ mapView = 'flat', graphData = { nodes: [], links: [] }
 
     </div>
   );
-};
+});
+
+GraphViewByMap.displayName = 'GraphViewByMap';
 
 export default GraphViewByMap;
 
