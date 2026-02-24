@@ -466,6 +466,41 @@ def get_gr_id_description(gr_id_value: str) -> Optional[str]:
     return None
 
 
+def get_article_details_by_node_id(node_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Get detailed article data for an article node.
+    Uses Postgres: article_chunk.id = node_id -> article_id, then article.id = article_id.
+    Returns the article row as a dict, or None if not found.
+    """
+    if not (node_id or "").strip():
+        return None
+    try:
+        from neon_database import neon_db
+        if not neon_db.is_configured():
+            return None
+        key = str(node_id).strip()
+        # article_chunk.id matches the graph node id; article_chunk.article_id -> article.id
+        results = neon_db.execute_query(
+            "SELECT a.* FROM article a "
+            "INNER JOIN article_chunk ac ON ac.article_id = a.id "
+            "WHERE ac.id = %s LIMIT 1",
+            (key,)
+        )
+        if not results or not results[0]:
+            return None
+        row = dict(results[0])
+        # Make values JSON-serializable (e.g. date -> iso string)
+        for k, v in list(row.items()):
+            if hasattr(v, "isoformat"):
+                row[k] = v.isoformat()
+            elif hasattr(v, "strftime"):
+                row[k] = v.strftime("%Y-%m-%d")
+        return row
+    except Exception as e:
+        logger.warning(f"Could not get article details from Neon for node_id '{node_id}': {e}")
+        return None
+
+
 def get_graph_data_by_section_and_country(section_query: str, country_name: str) -> GraphData:
     """Fetch graph data filtered by section and country"""
     try:
