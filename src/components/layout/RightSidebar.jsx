@@ -513,7 +513,6 @@ const RightSidebar = forwardRef(({
 
     fetchWikidata();
   }, [entityId, isWikidataNode, nodeType, displayNode]);
-
   // Fetch article details from Postgres when an article node is selected
   useEffect(() => {
     const fetchArticleDetails = async () => {
@@ -536,6 +535,7 @@ const RightSidebar = forwardRef(({
           const result = await response.json();
           if (result.found && result.data) {
             setArticleInfo(result.data);
+            lastFetchedArticleNodeIdRef.current = entityId;
           } else {
             setArticleInfo(null);
           }
@@ -912,7 +912,7 @@ const RightSidebar = forwardRef(({
                           const href = (isUrlProperty && typeof value === 'string' && isValidUrl(value)) ? formatUrl(value) : null;
                           return (
                             <div key={idx} className="mb-1">
-                              <span className="text-ms text-[#7D7D7D]">{formatLabel(key)}:</span>
+                              <span className="text-sm text-[#7D7D7D]">{formatLabel(key)}:</span>
                               {href ? (
                                 <a href={href} target="_blank" rel="noopener noreferrer" className="text-sm text-[#6EA4F4] hover:underline block break-words">
                                   {formatValue(value)}
@@ -936,7 +936,7 @@ const RightSidebar = forwardRef(({
                               href={wikidataInfo.wikipedia_url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-[sm] text-[#6EA4F4] hover:underline"
+                              className="text-sm text-[#6EA4F4] hover:underline"
                             >
                               Wikipedia Link
                             </a>
@@ -959,6 +959,60 @@ const RightSidebar = forwardRef(({
                   </div>
                 )}
 
+                {/* Article details (from Postgres) - Mobile */}
+                {displayNode && isArticleNode && (
+                  <div className="mb-4 flex flex-col space-y-3 pb-4">
+                    <div className="flex flex-row">
+                      <div className="w-0.5 bg-[#358EE2] flex-shrink-0 ml-3 mr-3 h-full" />
+                      <div className="flex-1 flex flex-col">
+                        <span className="text-xs text-[#7D7D7D]">Title</span>
+                        <h2 className="text-xl white mb-1">
+                          {articleLoading ? 'Loading...' : (articleInfo?.title ?? articleInfo?.name ?? entityName ?? 'Article')}
+                        </h2>
+                        {articleLoading && (
+                          <div className="flex items-center gap-2 text-sm text-[#B4B4B4] mb-2">
+                            <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                            </svg>
+                            Loading article details...
+                          </div>
+                        )}
+                        {!articleLoading && articleInfo && (
+                          <>
+                            {Object.entries(articleInfo)
+                              .filter(([key]) => !['title', 'name', 'archive_url', 'created_at', 'updated_at', 'id', 'description', 'summary', 'url', 'article_url', 'link'].includes(key))
+                              .map(([key, value]) => value != null && String(value).trim() !== '' && (
+                                <div key={key} className="mb-1">
+                                  <span className="text-xs text-[#7D7D7D]">{formatLabel(key)}:</span>
+                                  <p className="text-sm text-[#F4F4F5] break-words mb-0.5">{key === 'date' ? formatDateValue(value) : formatValue(value)}</p>
+                                </div>
+                              ))}
+                            {(articleInfo.url || articleInfo.article_url || articleInfo.link) && (
+                              <div className="mb-1 mt-2">
+                                <p className="text-xs text-[#7D7D7D] mb-1">URL</p>
+                                <a
+                                  href={formatUrl(String(articleInfo.url ?? articleInfo.article_url ?? articleInfo.link))}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-sm text-[#6EA4F4] hover:underline break-words"
+                                >
+                                  {String(articleInfo.url ?? articleInfo.article_url ?? articleInfo.link).length > 60
+                                    ? String(articleInfo.url ?? articleInfo.article_url ?? articleInfo.link).slice(0, 60) + '...'
+                                    : articleInfo.url ?? articleInfo.article_url ?? articleInfo.link}
+                                </a>
+                              </div>
+                            )}
+                          </>
+                        )}
+                        {!articleLoading && !articleInfo && (
+                          <p className="text-sm text-[#B4B4B4]">No article details found for this node.</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Node Properties - Only show for non-entity nodes, or for entity nodes when wikidata/article details not available */}
                 {displayNode && (!isWikidataNode || (isWikidataNode && !wikidataInfo)) && (!isArticleNode || (isArticleNode && !articleInfo)) && filteredNodeProperties.length > 0 && (
                   <div className="flex flex-col space-y-3">
@@ -966,18 +1020,18 @@ const RightSidebar = forwardRef(({
                       const isUrlProperty = key.toLowerCase().includes('url') || key.toLowerCase() === 'link' || key.toLowerCase().includes('website') || key.toLowerCase().includes('webpage');
                       return (
                         <div key={index} className="mb-1 flex-shrink-0">
-                          <h4 className="text-base font-normal text-[#7D7D7D] mb-0.5 leading-[18px]">{formatLabel(key)}:</h4>
+                          <h4 className="text-xs font-normal text-[#7D7D7D] mb-0.5 leading-[18px]">{formatLabel(key)}:</h4>
                           {isUrlProperty && isValidUrl(String(value)) ? (
                             <a
                               href={formatUrl(String(value))}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-lg text-[#6EA4F4] hover:underline break-words leading-[18px] font-bold ml-0 block"
+                              className="text-sm text-[#6EA4F4] hover:underline break-words leading-[18px] ml-0 block"
                             >
                               {formatValue(value)}
                             </a>
                           ) : (
-                            <p className="text-lg text-[#F4F4F5] break-words leading-[18px] font-bold ml-0">
+                            <p className="text-sm text-[#F4F4F5] break-words leading-[18px] ml-0">
                               {formatValue(value)}
                             </p>
                           )}
@@ -994,18 +1048,18 @@ const RightSidebar = forwardRef(({
                       const isUrlProperty = key.toLowerCase().includes('url') || key.toLowerCase() === 'link' || key.toLowerCase().includes('website') || key.toLowerCase().includes('webpage');
                       return (
                         <div key={index} className="mb-1 flex-shrink-0">
-                          <h4 className="text-base font-normal text-[#7D7D7D] mb-0.5 leading-[18px]">{formatLabel(key)}:</h4>
+                          <h4 className="text-xs font-normal text-[#7D7D7D] mb-0.5 leading-[18px]">{formatLabel(key)}:</h4>
                           {isUrlProperty && isValidUrl(String(value)) ? (
                             <a
                               href={formatUrl(String(value))}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-lg text-[#6EA4F4] hover:underline break-words leading-[18px] font-bold ml-0 block"
+                              className="text-sm text-[#6EA4F4] hover:underline break-words leading-[18px] ml-0 block"
                             >
                               {formatValue(value)}
                             </a>
                           ) : (
-                            <p className="text-lg text-[#F4F4F5] break-words leading-[18px] font-bold ml-0">
+                            <p className="text-sm text-[#F4F4F5] break-words leading-[18px] ml-0">
                               {formatValue(value)}
                             </p>
                           )}
@@ -1162,11 +1216,11 @@ const RightSidebar = forwardRef(({
                   )}
                   
                   {/* Article details (from Postgres) - Desktop */}
-                  {displayNode && isArticleNode && (articleInfo || articleLoading) && (
+                  {displayNode && isArticleNode && (
                     <div className="w-full flex-shrink-0 mb-4 py-2 pr-2 bg-[#09090B] rounded-md border border-[#707070]">
                       <div className="flex flex-col w-full pl-2">
-                        <span className="text-ms text-[#7D7D7D]">Title</span>
-                        <h2 className="text-xl font-bold text-white mb-1">
+                        <span className="text-sm text-[#7D7D7D]">Title</span>
+                        <h2 className="text-xl text-white mb-1">
                           {articleLoading ? 'Loading...' : (articleInfo?.title ?? articleInfo?.name ?? entityName ?? 'Article')}
                         </h2>
                         {articleLoading && (
@@ -1184,8 +1238,8 @@ const RightSidebar = forwardRef(({
                               .filter(([key]) => !['title', 'name', 'archive_url', 'created_at', 'updated_at', 'id','description', 'summary', 'url', 'article_url', 'link'].includes(key))
                               .map(([key, value]) => value != null && String(value).trim() !== '' && (
                                 <div key={key} className="mb-1">
-                                  <span className="text-ms text-[#7D7D7D]">{formatLabel(key)}</span>
-                                  <p className="text-lg font-bold text-[#F4F4F5] break-words mb-0.5">
+                                  <span className="text-sm text-[#7D7D7D]">{formatLabel(key)}</span>
+                                  <p className="text-sm text-[#F4F4F5] break-words mb-0.5">
                                     {key === 'date' ? formatDateValue(value) : formatValue(value)}
                                   </p>
                                 </div>
@@ -1224,7 +1278,7 @@ const RightSidebar = forwardRef(({
                                   href={formatUrl(String(value))}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="text-lg text-[#6EA4F4] hover:underline break-words leading-[18px] font-bold ml-0 block"
+                                  className="text-sm text-[#6EA4F4] hover:underline break-words leading-[18px] ml-0 block"
                                 >
                                   {formatValue(value)}
                                 </a>
@@ -1248,18 +1302,18 @@ const RightSidebar = forwardRef(({
                           const isUrlProperty = key.toLowerCase().includes('url') || key.toLowerCase() === 'link' || key.toLowerCase().includes('website') || key.toLowerCase().includes('webpage');
                           return (
                             <div key={index} className="mb-1 flex-shrink-0">
-                              <h4 className="text-base font-normal text-[#7D7D7D] mb-0.5 leading-[18px]">{formatLabel(key)}:</h4>
+                              <h4 className="text-xs font-normal text-[#7D7D7D] mb-0.5 leading-[18px]">{formatLabel(key)}:</h4>
                               {isUrlProperty && isValidUrl(String(value)) ? (
                                 <a
                                   href={formatUrl(String(value))}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="text-lg text-[#6EA4F4] hover:underline break-words leading-[18px] font-bold ml-0 block"
+                                  className="text-sm text-[#6EA4F4] hover:underline break-words leading-[18px] ml-0 block"
                                 >
                                   {formatValue(value)}
                                 </a>
                               ) : (
-                                <p className="text-lg text-[#F4F4F5] break-words leading-[18px] font-bold ml-0">
+                                <p className="text-sm text-[#F4F4F5] break-words leading-[18px] ml-0">
                                   {formatValue(value)}
                                 </p>
                               )}
