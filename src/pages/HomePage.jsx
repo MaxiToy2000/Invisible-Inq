@@ -89,6 +89,10 @@ const HomePage = () => {
   const [savedGraphCameraPosition, setSavedGraphCameraPosition] = useState(null); // { position: {x,y,z}, target: {x,y,z} } for restore
   const [savePositionStatus, setSavePositionStatus] = useState(null); // 'saving' | 'saved' | 'error' | null (for LeftSidebar button)
   const graphRef = useRef(null);
+  const rightSidebarRef = useRef(null);
+  const graphViewByMapRef = useRef(null);
+  const pendingSessionRestoreRef = useRef(null); // { selectedNodeId, selectedEdgeId } applied when graphData is ready
+  const hasRestoredSessionRef = useRef(false); // only restore session once per login so changing chapter/substory is not overwritten
 
   // Ref to track if we're reading from URL to prevent infinite loops
   const isReadingFromURL = useRef(false);
@@ -127,18 +131,22 @@ const HomePage = () => {
 
   const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
-  // Load saved graph camera position when authenticated (timeout to avoid infinite pending)
+  // Load saved user session once when authenticated (full UI state including camera).
+  // Only restore once per login so that when the user changes chapter/substory, we don't overwrite with saved session.
   useEffect(() => {
     if (!isAuthenticated()) {
       setSavedGraphCameraPosition(null);
+      pendingSessionRestoreRef.current = null;
+      hasRestoredSessionRef.current = false;
       return;
     }
+    if (hasRestoredSessionRef.current) return; // already restored this login
     const token = localStorage.getItem('token');
     if (!token) return;
     let cancelled = false;
     const ac = new AbortController();
     const timeoutId = setTimeout(() => ac.abort(), 8000);
-    fetch(`${apiBaseUrl}/api/graph-camera-position`, {
+    fetch(`${apiBaseUrl}/api/user-session`, {
       headers: { Authorization: `Bearer ${token}` },
       signal: ac.signal,
     })
@@ -147,12 +155,32 @@ const HomePage = () => {
         if (res.status === 204) return null;
         return res.json();
       })
-      .then((data) => {
-        if (cancelled || !data) return;
-        setSavedGraphCameraPosition({
-          position: { x: data.position_x, y: data.position_y, z: data.position_z },
-          target: { x: data.target_x, y: data.target_y, z: data.target_z },
-        });
+      .then((row) => {
+        if (cancelled || !row?.session_data) return;
+        hasRestoredSessionRef.current = true; // mark restored so we don't re-apply when deps change
+        const s = row.session_data;
+        if (s.currentStoryId) selectStory(s.currentStoryId);
+        if (s.currentChapterId) setTimeout(() => selectChapter(s.currentChapterId), 50);
+        if (s.currentSubstoryId != null) setTimeout(() => selectSubstory(s.currentSubstoryId), 100);
+        if (s.viewMode != null) setViewMode(s.viewMode);
+        if (s.showRightSidebar !== undefined) setShowRightSidebar(s.showRightSidebar);
+        if (s.is3D !== undefined) setIs3D(s.is3D);
+        if (s.forceStrength != null) setForceStrength(s.forceStrength);
+        if (s.nodeSize != null) setNodeSize(s.nodeSize);
+        if (s.labelSize != null) setLabelSize(s.labelSize);
+        if (s.edgeLength != null) setEdgeLength(s.edgeLength);
+        if (s.edgeThickness != null) setEdgeThickness(s.edgeThickness);
+        if (s.sortBy !== undefined) setSortBy(s.sortBy);
+        if (s.sortOrder !== undefined) setSortOrder(s.sortOrder);
+        if (s.rightSidebarActiveTab != null) setRightSidebarActiveTab(s.rightSidebarActiveTab);
+        if (s.aiSummaryQuery != null) setAiSummaryQuery(s.aiSummaryQuery);
+        if (s.isFullscreen !== undefined) setIsFullscreen(s.isFullscreen);
+        rightSidebarRef.current?.restoreSession?.(s);
+        graphViewByMapRef.current?.restoreSession?.(s);
+        if (s.savedGraphCameraPosition) setSavedGraphCameraPosition(s.savedGraphCameraPosition);
+        if (s.selectedNodeId != null || s.selectedEdgeId != null) {
+          pendingSessionRestoreRef.current = { selectedNodeId: s.selectedNodeId ?? null, selectedEdgeId: s.selectedEdgeId ?? null };
+        }
       })
       .catch(() => {})
       .finally(() => clearTimeout(timeoutId));
@@ -161,58 +189,100 @@ const HomePage = () => {
       ac.abort();
       clearTimeout(timeoutId);
     };
-  }, [isAuthenticated, apiBaseUrl, user]);
+    // Intentionally omit selectStory, selectChapter, selectSubstory so changing chapter/substory does not re-run this effect
+  }, [isAuthenticated, apiBaseUrl, user?.email]);
 
-  const handleSaveGraphCameraPosition = useCallback(async (state) => {
+  // Apply pending selected node/edge when graphData is ready
+  useEffect(() => {
+    const pending = pendingSessionRestoreRef.current;
+    if (!pending || !graphData?.nodes?.length) return;
+    if (pending.selectedNodeId != null) {
+      const node = graphData.nodes.find((n) => String(n.id) === String(pending.selectedNodeId));
+      if (node) selectNode(node);
+    }
+    if (pending.selectedEdgeId != null && graphData.links?.length) {
+      const link = graphData.links.find((l) => {
+        const sid = l.source?.id ?? l.source ?? l.sourceId;
+        const tid = l.target?.id ?? l.target ?? l.targetId;
+        const id = l.id ?? `${sid}-${tid}`;
+        return String(id) === String(pending.selectedEdgeId) || `${sid}-${tid}` === String(pending.selectedEdgeId);
+      });
+      if (link) selectEdge(link);
+    }
+    pendingSessionRestoreRef.current = null;
+  }, [graphData, selectNode, selectEdge]);
+
+  const handleSaveUserSession = useCallback(async (cameraState) => {
     const token = localStorage.getItem('token');
     if (!token) throw new Error('Not authenticated');
-    const res = await fetch(`${apiBaseUrl}/api/graph-camera-position`, {
+    const rs = rightSidebarRef.current?.getSessionState?.() ?? {};
+    const mapState = graphViewByMapRef.current?.getSessionState?.() ?? {};
+    const sessionData = {
+      userEmail: user?.email ?? null,
+      currentStoryId: currentStoryId ?? null,
+      currentChapterId: currentChapterId ?? null,
+      currentSubstoryId: currentSubstoryId ?? null,
+      viewMode: viewMode ?? 'Graph',
+      selectedNodeId: selectedNode?.id ?? null,
+      selectedEdgeId: selectedEdge ? (selectedEdge.id ?? `${selectedEdge.source?.id ?? selectedEdge.source ?? selectedEdge.sourceId}-${selectedEdge.target?.id ?? selectedEdge.target ?? selectedEdge.targetId}`) : null,
+      isFullscreen: isFullscreen ?? false,
+      showQuery: undefined,
+      query: aiSummaryQuery ?? null,
+      activeTab: rs.activeTab ?? rightSidebarActiveTab,
+      showRightSidebar: showRightSidebar ?? true,
+      is3D: is3D ?? true,
+      forceStrength: forceStrength ?? 50,
+      nodeSize: nodeSize ?? 50,
+      labelSize: labelSize ?? 50,
+      edgeLength: edgeLength ?? 50,
+      edgeThickness: edgeThickness ?? 50,
+      sortBy: rs.sortBy ?? sortBy,
+      sortOrder: rs.sortOrder ?? sortOrder,
+      timelineAxis: rs.timelineAxis ?? null,
+      calendarAxis: rs.calendarAxis ?? null,
+      calendarMode: rs.calendarMode ?? null,
+      hierarchyTreeAxis: rs.hierarchyTreeAxis ?? hierarchyTreeAxis,
+      mapView: rs.mapView ?? mapView,
+      selectedCountryId: mapState.selectedCountryId ?? null,
+      savedGraphCameraPosition: cameraState ?? null,
+    };
+    const res = await fetch(`${apiBaseUrl}/api/user-session`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        position_x: state.position.x,
-        position_y: state.position.y,
-        position_z: state.position.z,
-        target_x: state.target.x,
-        target_y: state.target.y,
-        target_z: state.target.z,
-      }),
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ session_data: sessionData }),
     });
-    if (!res.ok) throw new Error('Failed to save');
-  }, [apiBaseUrl]);
+    if (!res.ok) throw new Error('Failed to save session');
+  }, [apiBaseUrl, user?.email, currentStoryId, currentChapterId, currentSubstoryId, viewMode, selectedNode, selectedEdge, isFullscreen, aiSummaryQuery, rightSidebarActiveTab, showRightSidebar, is3D, forceStrength, nodeSize, labelSize, edgeLength, edgeThickness, sortBy, sortOrder, hierarchyTreeAxis, mapView]);
 
   const handleSavePositionClick = useCallback(async () => {
     const state = graphRef.current?.getCurrentCameraState?.();
-    if (!state || !isAuthenticated) return;
+    if (!state || !isAuthenticated()) return;
     setSavePositionStatus('saving');
     try {
-      await handleSaveGraphCameraPosition(state);
+      await handleSaveUserSession(state);
       setSavePositionStatus('saved');
       setTimeout(() => setSavePositionStatus(null), 2000);
     } catch {
       setSavePositionStatus('error');
       setTimeout(() => setSavePositionStatus(null), 2000);
     }
-  }, [isAuthenticated, handleSaveGraphCameraPosition]);
+  }, [isAuthenticated, handleSaveUserSession]);
 
   // Reset camera to initial view, then save the actual camera position after reset to DB
   const handleResetPositionClick = useCallback(async () => {
     graphRef.current?.resetCameraToInitial?.();
-    if (!isAuthenticated) return;
+    if (!isAuthenticated()) return;
     const resetTransitionMs = 500;
     await new Promise((r) => setTimeout(r, resetTransitionMs + 100));
     const state = graphRef.current?.getCurrentCameraState?.();
     if (!state) return;
     try {
-      await handleSaveGraphCameraPosition(state);
+      await handleSaveUserSession(state);
       setSavedGraphCameraPosition(state);
     } catch {
       // camera was still reset visually
     }
-  }, [isAuthenticated, handleSaveGraphCameraPosition]);
+  }, [isAuthenticated, handleSaveUserSession]);
 
   // Close user menu when clicking outside
   useEffect(() => {
@@ -2447,6 +2517,9 @@ const HomePage = () => {
       onSavePositionClick={isAuthenticated ? handleSavePositionClick : undefined}
       savePositionStatus={savePositionStatus}
       onResetPositionClick={handleResetPositionClick}
+      rightSidebarRef={rightSidebarRef}
+      graphViewByMapRef={graphViewByMapRef}
+      onHomePageClick={() => setShowGraphView(false)}
     >
         <div className="flex flex-col h-full">
           {}
@@ -2468,8 +2541,9 @@ const HomePage = () => {
             <>
               {/* Map View - displayed between left and right sidebars */}
               {selectedSceneContainer === 'map' && mapView && (
-                <GraphViewByMap 
-                  mapView={mapView} 
+                <GraphViewByMap
+                  ref={graphViewByMapRef}
+                  mapView={mapView}
                   graphData={graphData}
                   currentSubstoryId={currentSubstoryId}
                   currentSubstory={currentSubstory}

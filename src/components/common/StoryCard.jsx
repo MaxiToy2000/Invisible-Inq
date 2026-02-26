@@ -5,7 +5,11 @@ import { FaChevronDown } from 'react-icons/fa';
 const StoryCard = ({ story, onClick, onChapterSelect, totalNodes = 0, entityCount = 0, highlightedNodes = 0, updatedDate = null }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [selectedChapter, setSelectedChapter] = useState(null);
+  const [imgError, setImgError] = useState(false);
   const dropdownRef = useRef(null);
+
+  const imageUrl = (story?.img_url || '').trim() || null;
+  const showImage = imageUrl && !imgError;
   
   // Calculate total number of chapters
   const totalChapters = story?.chapters?.length || 0;
@@ -73,13 +77,20 @@ const StoryCard = ({ story, onClick, onChapterSelect, totalNodes = 0, entityCoun
       className="flex flex-col w-full cursor-pointer group transition-all duration-300 ease-in-out hover:scale-[1.02] hover:shadow-md hover:shadow-white/10 gap-[15px] p-[1px] relative min-h-0 border border-[#d3d3d3] rounded-[5px]"
       onClick={onClick}
     >
-      {/* Top section with light grey background - approximately half the card height */}
+      {/* Top section: image from gr_id img_url or placeholder */}
       <div 
         className="relative w-full overflow-hidden transition-all duration-300 group-hover:brightness-110 rounded-[5px] bg-[#D3D3D3] aspect-[297/191]"
       >
+        {showImage ? (
+          <img
+            src={imageUrl}
+            alt=""
+            className="absolute inset-0 w-full h-full object-cover"
+            onError={() => setImgError(true)}
+          />
+        ) : null}
         {/* Hover overlay effect */}
         <div className="absolute inset-0 bg-gradient-to-br from-white/0 to-white/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-        
         {/* UPDATING pill badge in top-left */}
         <div
           className="absolute top-0 left-0 z-10 transition-all duration-300 group-hover:scale-110 group-hover:shadow-lg bg-[#00B25F] rounded-full px-3 py-1 m-2 text-[11px] font-semibold text-white uppercase tracking-[0.5px]"
@@ -184,6 +195,7 @@ StoryCard.propTypes = {
     title: PropTypes.string,
     headline: PropTypes.string,
     brief: PropTypes.string,
+    img_url: PropTypes.string,
     chapters: PropTypes.arrayOf(PropTypes.shape({
       id: PropTypes.string,
       title: PropTypes.string,

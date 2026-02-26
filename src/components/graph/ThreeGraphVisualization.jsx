@@ -557,7 +557,10 @@ const ThreeGraphVisualization = React.memo(forwardRef(({
     startMouseY: 0,
     initialNodePositions: new Map() // Map of nodeId -> {x, y, z}
   });
-  
+
+  // When true, box/lasso selection is in progress; block pointer events from reaching OrbitControls
+  const selectionGestureActiveRef = useRef(false);
+
   // Keep refs in sync with state to avoid useEffect re-runs
   useEffect(() => {
     selectedNodesRef.current = selectedNodes;
@@ -1411,6 +1414,28 @@ const ThreeGraphVisualization = React.memo(forwardRef(({
         // Track the currently hovered node for drag detection
         hoveredNodeRef.current = node;
         
+        // Rotation only when dragging empty space; over a node / in box or lasso = no rotate
+        if (graphRef.current?.controls) {
+          const controls = graphRef.current.controls();
+          if (controls) {
+            if (selectionMode === 'individual') {
+              controls.mouseButtons = {
+                LEFT: node ? null : THREE.MOUSE.ROTATE,
+                MIDDLE: THREE.MOUSE.DOLLY,
+                RIGHT: THREE.MOUSE.PAN
+              };
+            } else if (selectionMode === 'box' || selectionMode === 'lasso') {
+              controls.enableRotate = false;
+              controls.mouseButtons = {
+                LEFT: null,
+                MIDDLE: THREE.MOUSE.DOLLY,
+                RIGHT: null
+              };
+            }
+            controls.update();
+          }
+        }
+        
         // Clear any existing timeout
         if (hoverTimeoutRef.current) {
           clearTimeout(hoverTimeoutRef.current);
@@ -1418,8 +1443,10 @@ const ThreeGraphVisualization = React.memo(forwardRef(({
         }
 
         if (node) {
-          // Update cursor if in multi-select mode and hovering over a selected node
-          if ((selectionMode === 'box' || selectionMode === 'lasso') && selectedNodes.has(node.id)) {
+          // Cursor: individual = grab over any node (drag moves node); box/lasso = grab only over selected nodes
+          if (selectionMode === 'individual') {
+            setCursorStyle('grab');
+          } else if ((selectionMode === 'box' || selectionMode === 'lasso') && selectedNodes.has(node.id)) {
             setCursorStyle('grab');
           } else if (selectionMode === 'box' || selectionMode === 'lasso') {
             setCursorStyle('default');
@@ -1464,11 +1491,7 @@ const ThreeGraphVisualization = React.memo(forwardRef(({
           // Hide tooltip when not hovering
           setHoveredNode(null);
           setTooltipPosition(null);
-          
-          // Reset cursor if in multi-select mode
-          if (selectionMode === 'box' || selectionMode === 'lasso') {
-            setCursorStyle('default');
-          }
+          setCursorStyle('default');
         }
       })
       .onNodeRightClick(node => {
@@ -1579,23 +1602,25 @@ const ThreeGraphVisualization = React.memo(forwardRef(({
       })
       // Add node drag event handlers
       .onNodeDrag((node) => {
-        // In INDIVIDUAL mode, only allow dragging if there's significant movement
-        // This prevents accidental pinning when just clicking
+        // Keep the rest of the graph balanced: stop the force simulation for the entire drag
+        // so only the dragged node(s) move; other nodes and edges stay fixed.
+        if (graphRef.current?._simulation) {
+          graphRef.current._simulation.alpha(0);
+          graphRef.current._simulation.stop();
+        }
+        // INDIVIDUAL mode: drag moves only this node (and its edges); other nodes stay in place.
+        // Pin the node after significant movement to avoid pinning on click-only.
         if (selectionMode === 'individual') {
+          if (isMountedRef.current) setCursorStyle('grabbing');
           // Store initial position if not set
           if (!node.__dragStartPos) {
             node.__dragStartPos = { x: node.x, y: node.y, z: node.z };
           }
-          
-          // Calculate drag distance
           const dragDist = Math.sqrt(
             Math.pow(node.x - node.__dragStartPos.x, 2) +
             Math.pow(node.y - node.__dragStartPos.y, 2) +
             Math.pow(node.z - node.__dragStartPos.z, 2)
           );
-          
-          // Only pin if there's been significant drag movement (threshold of 1 unit)
-          // This prevents accidental pinning from clicks
           if (dragDist > 1) {
             node.fx = node.x;
             node.fy = node.y;
@@ -1658,7 +1683,8 @@ const ThreeGraphVisualization = React.memo(forwardRef(({
         }
       })
       .onNodeDragEnd(node => {
-        // Pin the node when it's dragged (fix its position)
+        // Pin the node when it's dragged (fix its position).
+        // Do not restart the simulation here so the rest of the graph stays balanced.
         if (node) {
           // In INDIVIDUAL mode, only pin if there was significant drag movement
           if (selectionMode === 'individual') {
@@ -1714,15 +1740,13 @@ const ThreeGraphVisualization = React.memo(forwardRef(({
           node.fz = node.z;
           
           
-          // Cursor will be updated by the mousemove handler when mouse moves
-          // Set to default for now, but it will change to 'grab' if still in region
-          if (selectionMode !== 'individual' && isMountedRef.current) {
-            setCursorStyle('default');
-          }
+          // Reset cursor after drag end (mousemove will set 'grab' again if over region in box/lasso)
+          if (isMountedRef.current) setCursorStyle('default');
         }
       })
-      // Enable node dragging - but it will be disabled for individual mode to prevent accidental movement
-      .enableNodeDrag(selectionMode !== 'individual');
+      // Enable node dragging in all modes: individual = drag single node (camera only when dragging empty space);
+      // box/lasso = drag selected nodes as a group
+      .enableNodeDrag(true);
 
     // Configure controls
     if (graphRef.current.controls) {
@@ -3720,10 +3744,10 @@ const ThreeGraphVisualization = React.memo(forwardRef(({
       };
       controls.update();
       
-      // CRITICAL: Disable node dragging in individual mode to prevent accidental node movement
-      // This prevents nodes (especially connected ones) from being moved when clicking
+      // In individual mode: enable node drag so that dragging a node moves only that node (and its edges);
+      // dragging on empty space still rotates the camera via OrbitControls
       if (graphRef.current.enableNodeDrag) {
-        graphRef.current.enableNodeDrag(false);
+        graphRef.current.enableNodeDrag(true);
       }
       
       // Clear multi-selection when switching to individual mode
@@ -3773,6 +3797,45 @@ const ThreeGraphVisualization = React.memo(forwardRef(({
     let endX = 0;
     let endY = 0;
     
+    // Block pointer events from reaching OrbitControls during selection/region-drag (they use pointer events)
+    const handlePointerDown = (e) => {
+      if (e.button !== 0) return;
+      if (nodeOrEdgeClickedRef.current) return;
+      if (!container.contains(e.target)) return;
+      const rect = container.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+      if (selectedRegionRef.current && selectedNodesRef.current.size > 0) {
+        let isInsideRegion = false;
+        if (selectedRegionRef.current.type === 'box') {
+          isInsideRegion = mouseX >= selectedRegionRef.current.minX &&
+                          mouseX <= selectedRegionRef.current.maxX &&
+                          mouseY >= selectedRegionRef.current.minY &&
+                          mouseY <= selectedRegionRef.current.maxY;
+        }
+        if (isInsideRegion) {
+          selectionGestureActiveRef.current = true;
+          e.stopPropagation(); // do not preventDefault: allow mousedown to fire so selection works
+          return;
+        }
+      }
+      selectionGestureActiveRef.current = true;
+      e.stopPropagation(); // do not preventDefault: allow mousedown to fire so selection works
+    };
+
+    const handlePointerMove = (e) => {
+      if (selectionGestureActiveRef.current) {
+        e.stopPropagation(); // block canvas from receiving so OrbitControls doesn't rotate
+      }
+    };
+
+    const handlePointerUp = (e) => {
+      if (e.button !== 0) return;
+      if (selectionGestureActiveRef.current) {
+        e.stopPropagation(); // block canvas from receiving so OrbitControls doesn't rotate
+      }
+    };
+
     const handleMouseDown = (e) => {
       // Only handle left mouse button
       if (e.button !== 0) return;
@@ -3796,14 +3859,10 @@ const ThreeGraphVisualization = React.memo(forwardRef(({
                           mouseY <= selectedRegionRef.current.maxY;
         }
         
-        // If clicking inside selected region, start region-based subgraph dragging
+        // If clicking inside selected region (empty space OR a selected node), start region-based subgraph dragging.
+        // Grabbing one node of the selection acts the same as grabbing the area: all selected nodes move together.
         if (isInsideRegion) {
-          // Check if clicking on a node (let the node drag handler handle it)
-          if (hoveredNodeRef.current && selectedNodesRef.current.has(hoveredNodeRef.current.id)) {
-            return; // Let the built-in node drag handler handle this
-          }
-          
-          // Start region-based dragging for the subgraph
+          // Start region-based dragging for the subgraph (same behavior whether user clicked on a node or empty space)
           const graph = graphRef.current;
           if (graph) {
             const graphData = graph.graphData();
@@ -3822,6 +3881,12 @@ const ThreeGraphVisualization = React.memo(forwardRef(({
                 startMouseY: e.clientY,
                 initialNodePositions: initialPositions
               };
+              
+              // Keep the rest of the graph balanced: stop simulation so only selected nodes move
+              if (graph._simulation) {
+                graph._simulation.alpha(0);
+                graph._simulation.stop();
+              }
               
               // Disable controls during region drag
               const controls = graph.controls();
@@ -3878,6 +3943,10 @@ const ThreeGraphVisualization = React.memo(forwardRef(({
       startY = mouseY;
       endX = mouseX;
       endY = mouseY;
+      
+      // Prevent orbit controls from receiving this mousedown so the graph doesn't rotate when we finish the selection
+      e.preventDefault();
+      e.stopPropagation();
       
       // Update visual state immediately so drawing starts from first click point
       if (isMountedRef.current) {
@@ -3959,8 +4028,12 @@ const ThreeGraphVisualization = React.memo(forwardRef(({
           }
         });
         
-        // Trigger re-render
+        // Trigger re-render; keep simulation stopped so the rest of the graph stays fixed
         graph.graphData(graphData);
+        if (graph._simulation) {
+          graph._simulation.alpha(0);
+          graph._simulation.stop();
+        }
         
         e.preventDefault();
         e.stopPropagation();
@@ -4064,6 +4137,7 @@ const ThreeGraphVisualization = React.memo(forwardRef(({
           initialNodePositions: new Map()
         };
         
+        selectionGestureActiveRef.current = false;
         if (isMountedRef.current) {
           setCursorStyle('grab');
         }
@@ -4184,14 +4258,22 @@ const ThreeGraphVisualization = React.memo(forwardRef(({
         };
         controls.update();
       }
+      selectionGestureActiveRef.current = false;
     };
 
     // Use capture phase to intercept events before they reach the graph controls
+    container.addEventListener('pointerdown', handlePointerDown, true);
+    window.addEventListener('pointermove', handlePointerMove, true);
+    window.addEventListener('pointerup', handlePointerUp, true);
     container.addEventListener('mousedown', handleMouseDown, true);
     window.addEventListener('mousemove', handleMouseMove, true);
     window.addEventListener('mouseup', handleMouseUp, true);
 
     return () => {
+      selectionGestureActiveRef.current = false;
+      container.removeEventListener('pointerdown', handlePointerDown, true);
+      window.removeEventListener('pointermove', handlePointerMove, true);
+      window.removeEventListener('pointerup', handlePointerUp, true);
       container.removeEventListener('mousedown', handleMouseDown, true);
       window.removeEventListener('mousemove', handleMouseMove, true);
       window.removeEventListener('mouseup', handleMouseUp, true);
@@ -4205,7 +4287,43 @@ const ThreeGraphVisualization = React.memo(forwardRef(({
     const container = containerRef.current;
     let isSelecting = false;
     let path = [];
-    
+
+    // Block pointer events from reaching OrbitControls during selection/region-drag
+    const handlePointerDown = (e) => {
+      if (e.button !== 0) return;
+      if (nodeOrEdgeClickedRef.current) return;
+      if (!container.contains(e.target)) return;
+      const rect = container.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+      if (selectedRegionRef.current && selectedNodesRef.current.size > 0) {
+        let isInsideRegion = false;
+        if (selectedRegionRef.current.type === 'lasso' && selectedRegionRef.current.path) {
+          isInsideRegion = isPointInPolygon(mouseX, mouseY, selectedRegionRef.current.path);
+        }
+        if (isInsideRegion) {
+          selectionGestureActiveRef.current = true;
+          e.stopPropagation(); // do not preventDefault: allow mousedown to fire so selection works
+          return;
+        }
+      }
+      selectionGestureActiveRef.current = true;
+      e.stopPropagation(); // do not preventDefault: allow mousedown to fire so selection works
+    };
+
+    const handlePointerMove = (e) => {
+      if (selectionGestureActiveRef.current) {
+        e.stopPropagation(); // block canvas from receiving so OrbitControls doesn't rotate
+      }
+    };
+
+    const handlePointerUp = (e) => {
+      if (e.button !== 0) return;
+      if (selectionGestureActiveRef.current) {
+        e.stopPropagation(); // block canvas from receiving so OrbitControls doesn't rotate
+      }
+    };
+
     const handleMouseDown = (e) => {
       // Only handle left mouse button
       if (e.button !== 0) return;
@@ -4227,14 +4345,10 @@ const ThreeGraphVisualization = React.memo(forwardRef(({
           isInsideRegion = isPointInPolygon(mouseX, mouseY, selectedRegionRef.current.path);
         }
         
-        // If clicking inside selected region, start region-based subgraph dragging
+        // If clicking inside selected region (empty space OR a selected node), start region-based subgraph dragging.
+        // Grabbing one node of the selection acts the same as grabbing the area: all selected nodes move together.
         if (isInsideRegion) {
-          // Check if clicking on a node (let the node drag handler handle it)
-          if (hoveredNodeRef.current && selectedNodesRef.current.has(hoveredNodeRef.current.id)) {
-            return; // Let the built-in node drag handler handle this
-          }
-          
-          // Start region-based dragging for the subgraph
+          // Start region-based dragging for the subgraph (same behavior whether user clicked on a node or empty space)
           const graph = graphRef.current;
           if (graph) {
             const graphData = graph.graphData();
@@ -4253,6 +4367,12 @@ const ThreeGraphVisualization = React.memo(forwardRef(({
                 startMouseY: e.clientY,
                 initialNodePositions: initialPositions
               };
+              
+              // Keep the rest of the graph balanced: stop simulation so only selected nodes move
+              if (graph._simulation) {
+                graph._simulation.alpha(0);
+                graph._simulation.stop();
+              }
               
               // Disable controls during region drag
               const controls = graph.controls();
@@ -4311,6 +4431,10 @@ const ThreeGraphVisualization = React.memo(forwardRef(({
       
       isSelecting = true;
       path = [startPoint];
+      
+      // Prevent orbit controls from receiving this mousedown so the graph doesn't rotate when we finish the selection
+      e.preventDefault();
+      e.stopPropagation();
       
       // Update visual state immediately so drawing starts from first click point
       if (isMountedRef.current) {
@@ -4388,8 +4512,12 @@ const ThreeGraphVisualization = React.memo(forwardRef(({
           }
         });
         
-        // Trigger re-render
+        // Trigger re-render; keep simulation stopped so the rest of the graph stays fixed
         graph.graphData(graphData);
+        if (graph._simulation) {
+          graph._simulation.alpha(0);
+          graph._simulation.stop();
+        }
         
         e.preventDefault();
         e.stopPropagation();
@@ -4504,6 +4632,7 @@ const ThreeGraphVisualization = React.memo(forwardRef(({
           initialNodePositions: new Map()
         };
         
+        selectionGestureActiveRef.current = false;
         if (isMountedRef.current) {
           setCursorStyle('grab');
         }
@@ -4527,6 +4656,20 @@ const ThreeGraphVisualization = React.memo(forwardRef(({
             path: []
           });
         }
+        const controls = graphRef.current?.controls();
+        if (controls) {
+          controls.enabled = true;
+          controls.enableRotate = false;
+          controls.enablePan = false;
+          controls.enableZoom = true;
+          controls.mouseButtons = {
+            LEFT: null,
+            MIDDLE: THREE.MOUSE.DOLLY,
+            RIGHT: null
+          };
+          controls.update();
+        }
+        selectionGestureActiveRef.current = false;
         return;
       }
       
@@ -4639,14 +4782,22 @@ const ThreeGraphVisualization = React.memo(forwardRef(({
         };
         controls.update();
       }
+      selectionGestureActiveRef.current = false;
     };
 
     // Use capture phase to intercept events before they reach the graph controls
+    container.addEventListener('pointerdown', handlePointerDown, true);
+    window.addEventListener('pointermove', handlePointerMove, true);
+    window.addEventListener('pointerup', handlePointerUp, true);
     container.addEventListener('mousedown', handleMouseDown, true);
     window.addEventListener('mousemove', handleMouseMove, true);
     window.addEventListener('mouseup', handleMouseUp, true);
 
     return () => {
+      selectionGestureActiveRef.current = false;
+      container.removeEventListener('pointerdown', handlePointerDown, true);
+      window.removeEventListener('pointermove', handlePointerMove, true);
+      window.removeEventListener('pointerup', handlePointerUp, true);
       container.removeEventListener('mousedown', handleMouseDown, true);
       window.removeEventListener('mousemove', handleMouseMove, true);
       window.removeEventListener('mouseup', handleMouseUp, true);

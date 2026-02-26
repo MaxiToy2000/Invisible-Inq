@@ -28,6 +28,7 @@ class Story(BaseModel):
     brief: str
     path: str
     chapters: List[Chapter]
+    img_url: Optional[str] = None
 
 class Node(BaseModel):
     id: str
@@ -213,4 +214,16 @@ class GraphCameraPositionResponse(BaseModel):
     target_x: float
     target_y: float
     target_z: float
+    saved_at: datetime
+
+
+# User session (full UI state save/restore)
+class UserSessionSave(BaseModel):
+    session_data: dict  # JSON object with userEmail and all UI state
+
+
+class UserSessionResponse(BaseModel):
+    id: int
+    user_email: str
+    session_data: dict
     saved_at: datetime

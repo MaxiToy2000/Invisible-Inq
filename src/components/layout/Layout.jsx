@@ -68,6 +68,9 @@ const Layout = ({
   onSavePositionClick = null,
   savePositionStatus = null,
   onResetPositionClick = null,
+  rightSidebarRef = null,
+  graphViewByMapRef = null,
+  onHomePageClick = null,
 }) => {
   const [leftSidebarCollapsed, setLeftSidebarCollapsed] = useState(false);
   const [rightSidebarCollapsed, setRightSidebarCollapsed] = useState(false);
@@ -143,6 +146,7 @@ const Layout = ({
           onChapterSelect={onChapterSelect}
           onSubstorySelect={onSubstorySelect}
           showStoryDropdown={true}
+          onHomePageClick={onHomePageClick}
         />
 
         {}
@@ -188,12 +192,13 @@ const Layout = ({
       </div>
 
       {showRightSidebar && (
-      <div className={`w-100 flex-shrink-0 h-full relative ${
+      <div className={`w-85 flex-shrink-0 h-full relative ${
         isMobile ? 'border-t-2 sticky bottom-0 bg-[#09090B] z-10' : ''
       } ${
         isMobile && rightSidebarCollapsed ? 'h-[45px]' : isMobile ? 'h-[20vh]' : ''
       }`}>
         <RightSidebar
+          ref={rightSidebarRef}
           selectedNode={selectedNode}
           selectedEdge={selectedEdge}
           forceStrength={forceStrength}

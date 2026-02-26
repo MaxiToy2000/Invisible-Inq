@@ -313,13 +313,20 @@ def get_all_stories() -> List[Story]:
 
             chapters.sort(key=lambda c: (c.title or "").lower())
 
+            story_img_url = story_data.get("story_img_url")
+            if story_img_url is not None and str(story_img_url).strip() == "":
+                story_img_url = None
+            elif story_img_url is not None:
+                story_img_url = str(story_img_url).strip() or None
+
             stories.append(Story(
                 id=story_id,
                 title=story_title,
                 headline=story_title,
                 brief=story_brief,  # Already processed above
                 path=generate_id_from_title(story_title),
-                chapters=chapters
+                chapters=chapters,
+                img_url=story_img_url
             ))
         logger.info(f"Successfully processed {len(stories)} stories")
         return stories
@@ -1130,15 +1137,16 @@ def get_entity_wikidata(entity_name: str) -> Dict[str, Any]:
 
 def get_wikidata_by_id(node_id: str, node_type: str = None) -> Dict[str, Any]:
     """
-    Fetch wikidata information by entity/node id.
-    Looks up in entity_wikidata table by id or gid (Neo4j node id mapping).
+    Fetch entity by node id and enrich with all fields from entity_wikidata.
+    Matches on entity.id = entity_wikidata.id. Returns merged entity + entity_wikidata
+    so the frontend can show all valid values on the node properties tab.
     
     Args:
         node_id: The node/entity id from the graph
         node_type: Optional node type (entity, concept, data, entity_gen, framework)
         
     Returns:
-        Dict with 'found' boolean and 'data' containing entity details if found
+        Dict with 'found' boolean and 'data' containing all entity + entity_wikidata fields
     """
     from neon_database import neon_db
         
@@ -1152,30 +1160,40 @@ def get_wikidata_by_id(node_id: str, node_type: str = None) -> Dict[str, Any]:
         return {"found": False, "data": None}
     
     try:
-        # Use fixed table name 'entity' as per database schema
-        query = """
-            SELECT *
-            FROM entity
-            WHERE id = %s
-            LIMIT 1
-        """
-        results = neon_db.execute_query(query, (node_id,))
-
-        if results:
-            entity_data = dict(results[0])
-            for key, value in entity_data.items():
-                if hasattr(value, 'isoformat'):
-                    entity_data[key] = value.isoformat()
-                elif value is None:
-                    entity_data[key] = None
-                elif key in ['image_url', 'logo_url'] and value == '':
-                    entity_data[key] = None
-            
-            logger.debug(f"Found wikidata for node_id: '{node_id}'")
-            return {"found": True, "data": entity_data}
+        # Fetch entity row
+        entity_query = "SELECT * FROM entity WHERE id = %s LIMIT 1"
+        entity_results = neon_db.execute_query(entity_query, (node_id,))
+        if not entity_results:
+            logger.warning(f"No entity found for node_id: '{node_id}'")
+            return {"found": False, "data": None}
         
-        logger.warning(f"No wikidata found for node_id: '{node_id}'")
-        return {"found": False, "data": None}
+        entity_row = dict(entity_results[0])
+        merged = {}
+        for k, v in entity_row.items():
+            merged[k] = v
+        
+        # Fetch entity_wikidata row (same id) and merge
+        wikidata_query = "SELECT * FROM entity_wikidata WHERE id = %s LIMIT 1"
+        wikidata_results = neon_db.execute_query(wikidata_query, (node_id,))
+        if wikidata_results:
+            wikidata_row = dict(wikidata_results[0])
+            for k, v in wikidata_row.items():
+                merged[k] = v
+        
+        # Serialize and normalize
+        empty_url_keys = {'image_url', 'logo_url', 'wikipedia_url', 'url', 'alias', 'subtype'}
+        for key, value in list(merged.items()):
+            if hasattr(value, 'isoformat'):
+                merged[key] = value.isoformat()
+            elif value is None:
+                merged[key] = None
+            elif key in empty_url_keys and value == '':
+                merged[key] = None
+            elif isinstance(value, str) and value.strip() == '':
+                merged[key] = None
+        
+        logger.debug(f"Found entity and wikidata for node_id: '{node_id}'")
+        return {"found": True, "data": merged}
         
     except Exception as e:
         logger.error(f"Error fetching wikidata for node_id '{node_id}': {e}")
