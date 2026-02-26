@@ -52,7 +52,8 @@ const RightSidebar = forwardRef(({
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [activeTab, setActiveTab] = useState(externalActiveTab);
-  
+
+  // Article details state (from Postgres article table via article_chunk)
   const [articleInfo, setArticleInfo] = useState(null);
   const [articleLoading, setArticleLoading] = useState(false);
   const articleFetchingRef = useRef(false);
@@ -71,13 +72,6 @@ const RightSidebar = forwardRef(({
   const wikidataFetchingRef = useRef(false);
   const lastFetchedNodeIdRef = useRef(null);
 
-  // Article details state (from Postgres article table via article_chunk)
-  const [articleInfo, setArticleInfo] = useState(null);
-  const [articleLoading, setArticleLoading] = useState(false);
-  const articleFetchingRef = useRef(false);
-  const lastFetchedArticleNodeIdRef = useRef(null);
-
-  // Sync external sortBy with local state
   useEffect(() => {
     setSortBy(externalSortBy);
   }, [externalSortBy]);
