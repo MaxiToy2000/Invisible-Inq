@@ -1063,6 +1063,29 @@ async def get_node_types():
             detail=f"Error fetching node types: {str(e)}"
         )
 
+# ============== Article details (Postgres: article_chunk + article) ==============
+@app.get("/api/article-details/{node_id}", response_model=dict)
+async def get_article_details_endpoint(node_id: str):
+    """
+    Get detailed article data for an article node.
+    Looks up article_chunk by node id, then article by article_id. Returns article row or 404.
+    """
+    try:
+        from urllib.parse import unquote
+        node_id = unquote(node_id)
+        if not node_id or not node_id.strip():
+            raise HTTPException(status_code=400, detail="Node id is required")
+        data = get_article_details_by_node_id(node_id.strip())
+        if data is None:
+            raise HTTPException(status_code=404, detail="Article not found for this node")
+        return {"found": True, "data": data}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Error fetching article details for node_id '{node_id}': {e}")
+        raise HTTPException(status_code=500, detail=f"Error fetching article details: {str(e)}")
+
+
 # ============== Wikidata Endpoint (registered early to avoid route conflicts) ==============
 @app.get("/api/wikidata/{node_type}/{node_id}")
 async def get_wikidata_by_node(node_type: str, node_id: str):

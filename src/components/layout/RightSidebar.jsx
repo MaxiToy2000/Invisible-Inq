@@ -71,6 +71,12 @@ const RightSidebar = forwardRef(({
   const wikidataFetchingRef = useRef(false);
   const lastFetchedNodeIdRef = useRef(null);
 
+  // Article details state (from Postgres article table via article_chunk)
+  const [articleInfo, setArticleInfo] = useState(null);
+  const [articleLoading, setArticleLoading] = useState(false);
+  const articleFetchingRef = useRef(false);
+  const lastFetchedArticleNodeIdRef = useRef(null);
+
   // Sync external sortBy with local state
   useEffect(() => {
     setSortBy(externalSortBy);
@@ -351,7 +357,7 @@ const RightSidebar = forwardRef(({
     return displayNode && WIKIDATA_NODE_TYPES.some(t => nodeTypeLower.includes(t));
   }, [displayNode, nodeTypeLower]);
 
-  // Connector nodes (Relationship, Action, Exchange): show name, type, category, date, description, process, purpose, quality in Node Properties tab
+    // Connector nodes (Relationship, Action, Exchange): show name, type, category, date, description, process, purpose, quality in Node Properties tab
   const CONNECTOR_NODE_TYPES = ['relationship', 'action', 'exchange'];
   const isConnectorNode = useMemo(() => {
     return displayNode && CONNECTOR_NODE_TYPES.some(t => nodeTypeLower.includes(t));
@@ -431,6 +437,15 @@ const RightSidebar = forwardRef(({
     }
   }, [entityId]);
 
+  // Reset article details when node changes
+  useEffect(() => {
+    if (lastFetchedArticleNodeIdRef.current !== entityId) {
+      setArticleInfo(null);
+      articleFetchingRef.current = false;
+      lastFetchedArticleNodeIdRef.current = entityId;
+    }
+  }, [entityId]);
+
   // Fetch wikidata when displayNode changes (entity, concept, data, entity_gen, framework)
   useEffect(() => { 
     const fetchWikidata = async () => {
@@ -502,7 +517,46 @@ const RightSidebar = forwardRef(({
 
     fetchWikidata();
   }, [entityId, isWikidataNode, nodeType, displayNode]);
-  
+
+  // Fetch article details from Postgres when an article node is selected
+  useEffect(() => {
+    const fetchArticleDetails = async () => {
+      if (!isArticleNode || !entityId || entityId === 'Unknown' || articleFetchingRef.current) {
+        if (!isArticleNode || !entityId || entityId === 'Unknown') {
+          setArticleInfo(null);
+        }
+        return;
+      }
+      articleFetchingRef.current = true;
+      setArticleLoading(true);
+      try {
+        const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+        const url = `${apiBaseUrl}/api/article-details/${encodeURIComponent(entityId)}`;
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' },
+        });
+        if (response.ok) {
+          const result = await response.json();
+          if (result.found && result.data) {
+            setArticleInfo(result.data);
+          } else {
+            setArticleInfo(null);
+          }
+        } else {
+          setArticleInfo(null);
+        }
+      } catch (err) {
+        console.error('Article details fetch error:', err);
+        setArticleInfo(null);
+      } finally {
+        setArticleLoading(false);
+        articleFetchingRef.current = false;
+      }
+    };
+    fetchArticleDetails();
+  }, [entityId, isArticleNode, displayNode]);
+
   // Determine which image to display (prioritize wikidata image)
   const displayImageUrl = wikidataImageUrl || wikidataInfo?.logo_url || displayNode?.IMG_SRC || null;
   
@@ -620,7 +674,7 @@ const RightSidebar = forwardRef(({
               if (!otherType.includes('article')) continue;
               const urlFromArticle = pick(otherNode, ...articleUrlKeys);
               if (urlFromArticle && typeof urlFromArticle === 'string' && urlFromArticle.trim()) {
-                fromNode.push(['Article Url', urlFromArticle.trim()]);
+                fromNode.push(['Article URL', urlFromArticle.trim()]);
                 break;
               }
             }
@@ -964,9 +1018,9 @@ const RightSidebar = forwardRef(({
                       </div>
                   </div>
                 )}
-                
-                {/* Node Properties - Only show for non-entity nodes, or for entity nodes when wikidata is not available */}
-                {displayNode && (!isWikidataNode || (isWikidataNode && !wikidataInfo)) && filteredNodeProperties.length > 0 && (
+
+                {/* Node Properties - Only show for non-entity nodes, or for entity nodes when wikidata/article details not available */}
+                {displayNode && (!isWikidataNode || (isWikidataNode && !wikidataInfo)) && (!isArticleNode || (isArticleNode && !articleInfo)) && filteredNodeProperties.length > 0 && (
                   <div className="flex flex-col space-y-3">
                     {filteredNodeProperties.map(([key, value], index) => {
                       const isUrlProperty = key.toLowerCase().includes('url') || key.toLowerCase() === 'link' || key.toLowerCase().includes('website') || key.toLowerCase().includes('webpage');
