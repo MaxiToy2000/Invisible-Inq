@@ -53,6 +53,11 @@ const RightSidebar = forwardRef(({
   const [isMobile, setIsMobile] = useState(false);
   const [activeTab, setActiveTab] = useState(externalActiveTab);
   
+  const [articleInfo, setArticleInfo] = useState(null);
+  const [articleLoading, setArticleLoading] = useState(false);
+  const articleFetchingRef = useRef(false);
+  const lastFetchedArticleNodeIdRef = useRef(null);
+
   // Sort By state (sync with external state from HomePage)
   const [sortBy, setSortBy] = useState(externalSortBy);
   const [sortOrder, setSortOrder] = useState(externalSortOrder);
@@ -352,6 +357,10 @@ const RightSidebar = forwardRef(({
     return displayNode && CONNECTOR_NODE_TYPES.some(t => nodeTypeLower.includes(t));
   }, [displayNode, nodeTypeLower]);
 
+  const isArticleNode = useMemo(() => {
+    return displayNode && nodeTypeLower.includes('article');
+  }, [displayNode, nodeTypeLower]);
+
   // Function to fetch direct image URL from Wikimedia Commons API
   const fetchDirectImageUrl = async (url) => {
     try {
@@ -497,6 +506,43 @@ const RightSidebar = forwardRef(({
   // Determine which image to display (prioritize wikidata image)
   const displayImageUrl = wikidataImageUrl || wikidataInfo?.logo_url || displayNode?.IMG_SRC || null;
   
+  useEffect(() => {
+    const fetchArticleDetails = async () => {
+      if (!isArticleNode || !entityId || entityId === 'Unknown' || articleFetchingRef.current) {
+        if (!isArticleNode || !entityId || entityId === 'Unknown') {
+          setArticleInfo(null);
+        }
+        return;
+      }
+      articleFetchingRef.current = true;
+      setArticleLoading(true);
+      try {
+        const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+        const url = `${apiBaseUrl}/api/article-details/${encodeURIComponent(entityId)}`;
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' },
+        });
+        if (response.ok) {
+          const result = await response.json();
+          if (result.found && result.data) {
+            setArticleInfo(result.data);
+          } else {
+            setArticleInfo(null);
+          }
+        } else {
+          setArticleInfo(null);
+        }
+      } catch (err) {
+        console.error('Article details fetch error:', err);
+        setArticleInfo(null);
+      } finally {
+        setArticleLoading(false);
+        articleFetchingRef.current = false;
+      }
+    };
+    fetchArticleDetails();
+  }, [entityId, isArticleNode, displayNode]);
   // Node Properties tab: for connector nodes (Relationship, Action, Exchange) show name, type, category, date, description, process, purpose, quality
   const pick = (node, ...keys) => {
     if (!node) return null;
@@ -530,18 +576,57 @@ const RightSidebar = forwardRef(({
     { label: 'Process', keys: ['process', 'Process', 'process_result', 'process_summary', 'Process Result'] },
     { label: 'Purpose', keys: ['Purpose', 'purpose'] },
     { label: 'Quality', keys: ['quality', 'Quality'] },
+    { label: 'Article URL', keys: ['article_url', 'Article URL', 'article Url', 'articleUrl', 'Source URL', 'url', 'URL'] },
   ];
+  const linkSource = filteredGraphData?.links || graphData?.links || [];
+  const nodeSource = filteredGraphData?.nodes || graphData?.nodes || [];
+  const nodeMapById = useMemo(() => {
+    const m = {};
+    (nodeSource || []).forEach((n) => {
+      const id = n.id ?? n.gid;
+      if (id != null) m[String(id)] = n;
+    });
+    return m;
+  }, [nodeSource]);
+  const articleUrlKeys = ['url', 'article_url', 'Article URL', 'article Url', 'articleUrl', 'Source URL', 'URL'];
   const filteredNodeProperties = displayNode
     ? isConnectorNode
-      ? connectorPropertyKeys
-          .map(({ label, keys }) => {
-            let value = pick(displayNode, ...keys);
-            if (value == null) return null;
-            if (label === 'Category' && value === pick(displayNode, 'type', 'node_type', 'Relationship Type', 'Action Type')) return null;
-            if (label === 'Date') value = formatDateValue(value);
-            return [label, value];
-          })
-          .filter(Boolean)
+      ? (() => {
+          const fromNode = connectorPropertyKeys
+            .map(({ label, keys }) => {
+              let value = pick(displayNode, ...keys);
+              if (value == null) return null;
+              if (label === 'Category' && value === pick(displayNode, 'type', 'node_type', 'Relationship Type', 'Action Type')) return null;
+              if (label === 'Date') value = formatDateValue(value);
+              return [label, value];
+            })
+            .filter(Boolean);
+          const hasArticleUrl = fromNode.some(([label]) => label === 'Article Url');
+          if (!hasArticleUrl && displayNode.id && linkSource.length > 0 && Object.keys(nodeMapById).length > 0) {
+            const nodeId = String(displayNode.id);
+            const incidentLinks = linkSource.filter(
+              (l) =>
+                String(l.source?.id ?? l.sourceId ?? '') === nodeId ||
+                String(l.target?.id ?? l.targetId ?? '') === nodeId
+            );
+            for (const link of incidentLinks) {
+              const otherId =
+                String(link.source?.id ?? link.sourceId ?? '') === nodeId
+                  ? String(link.target?.id ?? link.targetId ?? '')
+                  : String(link.source?.id ?? link.sourceId ?? '');
+              const otherNode = otherId ? nodeMapById[otherId] : null;
+              if (!otherNode) continue;
+              const otherType = (otherNode.node_type || otherNode.type || otherNode.category || '').toLowerCase();
+              if (!otherType.includes('article')) continue;
+              const urlFromArticle = pick(otherNode, ...articleUrlKeys);
+              if (urlFromArticle && typeof urlFromArticle === 'string' && urlFromArticle.trim()) {
+                fromNode.push(['Article Url', urlFromArticle.trim()]);
+                break;
+              }
+            }
+          }
+          return fromNode;
+        })()
       : [
           ['name', displayNode.name ?? ''],
           ['node_type', displayNode.node_type ?? displayNode.type ?? displayNode.category ?? ''],
@@ -626,7 +711,7 @@ const RightSidebar = forwardRef(({
                           edgeData.url ||
                           edgeData.URL ||
                           null;
-        if (articleUrl) properties.push(['Article URL', articleUrl]);
+        if (articleUrl) properties.push(['Article Url', articleUrl]);
         
         return properties;
       })()
@@ -893,12 +978,12 @@ const RightSidebar = forwardRef(({
                               href={formatUrl(String(value))}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-lg text-[#6EA4F4] hover:underline break-words leading-[18px] font-bold ml-0 block"
+                              className="text-sm text-[#6EA4F4] hover:underline break-words leading-[18px] ml-0 block"
                             >
                               {formatValue(value)}
                             </a>
                           ) : (
-                            <p className="text-lg text-[#F4F4F5] break-words leading-[18px] font-bold ml-0">
+                            <p className="text-sm text-[#F4F4F5] break-words leading-[18px] ml-0">
                               {formatValue(value)}
                             </p>
                           )}
@@ -1082,10 +1167,109 @@ const RightSidebar = forwardRef(({
                     </div>
                   )}
                   
-                  {/* Node Details - Only show for non-entity nodes, or for entity nodes when wikidata is not available */}
-                  {displayNode && (!isWikidataNode || (isWikidataNode && !wikidataInfo)) && filteredNodeProperties.length > 0 && (
-                    <div className="w-full flex-shrink-0 mb-2">
-                      <div className="w-full flex-shrink-0 mb-2 pl-2 py-2 pr-2 bg-[#09090B] rounded-md border border-[#707070]">
+                  {/* Article details (from Postgres) - Desktop */}
+                  {displayNode && isArticleNode && (articleInfo || articleLoading) && (
+                    <div className="w-full flex-shrink-0 mb-4 py-2 pr-2 bg-[#09090B] rounded-md border border-[#707070]">
+                      <div className="flex flex-col w-full pl-2">
+                        <span className="text-xs text-[#7D7D7D]">Title</span>
+                        <h2 className="text-xl font-bold text-white mb-1">
+                          {articleLoading ? 'Loading...' : (articleInfo?.title ?? articleInfo?.name ?? entityName ?? 'Article')}
+                        </h2>
+                        {articleLoading && (
+                          <div className="flex items-center gap-2 text-sm text-[#B4B4B4] mb-2">
+                            <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            Loading article details...
+                          </div>
+                        )}
+                        {!articleLoading && articleInfo && (
+                          <>
+                            {Object.entries(articleInfo)
+                              .filter(([key]) => !['title', 'name', 'archive_url', 'created_at', 'updated_at', 'id','description', 'summary', 'url', 'article_url', 'link'].includes(key))
+                              .map(([key, value]) => value != null && String(value).trim() !== '' && (
+                                <div key={key} className="mb-1">
+                                  <span className="text-xs text-[#7D7D7D]">{formatLabel(key)}</span>
+                                  <p className="text-sm text-[#F4F4F5] break-words mb-0.5">
+                                    {key === 'date' ? formatDateValue(value) : formatValue(value)}
+                                  </p>
+                                </div>
+                              ))}
+                            {(articleInfo.url || articleInfo.article_url || articleInfo.link) && (
+                              <div className="mb-1">
+                                <p className="text-xs text-[#7D7D7D] mb-1">URL</p>
+                                <a
+                                  href={formatUrl(String(articleInfo.url ?? articleInfo.article_url ?? articleInfo.link))}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-sm text-[#6EA4F4] hover:underline break-words"
+                                >
+                                  {String(articleInfo.url ?? articleInfo.article_url ?? articleInfo.link).length > 60
+                                    ? String(articleInfo.url ?? articleInfo.article_url ?? articleInfo.link).slice(0, 60) + '...'
+                                    : articleInfo.url ?? articleInfo.article_url ?? articleInfo.link}
+                                </a>
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                    {displayNode && isArticleNode && (articleInfo || articleLoading) && (
+                    <div className="w-full flex-shrink-0 mb-4 py-2 pr-2 bg-[#09090B] rounded-md border border-[#707070]">
+                      <div className="flex flex-col w-full pl-2">
+                        <span className="text-ms text-[#7D7D7D]">Title</span>
+                        <h2 className="text-xl font-bold text-white mb-1">
+                          {articleLoading ? 'Loading...' : (articleInfo?.title ?? articleInfo?.name ?? entityName ?? 'Article')}
+                        </h2>
+                        {articleLoading && (
+                          <div className="flex items-center gap-2 text-sm text-[#B4B4B4] mb-2">
+                            <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            Loading article details...
+                          </div>
+                        )}
+                        {!articleLoading && articleInfo && (
+                          <>
+                            {Object.entries(articleInfo)
+                              .filter(([key]) => !['title', 'name', 'archive_url', 'created_at', 'updated_at', 'id','description', 'summary', 'url', 'article_url', 'link'].includes(key))
+                              .map(([key, value]) => value != null && String(value).trim() !== '' && (
+                                <div key={key} className="mb-1">
+                                  <span className="text-ms text-[#7D7D7D]">{formatLabel(key)}</span>
+                                  <p className="text-lg font-bold text-[#F4F4F5] break-words mb-0.5">
+                                    {key === 'date' ? formatDateValue(value) : formatValue(value)}
+                                  </p>
+                                </div>
+                              ))}
+                            {(articleInfo.url || articleInfo.article_url || articleInfo.link) && (
+                              <div className="mb-1">
+                                <p className="text-[#7D7D7D] mb-1">URL</p>
+                                <a
+                                  href={formatUrl(String(articleInfo.url ?? articleInfo.article_url ?? articleInfo.link))}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-sm text-[#6EA4F4] hover:underline break-words"
+                                >
+                                  {String(articleInfo.url ?? articleInfo.article_url ?? articleInfo.link).length > 60
+                                    ? String(articleInfo.url ?? articleInfo.article_url ?? articleInfo.link).slice(0, 60) + '...'
+                                    : articleInfo.url ?? articleInfo.article_url ?? articleInfo.link}
+                                </a>
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+
+                  {/* Node Details - Only show for non-entity nodes, or for entity nodes when wikidata/article details not available */}
+                  {displayNode && (!isWikidataNode || (isWikidataNode && !wikidataInfo)) && (!isArticleNode || (isArticleNode && !articleInfo)) && filteredNodeProperties.length > 0 && (
+                    <div className="w-full flex-shrink-0 mb-4">
+                      <div className="w-full flex-shrink-0 mb-4 pl-2 py-2 pr-2 bg-[#09090B] rounded-md border border-[#707070]">
                         {filteredNodeProperties.map(([key, value], index) => {
                           const isUrlProperty = key.toLowerCase().includes('url') || key.toLowerCase() === 'link' || key.toLowerCase().includes('website') || key.toLowerCase().includes('webpage');
                           return (
@@ -1096,7 +1280,7 @@ const RightSidebar = forwardRef(({
                                   href={formatUrl(String(value))}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="text-lg text-[#6EA4F4] hover:underline break-words leading-[18px] font-bold ml-0 block"
+                                  className="text-sm text-[#6EA4F4] hover:underline break-words leading-[18px] ml-0 block"
                                 >
                                   {formatValue(value)}
                                 </a>
@@ -1104,6 +1288,7 @@ const RightSidebar = forwardRef(({
                                 <p className="text-sm text-[#F4F4F5] leading-relaxed break-words">
                                   {formatValue(value)}
                                 </p>
+
                               )}
                             </div>
                           );
