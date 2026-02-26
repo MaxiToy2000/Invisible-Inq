@@ -28,6 +28,7 @@ class Story(BaseModel):
     brief: str
     path: str
     chapters: List[Chapter]
+    img_url: Optional[str] = None
 
 class Node(BaseModel):
     id: str

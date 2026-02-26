@@ -2519,6 +2519,7 @@ const HomePage = () => {
       onResetPositionClick={handleResetPositionClick}
       rightSidebarRef={rightSidebarRef}
       graphViewByMapRef={graphViewByMapRef}
+      onHomePageClick={() => setShowGraphView(false)}
     >
         <div className="flex flex-col h-full">
           {}

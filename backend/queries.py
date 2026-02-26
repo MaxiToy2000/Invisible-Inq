@@ -59,6 +59,7 @@ def get_all_stories_query():
         story_id: coalesce(toString(story.id), toString(story.g_id), toString(story.gid)),
         story_gid: coalesce(story.gid, story.g_id, story.id),
         story_brief: coalesce(story.brief, story.summary, story.`Summary`, ""),
+        story_img_url: coalesce(story.img_url, story.image_url, story.IMG_SRC, story.`Image URL`, ""),
         chapters: chapters
     } AS story
     ORDER BY story_order, story.id, story.g_id, story.name
@@ -111,6 +112,7 @@ def get_all_stories_query_legacy():
         story_id: toString(story.gid),
         story_gid: story.gid,
         story_brief: "",
+        story_img_url: coalesce(story.img_url, story.image_url, story.IMG_SRC, story.`Image URL`, ""),
         chapters: chapters
     } AS story
     ORDER BY story_number, story.gid

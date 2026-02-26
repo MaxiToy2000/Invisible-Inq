@@ -14,7 +14,8 @@ const Header = ({
   onChapterSelect,
   onSubstorySelect,
   showStoryDropdown = false,
-  usePlainLogo = false
+  usePlainLogo = false,
+  onHomePageClick = null,
 }) => {
   const [showDonationPopup, setShowDonationPopup] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -62,14 +63,26 @@ const Header = ({
 
         {}
         <nav className="absolute left-1/2 transform -translate-x-1/2 flex items-center">
-          <Link
-            to="/"
-            className="text-white hover:text-gray-300 transition-colors text-xs lg:text-sm"
-            aria-label="Home page"
-            tabIndex={0}
-          >
-            Home Page
-          </Link>
+          {onHomePageClick ? (
+            <button
+              type="button"
+              onClick={onHomePageClick}
+              className="text-white hover:text-gray-300 transition-colors text-xs lg:text-sm bg-transparent border-none p-0 cursor-pointer"
+              aria-label="Home page"
+              tabIndex={0}
+            >
+              Home Page
+            </button>
+          ) : (
+            <Link
+              to="/"
+              className="text-white hover:text-gray-300 transition-colors text-xs lg:text-sm"
+              aria-label="Home page"
+              tabIndex={0}
+            >
+              Home Page
+            </Link>
+          )}
           <span className="mx-1 lg:mx-2 text-white text-xs lg:text-sm">-</span>
           <Link
             to="/about"

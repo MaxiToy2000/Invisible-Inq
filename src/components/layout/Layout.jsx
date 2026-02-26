@@ -70,6 +70,7 @@ const Layout = ({
   onResetPositionClick = null,
   rightSidebarRef = null,
   graphViewByMapRef = null,
+  onHomePageClick = null,
 }) => {
   const [leftSidebarCollapsed, setLeftSidebarCollapsed] = useState(false);
   const [rightSidebarCollapsed, setRightSidebarCollapsed] = useState(false);
@@ -145,6 +146,7 @@ const Layout = ({
           onChapterSelect={onChapterSelect}
           onSubstorySelect={onSubstorySelect}
           showStoryDropdown={true}
+          onHomePageClick={onHomePageClick}
         />
 
         {}
