@@ -220,7 +220,7 @@ const AddNodeModal = ({ isOpen, onClose, onCreate, existingCategories = [], node
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        <div className="flex-1 overflow-y-auto p-2 space-y-4">
           {/* Category Input */}
           <div className="relative">
             <label className="block text-sm font-medium text-[#B4B4B4] mb-2">

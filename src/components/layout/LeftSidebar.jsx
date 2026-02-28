@@ -356,7 +356,7 @@ const LeftSidebar = ({
       {}
       <div className={`${isCollapsed ? 'hidden' : 'block'} lg:block p-3 pb-0 flex-1 text-[#B4B4B4] flex flex-col h-full overflow-y-auto overflow-x-hidden`}>
         {}
-        <div className="flex items-center gap-2 mb-4">
+        <div className="flex items-center gap-2 mb-4 hidden">
           {}
           <div className="flex-shrink-0">
             <svg width="28" height="18" viewBox="0 0 28 18" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -477,7 +477,7 @@ const LeftSidebar = ({
                 {(graphDescription ?? sectionDescription ?? currentSubstory?.brief) ? (
                   <>
                     <div
-                      className="text-[#B4B4B4] mb-3 font-[sans-serif] font-normal text-[14px] leading-[18px] tracking-[0px]"
+                      className="text-[#B4B4B4] mb-3 font-normal text-[14px] leading-[18px] tracking-[0px]"
                     >
                       {renderBriefWithBadges(graphDescription ?? sectionDescription ?? currentSubstory?.brief ?? '', importantEntities)}
                     </div>
@@ -495,7 +495,7 @@ const LeftSidebar = ({
               {}
               {currentSubstory.brief && (
                 <div
-                  className="text-[#B4B4B4] mb-3 font-[sans-serif] font-normal text-[14px] leading-[18px] tracking-[0px]"
+                  className="text-[#B4B4B4] mb-3 font-normal text-[14px] leading-[18px] tracking-[0px]"
                 >
                   {renderBriefWithBadges(currentSubstory.brief, importantEntities)}
                 </div>
@@ -507,7 +507,7 @@ const LeftSidebar = ({
 
         {/* Save / Reset XYZ position - when graph is shown (showSavePositionButton) and at least one handler provided */}
         {showSavePositionButton && (typeof onSavePositionClick === 'function' || typeof onResetPositionClick === 'function') && (
-          <div className="pt-3 pl-3 pr-3 flex flex-col gap-2">
+          <div className="pt-3 pl-3 pr-3 flex flex-col gap-2 pb-3">
             {typeof onSavePositionClick === 'function' && (
               <button
                 type="button"
@@ -532,7 +532,7 @@ const LeftSidebar = ({
           </div>
         )}
       {}
-      <div className={`${isCollapsed ? 'hidden' : 'block'} lg:block mt-auto pt-3 pb-3 px-3`}>
+      <div className={`mt-auto pt-3 pb-3 px-3 hidden`}>
         {}
         {currentSubstoryId && (
           <div className="mb-4">

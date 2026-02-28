@@ -2248,7 +2248,7 @@ const HomePage = () => {
                       <FiUser className="w-3 h-3" />
                     </div>
                   )}
-                  <span className="text-xs hidden xl:inline">
+                  <span className="text-xs">
                     {user?.full_name || user?.email?.split('@')[0]}
                   </span>
                   <FiChevronDown className="w-3 h-3" />
@@ -3127,7 +3127,7 @@ const HomePage = () => {
               </div>
 
               {}
-              <div className="absolute top-4 right-4 pointer-events-auto">
+              <div className="absolute top-4 right-4 lg:right-8 pointer-events-auto">
                 <div className="flex rounded-sm border border-[#707070] bg-[#09090B] p-0.5 gap-0.5">
                   <button
                     onClick={() => {
@@ -3267,7 +3267,7 @@ const HomePage = () => {
               )}
 
               {}
-              <div className={`absolute ${showSearch ? 'top-18' : 'top-13'} right-4 pointer-events-auto z-10`}>
+              <div className={`absolute ${showSearch ? 'top-18' : 'top-13'} right-4 lg:right-8 pointer-events-auto z-10`}>
                 <div className="flex flex-col items-end">
                   {displayCategories.map((category, index) => {
                     const isHidden = hiddenCategories.has(category.name);
@@ -3332,7 +3332,7 @@ const HomePage = () => {
               {selectedSceneContainer === 'map' && mapView && (
                 <>
                   {/* Icon Button Group Container - Below Category Legend */}
-                  <div className={`absolute ${showSearch ? 'top-[340px]' : 'top-[320px]'} right-4 pointer-events-auto z-10`}>
+                  <div className={`absolute ${showSearch ? 'top-[340px]' : 'top-[320px]'} right-4 lg:right-8 pointer-events-auto z-10`}>
                     <div className="flex flex-col items-end gap-1">
                         <span className="text-white text-[14px] font-weight-500 font-archivo pb-0.5">{StringConstants.RIGHT_SIDEBAR.ORDER_MAP_BY}:</span>
                       {/* Dynamically render all node types from Neo4j */}

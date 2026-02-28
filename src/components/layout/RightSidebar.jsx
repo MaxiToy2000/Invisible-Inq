@@ -16,28 +16,28 @@ const RightSidebar = forwardRef(({
   edgeLength = 50,
   edgeThickness = 50,
   is3D = true,
-  on3DToggle = () => {},
-  onForceChange = () => {},
-  onNodeSizeChange = () => {},
-  onLabelSizeChange = () => {},
-  onEdgeLengthChange = () => {},
-  onEdgeThicknessChange = () => {},
-  onCollapseChange = () => {},
-  onToggleRightSidebar = () => {},
-  onActiveTabChange = () => {},
+  on3DToggle = () => { },
+  onForceChange = () => { },
+  onNodeSizeChange = () => { },
+  onLabelSizeChange = () => { },
+  onEdgeLengthChange = () => { },
+  onEdgeThicknessChange = () => { },
+  onCollapseChange = () => { },
+  onToggleRightSidebar = () => { },
+  onActiveTabChange = () => { },
   mapView: externalMapView = null,
-  onMapViewChange = () => {},
-  onClusterNodeSelect = () => {},
-  onSceneContainerChange = () => {},
+  onMapViewChange = () => { },
+  onClusterNodeSelect = () => { },
+  onSceneContainerChange = () => { },
   nodeTypesWithPropertyKeys = [],
-  onClusterConfigChange = () => {},
+  onClusterConfigChange = () => { },
   clusterMethod = '',
   clusterProperty = '',
   currentSubstory = null,
-  onSectionClick = () => {},
+  onSectionClick = () => { },
   graphData = { nodes: [], links: [] },
   filteredGraphData = null,
-  onSortConfigChange = () => {},
+  onSortConfigChange = () => { },
   sortBy: externalSortBy = null,
   sortOrder: externalSortOrder = 'asc',
   sortNodeCategory: externalSortNodeCategory = '',
@@ -47,18 +47,18 @@ const RightSidebar = forwardRef(({
   selectedNodes = new Set(),
   selectedEdges = new Set(),
   hierarchyTreeAxis: externalHierarchyTreeAxis = { x: false, y: false, z: false },
-  onHierarchyTreeAxisChange = () => {}
+  onHierarchyTreeAxisChange = () => { }
 }, ref) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [activeTab, setActiveTab] = useState(externalActiveTab);
-  
+
   // Sort By state (sync with external state from HomePage)
   const [sortBy, setSortBy] = useState(externalSortBy);
   const [sortOrder, setSortOrder] = useState(externalSortOrder);
   const [sortNodeCategory, setSortNodeCategory] = useState(externalSortNodeCategory);
   const [sortNodeProperty, setSortNodeProperty] = useState(externalSortNodeProperty);
-  
+
   // Wikidata state for entity images
   const [wikidataInfo, setWikidataInfo] = useState(null);
   const [wikidataImageUrl, setWikidataImageUrl] = useState(null);
@@ -92,23 +92,23 @@ const RightSidebar = forwardRef(({
   useEffect(() => {
     setActiveTab(externalActiveTab);
   }, [externalActiveTab]);
-  
+
   // Pagination state for multi-select
   const [currentPage, setCurrentPage] = useState(0);
-  
+
   // Create combined array of selected items for pagination
   const selectedItems = useMemo(() => {
     const items = [];
-    
+
     // Safely convert Sets to arrays for iteration
     const nodeIds = selectedNodes instanceof Set ? Array.from(selectedNodes) : [];
     const edgeIds = selectedEdges instanceof Set ? Array.from(selectedEdges) : [];
-    
+
     // Use filteredGraphData if available, otherwise fall back to graphData
     const nodeSource = filteredGraphData?.nodes || graphData?.nodes || [];
     const linkSource = filteredGraphData?.links || graphData?.links || [];
-    
-    
+
+
     // Add selected nodes
     if (nodeSource.length > 0 && nodeIds.length > 0) {
       nodeIds.forEach(nodeId => {
@@ -124,7 +124,7 @@ const RightSidebar = forwardRef(({
         }
       });
     }
-    
+
     // Add selected edges
     if (linkSource.length > 0 && edgeIds.length > 0) {
       edgeIds.forEach(edgeId => {
@@ -135,7 +135,7 @@ const RightSidebar = forwardRef(({
           const linkId = String(l.id || `${sourceId}->${targetId}`);
           const altLinkId = `${sourceId}->${targetId}`;
           const searchId = String(edgeId);
-          
+
           return linkId === searchId || altLinkId === searchId || String(l.id) === searchId;
         });
         if (edge) {
@@ -143,31 +143,31 @@ const RightSidebar = forwardRef(({
         }
       });
     }
-    
+
     return items;
   }, [selectedNodes, selectedEdges, graphData, filteredGraphData]);
-  
+
   // Reset page when selection changes
   useEffect(() => {
     setCurrentPage(0);
   }, [selectedNodes.size, selectedEdges.size]);
-  
+
   // Check if in multi-select mode
   const isMultiSelect = selectedNodes.size > 0 || selectedEdges.size > 0;
   const currentItem = isMultiSelect && selectedItems.length > 0 ? selectedItems[currentPage] : null;
-  
-  
+
+
   // Pagination handlers
   const totalItems = selectedItems.length > 0 ? selectedItems.length : (selectedNodes.size + selectedEdges.size);
-  
+
   const handlePrevious = () => {
     setCurrentPage(prev => Math.max(0, prev - 1));
   };
-  
+
   const handleNext = () => {
     setCurrentPage(prev => Math.min(totalItems - 1, prev + 1));
   };
-  
+
   // Scene Layout state
   const [timelineAxis, setTimelineAxis] = useState({ x: false, y: false });
   const [calendarAxis, setCalendarAxis] = useState({ x: false, y: false });
@@ -213,7 +213,7 @@ const RightSidebar = forwardRef(({
   useEffect(() => {
     setHierarchyTreeAxis(externalHierarchyTreeAxis);
   }, [externalHierarchyTreeAxis.x, externalHierarchyTreeAxis.y, externalHierarchyTreeAxis.z]);
-  
+
   const handleHierarchyTreeAxisChange = (newAxis) => {
     setHierarchyTreeAxis(newAxis);
     onHierarchyTreeAxisChange(newAxis);
@@ -253,7 +253,7 @@ const RightSidebar = forwardRef(({
       setMapView(externalMapView);
     }
   }, [externalMapView]);
-  
+
   // Notify parent when mapView changes
   const handleMapViewChange = (newMapView) => {
     onMapViewChange(newMapView);
@@ -325,29 +325,29 @@ const RightSidebar = forwardRef(({
   const displayNode = useMemo(() => {
     return isMultiSelect ? (currentItem?.type === 'node' ? currentItem.data : null) : selectedNode;
   }, [isMultiSelect, currentItem, selectedNode]);
-  
+
   const displayEdge = useMemo(() => {
     return isMultiSelect ? (currentItem?.type === 'edge' ? currentItem.data : null) : selectedEdge;
   }, [isMultiSelect, currentItem, selectedEdge]);
-  
+
   // Wikidata lookup by node id (entity, concept, data, entity_gen, framework)
   const entityName = useMemo(() => {
     return displayNode?.name || displayNode?.['Entity Name'] || displayNode?.entity_name || displayNode?.id || null;
   }, [displayNode]);
-  
+
   const entityId = useMemo(() => {
     return displayNode?.id ?? displayNode?.gid ?? null;
   }, [displayNode]);
-  
+
   const WIKIDATA_NODE_TYPES = ['entity', 'concept', 'data', 'entity_gen', 'framework'];
   const nodeTypeLower = useMemo(() => {
     return (displayNode?.node_type || displayNode?.type || displayNode?.category || '').toLowerCase();
   }, [displayNode]);
-  
+
   const nodeType = useMemo(() => {
     return displayNode?.node_type || displayNode?.type || displayNode?.category || '';
   }, [displayNode]);
-  
+
   const isWikidataNode = useMemo(() => {
     return displayNode && WIKIDATA_NODE_TYPES.some(t => nodeTypeLower.includes(t));
   }, [displayNode, nodeTypeLower]);
@@ -367,14 +367,14 @@ const RightSidebar = forwardRef(({
   const fetchDirectImageUrl = async (url) => {
     try {
       url = url.replace(/^http:/, 'https:');
-      
+
       if (url.includes('upload.wikimedia.org')) {
         return url;
       }
-      
+
       if (url.includes('commons.wikimedia.org')) {
         let filename = null;
-        
+
         const specialFilePathMatch = url.match(/Special:FilePath\/(.+?)(?:\?|#|$)/);
         if (specialFilePathMatch) {
           try {
@@ -392,16 +392,16 @@ const RightSidebar = forwardRef(({
             }
           }
         }
-        
+
         if (filename) {
           filename = filename.replace(/%20/g, ' ').replace(/\+/g, ' ').trim();
           const fileTitle = filename.replace(/ /g, '_');
           const apiUrl = `https://commons.wikimedia.org/w/api.php?action=query&titles=File:${encodeURIComponent(fileTitle)}&prop=imageinfo&iiprop=url&format=json&origin=*`;
-          
+
           try {
             const response = await fetch(apiUrl);
             const data = await response.json();
-            
+
             const pages = data.query?.pages;
             if (pages) {
               const pageId = Object.keys(pages)[0];
@@ -415,14 +415,14 @@ const RightSidebar = forwardRef(({
           }
         }
       }
-      
+
       return url;
     } catch (e) {
       console.error('Error converting Wikimedia URL:', e);
       return url;
     }
   };
-  
+
   // Reset wikidata when node changes
   useEffect(() => {
     if (lastFetchedNodeIdRef.current !== entityId) {
@@ -443,7 +443,7 @@ const RightSidebar = forwardRef(({
   }, [entityId]);
 
   // Fetch wikidata when displayNode changes (entity, concept, data, entity_gen, framework)
-  useEffect(() => { 
+  useEffect(() => {
     const fetchWikidata = async () => {
       if (!isWikidataNode || !entityId || entityId === 'Unknown' || wikidataFetchingRef.current) {
         if (!isWikidataNode || !entityId || entityId === 'Unknown') {
@@ -452,10 +452,10 @@ const RightSidebar = forwardRef(({
         }
         return;
       }
-      
+
       wikidataFetchingRef.current = true;
       setWikidataLoading(true);
-      
+
       try {
         let finalEntityId = entityId;
         // For concept nodes, prepend 'co' to the entity ID
@@ -466,17 +466,17 @@ const RightSidebar = forwardRef(({
         const url = `${apiBaseUrl}/api/wikidata/${encodeURIComponent(nodeType)}/${encodeURIComponent(finalEntityId)}`;
         const response = await fetch(
           url,
-          { 
+          {
             method: 'GET',
             headers: { 'Content-Type': 'application/json' }
           }
         );
-        
+
         if (response.ok) {
           const result = await response.json();
           if (result.found && result.data) {
             setWikidataInfo(result.data);
-            
+
             // Get image URL from wikidata
             const rawImageUrl = result.data.image_url || result.data.logo_url || null;
             if (rawImageUrl) {
@@ -485,7 +485,7 @@ const RightSidebar = forwardRef(({
               if (normalizedUrl.startsWith('http://')) {
                 normalizedUrl = normalizedUrl.replace(/^http:/, 'https:');
               }
-              
+
               // If it's a Wikimedia Commons URL, convert it
               if (normalizedUrl.includes('commons.wikimedia.org')) {
                 const directUrl = await fetchDirectImageUrl(normalizedUrl);
@@ -555,7 +555,7 @@ const RightSidebar = forwardRef(({
 
   // Determine which image to display (prioritize wikidata image)
   const displayImageUrl = wikidataImageUrl || wikidataInfo?.logo_url || displayNode?.IMG_SRC || null;
-  
+
   // Node Properties tab: for connector nodes (Relationship, Action, Exchange) show name, type, category, date, description, process, purpose, quality
   const pick = (node, ...keys) => {
     if (!node) return null;
@@ -610,42 +610,42 @@ const RightSidebar = forwardRef(({
   const filteredNodeProperties = displayNode
     ? isConnectorNode
       ? [
-          ...connectorPropertyKeys
-            .map(({ label, keys }) => {
-              let value = pick(displayNode, ...keys);
-              if (value == null) return null;
-              if (label === 'Category' && value === pick(displayNode, 'type', 'node_type', 'Relationship Type', 'Action Type')) return null;
-              if (label === 'Date') value = formatDateValue(value);
-              return [label, value];
-            })
-            .filter(Boolean),
-          ...(linkedArticleUrl ? [['Article URL', linkedArticleUrl]] : []),
-        ]
+        ...connectorPropertyKeys
+          .map(({ label, keys }) => {
+            let value = pick(displayNode, ...keys);
+            if (value == null) return null;
+            if (label === 'Category' && value === pick(displayNode, 'type', 'node_type', 'Relationship Type', 'Action Type')) return null;
+            if (label === 'Date') value = formatDateValue(value);
+            return [label, value];
+          })
+          .filter(Boolean),
+        ...(linkedArticleUrl ? [['Article URL', linkedArticleUrl]] : []),
+      ]
       : [
-          ['name', displayNode.name ?? ''],
-          ['node_type', displayNode.node_type ?? displayNode.type ?? displayNode.category ?? ''],
-          ...(wikidataInfo?.description != null && wikidataInfo?.description !== ''
-            ? [['description', wikidataInfo.description]]
-            : []),
-          ...(wikidataInfo?.description == null && displayNode.description != null && displayNode.description !== ''
-            ? [['description', displayNode.description]]
-            : []),
-          ...(wikidataInfo?.alias != null && wikidataInfo?.alias !== ''
-            ? [['alias', wikidataInfo.alias]]
-            : []),
-          ...(wikidataInfo?.founded_by_label != null && wikidataInfo?.founded_by_label !== ''
-            ? [['foundation', wikidataInfo.founded_by_label]]
-            : []),
-          ...(wikidataInfo?.founded_by_label == null && wikidataInfo?.start_time != null
-            ? [['foundation', new Date(wikidataInfo.start_time).toLocaleDateString()]]
-            : []),
-          ...(wikidataInfo?.country_label != null && wikidataInfo?.country_label !== ''
-            ? [['country', wikidataInfo.country_label]]
-            : []),
-          ...(wikidataInfo?.url != null && wikidataInfo?.url !== ''
-            ? [['url', wikidataInfo.url]]
-            : []),
-        ].filter(([, value]) => value !== undefined && value !== null)
+        ['name', displayNode.name ?? ''],
+        ['node_type', displayNode.node_type ?? displayNode.type ?? displayNode.category ?? ''],
+        ...(wikidataInfo?.description != null && wikidataInfo?.description !== ''
+          ? [['description', wikidataInfo.description]]
+          : []),
+        ...(wikidataInfo?.description == null && displayNode.description != null && displayNode.description !== ''
+          ? [['description', displayNode.description]]
+          : []),
+        ...(wikidataInfo?.alias != null && wikidataInfo?.alias !== ''
+          ? [['alias', wikidataInfo.alias]]
+          : []),
+        ...(wikidataInfo?.founded_by_label != null && wikidataInfo?.founded_by_label !== ''
+          ? [['foundation', wikidataInfo.founded_by_label]]
+          : []),
+        ...(wikidataInfo?.founded_by_label == null && wikidataInfo?.start_time != null
+          ? [['foundation', new Date(wikidataInfo.start_time).toLocaleDateString()]]
+          : []),
+        ...(wikidataInfo?.country_label != null && wikidataInfo?.country_label !== ''
+          ? [['country', wikidataInfo.country_label]]
+          : []),
+        ...(wikidataInfo?.url != null && wikidataInfo?.url !== ''
+          ? [['url', wikidataInfo.url]]
+          : []),
+      ].filter(([, value]) => value !== undefined && value !== null)
     : [];
 
   // Only these entity_wikidata fields are shown in the Node Properties tab
@@ -666,7 +666,7 @@ const RightSidebar = forwardRef(({
           try {
             const d = typeof v === 'string' ? new Date(v) : new Date(v > 1e12 ? v : v * 1000);
             if (!Number.isNaN(d.getTime())) displayValue = d.toLocaleDateString();
-          } catch (_) {}
+          } catch (_) { }
         }
         return [k, displayValue];
       })
@@ -676,47 +676,47 @@ const RightSidebar = forwardRef(({
   // Only show specific edge properties: Label, Relationship Summary, Category, Article URL
   const filteredEdgeProperties = displayEdge
     ? (() => {
-        const edgeData = displayEdge._originalData || displayEdge;
-        const properties = [];
-        
-        // Label
-        const label = edgeData.label || edgeData.Label || null;
-        if (label) properties.push(['Label', label]);
-        
-        // Relationship Summary
-        const relationshipSummary = edgeData.relationship_summary || 
-                                   edgeData['Relationship Summary'] || 
-                                   edgeData.relationshipSummary ||
-                                   null;
-        if (relationshipSummary) properties.push(['Relationship Summary', relationshipSummary]);
-        
-        // Category (from type field)
-        const category = edgeData.category || 
-                        edgeData.Category || 
-                        edgeData.type ||
-                        edgeData.Type ||
-                        null;
-        if (category) properties.push(['Category', category]);
-        
-        // Article URL
-        const articleUrl = edgeData.article_url || 
-                          edgeData['Article URL'] || 
-                          edgeData.articleUrl ||
-                          edgeData.url ||
-                          edgeData.URL ||
-                          null;
-        if (articleUrl) properties.push(['Article URL', articleUrl]);
-        
-        return properties;
-      })()
+      const edgeData = displayEdge._originalData || displayEdge;
+      const properties = [];
+
+      // Label
+      const label = edgeData.label || edgeData.Label || null;
+      if (label) properties.push(['Label', label]);
+
+      // Relationship Summary
+      const relationshipSummary = edgeData.relationship_summary ||
+        edgeData['Relationship Summary'] ||
+        edgeData.relationshipSummary ||
+        null;
+      if (relationshipSummary) properties.push(['Relationship Summary', relationshipSummary]);
+
+      // Category (from type field)
+      const category = edgeData.category ||
+        edgeData.Category ||
+        edgeData.type ||
+        edgeData.Type ||
+        null;
+      if (category) properties.push(['Category', category]);
+
+      // Article URL
+      const articleUrl = edgeData.article_url ||
+        edgeData['Article URL'] ||
+        edgeData.articleUrl ||
+        edgeData.url ||
+        edgeData.URL ||
+        null;
+      if (articleUrl) properties.push(['Article URL', articleUrl]);
+
+      return properties;
+    })()
     : [];
 
   return (
     <div className="bg-[#09090B] flex flex-col h-full w-full sticky bottom-0 pb-2 pt-5 overflow-visible relative">
-      {}
+      { }
       {isCollapsed && isMobile && (
         <div className="lg:hidden px-3 py-1 text-[#B4B4B4] flex flex-col">
-          {}
+          { }
           <div className="text-center mt-4">
             {selectedNode && (
               <h3 className="text-xs font-medium text-[#B4B4B4]">
@@ -739,551 +739,209 @@ const RightSidebar = forwardRef(({
         </div>
       )}
 
-      {}
+      { }
       {/* Tab Scene Layout */}
       {!isCollapsed && (
         <div className="flex flex-row items-center gap-[2px] px-3 pb-2 w-full">
           <button
             onClick={() => setActiveTab('node-properties')}
-            className={`box-border flex flex-row justify-center items-center py-[1px] px-2 h-5 rounded-t-[5px] text-xs leading-[14px] cursor-pointer whitespace-nowrap transition-all duration-200 ${
-              activeTab === 'node-properties' 
-                ? 'bg-[#09090B] border border-b-0 border-[#ffffff] text-white shadow-[0_-2px_4px_rgba(0,0,0,0.2)]' 
+            className={`box-border flex-10 lg:flex-12 justify-center items-center h-5 rounded-t-[5px] text-xs cursor-pointer whitespace-nowrap transition-all duration-200 ${activeTab === 'node-properties'
+                ? 'bg-[#09090B] border border-b-0 border-[#ffffff] text-white shadow-[0_-2px_4px_rgba(0,0,0,0.2)]'
                 : 'bg-[#24282F] border border-[#363D46] text-[#B4B4B4] hover:bg-[#2A2A2A] hover:text-white'
-            }`}
+              }`}
           >
             {StringConstants.TABS.NODE_PROPERTIES}
           </button>
           <button
             onClick={() => setActiveTab('data-visualization')}
-            className={`box-border flex flex-row justify-center items-center py-[1px] px-2 h-5 rounded-t-[5px] text-xs leading-[14px] cursor-pointer whitespace-nowrap transition-all duration-200 ${
-              activeTab === 'data-visualization' 
-                ? 'bg-[#09090B] border border-b-0 border-[#ffffff] text-white shadow-[0_-2px_4px_rgba(0,0,0,0.2)]' 
+            className={`box-border flex-10 lg:flex-13 justify-center items-center h-5 rounded-t-[5px] text-xs cursor-pointer whitespace-nowrap transition-all duration-200 ${activeTab === 'data-visualization'
+                ? 'bg-[#09090B] border border-b-0 border-[#ffffff] text-white shadow-[0_-2px_4px_rgba(0,0,0,0.2)]'
                 : 'bg-[#24282F] border border-[#363D46] text-[#B4B4B4] hover:bg-[#2A2A2A] hover:text-white'
-            }`}
+              }`}
           >
             {StringConstants.TABS.DATA_VISUALIZATION}
           </button>
           <button
             onClick={() => setActiveTab('scene-layout')}
-            className={`box-border flex flex-row justify-center items-center py-[1px] px-2 h-5 rounded-t-[5px] text-xs leading-[14px] cursor-pointer whitespace-nowrap transition-all duration-200 ${
-              activeTab === 'scene-layout' 
-                ? 'bg-[#09090B] border border-b-0 border-[#ffffff] text-white shadow-[0_-2px_4px_rgba(0,0,0,0.2)]' 
+            className={`box-border flex-10 justify-center items-center h-5 rounded-t-[5px] text-xs cursor-pointer whitespace-nowrap transition-all duration-200 ${activeTab === 'scene-layout'
+                ? 'bg-[#09090B] border border-b-0 border-[#ffffff] text-white shadow-[0_-2px_4px_rgba(0,0,0,0.2)]'
                 : 'bg-[#24282F] border border-[#363D46] text-[#B4B4B4] hover:bg-[#2A2A2A] hover:text-white'
-            }`}
+              }`}
           >
             {StringConstants.TABS.SCENE_LAYOUT}
           </button>
         </div>
       )}
 
-      {}
+      { }
       {/* Tab Content */}
-      <div className={`${isCollapsed ? 'hidden' : 'block'} lg:block lg:px-[12px] flex-1 text-[#B4B4B4] overflow-hidden h-[calc(20vh-45px)] lg:h-auto flex flex-col items-center lg:items-start relative`}>
-        {}
+      <div className={`${isCollapsed ? 'hidden' : 'block'} lg:block lg:px-[12px] pl-3 flex-1 text-[#B4B4B4] overflow-hidden h-[calc(20vh-45px)] lg:h-auto flex flex-col items-center lg:items-start relative`}>
+        { }
         {/* Node Properties Tab */}
         {activeTab === 'node-properties' && (
           <>
-        {}
-        <div className="lg:hidden w-full flex flex-col h-full">
-        
-          <div className="flex flex-row h-full">
-          {}
-          <div className="flex-shrink-0 w-1/3 pr-2 h-full flex items-center">
-            {/* Only show image at top for non-entity nodes */}
-            {displayNode && !isWikidataNode && (
-              <div className="p-2 bg-[#09090B] rounded shadow-sm flex justify-center border border-[#707070] w-full">
-                <div className="w-24 h-24 bg-gray-800 rounded-full overflow-hidden flex items-center justify-center">
-                  {displayNode?.IMG_SRC ? (
-                    <img
-                      src={displayNode.IMG_SRC}
-                      alt={displayNode.name}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full bg-gray-800 flex items-center justify-center">
-                      <svg className="w-16 h-16 text-[#B4B4B4]" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
-                        <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd"></path>
-                      </svg>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
+            { }
+            <div className="lg:hidden w-full flex flex-col h-full">
 
-            {displayEdge && (
-              <div className="p-2 bg-[#09090B] rounded shadow-sm flex justify-center border border-[#707070] w-full">
-                <div className="w-24 h-24 bg-gray-800 rounded-full overflow-hidden flex items-center justify-center">
-                  <div className="w-full h-full bg-gray-700 flex items-center justify-center">
-                    <svg className="w-16 h-16 text-[#B4B4B4]" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
-                    </svg>
-                  </div>
-                </div>
-              </div>
-            )}
+              <div className="flex flex-row h-full">
 
-          </div>
-
-          {/* Details for Mobile (Node or Edge) */}
-              {(displayNode || displayEdge) && (
-            <div className="flex-1 overflow-y-auto pl-2 flex flex-col min-h-0">
-                {/* Item Type Header (for multi-select) */}
-                {isMultiSelect && (
-                  <div className="mb-2 px-2 py-1 bg-[#1A1A1A] rounded border border-[#404040]">
-                    <span className="text-xs font-semibold text-[#B4B4B4] uppercase">
-                      {currentItem?.type === 'node' ? '📍 NODE' : '🔗 EDGE'}
-                    </span>
-                  </div>
-                )}
-                
-                {/* Wikidata Information Section (for Entity Nodes) */}
-                {displayNode && isWikidataNode && wikidataInfo && (
-                  <div className="mb-4 flex flex-col space-y-3 pb-4">
-                    <div className="flex flex-row">
-                      {/* Left Line */}
-                      <div className="w-0.5 bg-[#358EE2] flex-shrink-0 ml-3 mr-3 h-full"></div>
-                      
-                      {/* Content */}
-                      <div className="flex-1 flex flex-col">
-                        {/* Entity Name */}
-                        <h2 className="text-xl font-bold text-white">
-                          {wikidataInfo.name || entityName}
-                        </h2>
-                    
-                    {/* Alias and Type */}
-                      {wikidataInfo.instance_of_label && (
-                        <p className="text-sm text-[#B4B4B4]">
-                          {wikidataInfo.sex_or_gender_label ? `${wikidataInfo.sex_or_gender_label} - ` : ''}
-                          {wikidataInfo.instance_of_label}
-                        </p>
-                      )}
-                    
-                    {/* Image - Displayed after alias/type, before "Listed in" */}
-                    {displayImageUrl && (
-                      <div className="mb-3 flex justify-start">
-                        <div className="w-32 h-32 bg-gray-800 rounded-lg overflow-hidden flex items-center justify-center">
-                          {wikidataLoading ? (
-                            <div className="w-full h-full bg-gray-800 flex items-center justify-center">
-                              <svg className="animate-spin w-8 h-8 text-[#B4B4B4]" fill="none" viewBox="0 0 24 24">
-                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                              </svg>
-                            </div>
-                          ) : (
-                            <img
-                              src={displayImageUrl}
-                              alt={wikidataInfo.name || entityName}
-                              className="w-full h-full object-cover"
-                              onError={(e) => {
-                                console.error('Image failed to load in RightSidebar:', displayImageUrl);
-                                e.target.style.display = 'none';
-                              }}
-                            />
-                          )}
-                        </div>
+                {/* Details for Mobile (Node or Edge) */}
+                {(displayNode || displayEdge) && (
+                  <div className="flex-1 overflow-y-auto flex flex-col min-h-0">
+                    {/* Item Type Header (for multi-select) */}
+                    {isMultiSelect && (
+                      <div className="mb-2 px-2 py-1 bg-[#1A1A1A] rounded border border-[#404040]">
+                        <span className="text-xs font-semibold text-[#B4B4B4] uppercase">
+                          {currentItem?.type === 'node' ? '📍 NODE' : '🔗 EDGE'}
+                        </span>
                       </div>
                     )}
-                    
-                    {/* Listed In / Category */}
-                    {wikidataInfo.instance_of_label && (
-                      <div>
-                        <p className="text-xs text-[#7D7D7D] mb-1">Listed in:</p>
-                        <div className="inline-block px-1 bg-[#1A1A1A] rounded-[4px]">
-                          <div className="text-[12px] text-white p-0.5">{wikidataInfo.instance_of_label}</div>
-                        </div>
-                      </div>
-                    )}
-                    
-                    {/* Description */}
-                    {wikidataInfo.description && (
-                      <>
-                        <span className="text-xs text-[#7D7D7D]">Description:</span>
-                        <p className="text-sm text-[#F4F4F5] leading-relaxed mb-3">
-                          {wikidataInfo.description}
-                        </p>
-                      </>
-                    )}
-                    
-                    {/* All valid properties from entity + entity_wikidata */}
-                    {allWikidataProperties.length > 0 && (
-                      <div className="flex flex-col space-y-2 mb-3">
-                        {allWikidataProperties.map(([key, value], idx) => {
-                          const isUrlProperty = key.toLowerCase().includes('url') || key === 'url' || key.toLowerCase().includes('link');
-                          const href = (isUrlProperty && typeof value === 'string' && isValidUrl(value)) ? formatUrl(value) : null;
-                          return (
-                            <div key={idx} className="mb-1">
-                              <span className="text-sm text-[#7D7D7D]">{formatLabel(key)}:</span>
-                              {href ? (
-                                <a href={href} target="_blank" rel="noopener noreferrer" className="text-sm text-[#6EA4F4] hover:underline block break-words">
-                                  {formatValue(value)}
-                                </a>
-                              ) : (
-                                <p className="text-sm text-[#F4F4F5] leading-relaxed break-words">{formatValue(value)}</p>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                    
-                    {/* URL Links Section */}
-                    {(wikidataInfo.wikipedia_url || wikidataInfo.url || wikidataInfo.qid) && (
-                      <div className="mt-3 pt-3 border-t border-[#404040]">
-                        <p className="text-xs text-[#7D7D7D] mb-2">URL</p>
-                        <div className="flex flex-col gap-2">
-                          {wikidataInfo.wikipedia_url && (
-                            <a
-                              href={wikidataInfo.wikipedia_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-sm text-[#6EA4F4] hover:underline"
-                            >
-                              Wikipedia Link
-                            </a>
-                          )}
-                          {wikidataInfo.url && (
-                            <a
-                              href={wikidataInfo.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-sm text-[#6EA4F4] hover:underline"
-                            >
-                              Social Link
-                            </a>
-                          )}                          
-                        </div>
-                      </div>
-                    )}
-                        </div>
-                      </div>
-                  </div>
-                )}
 
-                {/* Article details (from Postgres) - Mobile */}
-                {displayNode && isArticleNode && (
-                  <div className="mb-4 flex flex-col space-y-3 pb-4">
-                    <div className="flex flex-row">
-                      <div className="w-0.5 bg-[#358EE2] flex-shrink-0 ml-3 mr-3 h-full" />
-                      <div className="flex-1 flex flex-col">
-                        <span className="text-xs text-[#7D7D7D]">Title</span>
-                        <h2 className="text-xl white mb-1">
-                          {articleLoading ? 'Loading...' : (articleInfo?.title ?? articleInfo?.name ?? entityName ?? 'Article')}
-                        </h2>
-                        {articleLoading && (
-                          <div className="flex items-center gap-2 text-sm text-[#B4B4B4] mb-2">
-                            <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
-                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                            </svg>
-                            Loading article details...
-                          </div>
-                        )}
-                        {!articleLoading && articleInfo && (
-                          <>
-                            {Object.entries(articleInfo)
-                              .filter(([key]) => !['title', 'name', 'archive_url', 'created_at', 'updated_at', 'id', 'description', 'summary', 'url', 'article_url', 'link'].includes(key))
-                              .map(([key, value]) => value != null && String(value).trim() !== '' && (
-                                <div key={key} className="mb-1">
-                                  <span className="text-xs text-[#7D7D7D]">{formatLabel(key)}:</span>
-                                  <p className="text-sm text-[#F4F4F5] break-words mb-0.5">{key === 'date' ? formatDateValue(value) : formatValue(value)}</p>
-                                </div>
-                              ))}
-                            {(articleInfo.url || articleInfo.article_url || articleInfo.link) && (
-                              <div className="mb-1 mt-2">
-                                <p className="text-xs text-[#7D7D7D] mb-1">URL</p>
-                                <a
-                                  href={formatUrl(String(articleInfo.url ?? articleInfo.article_url ?? articleInfo.link))}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-sm text-[#6EA4F4] hover:underline break-words"
-                                >
-                                  {String(articleInfo.url ?? articleInfo.article_url ?? articleInfo.link).length > 60
-                                    ? String(articleInfo.url ?? articleInfo.article_url ?? articleInfo.link).slice(0, 60) + '...'
-                                    : articleInfo.url ?? articleInfo.article_url ?? articleInfo.link}
-                                </a>
-                              </div>
-                            )}
-                          </>
-                        )}
-                        {!articleLoading && !articleInfo && (
-                          <p className="text-sm text-[#B4B4B4]">No article details found for this node.</p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
+                    {/* Wikidata Information Section (for Entity Nodes) */}
+                    {displayNode && isWikidataNode && wikidataInfo && (
+                      <div className="mb-4 flex flex-col space-y-3 pb-4">
+                        <div className="flex flex-row">
+                          {/* Content */}
+                          <div className="flex-1 flex flex-col">
+                            {/* Entity Name */}
+                            <h2 className="text-xl font-bold text-white">
+                              {wikidataInfo.name || entityName}
+                            </h2>
 
-                {/* Node Properties - Only show for non-entity nodes, or for entity nodes when wikidata/article details not available */}
-                {displayNode && (!isWikidataNode || (isWikidataNode && !wikidataInfo)) && (!isArticleNode || (isArticleNode && !articleInfo)) && filteredNodeProperties.length > 0 && (
-                  <div className="flex flex-col space-y-3">
-                    {filteredNodeProperties.map(([key, value], index) => {
-                      const isUrlProperty = key.toLowerCase().includes('url') || key.toLowerCase() === 'link' || key.toLowerCase().includes('website') || key.toLowerCase().includes('webpage');
-                      return (
-                        <div key={index} className="mb-1 flex-shrink-0">
-                          <h4 className="text-xs font-normal text-[#7D7D7D] mb-0.5 leading-[18px]">{formatLabel(key)}:</h4>
-                          {isUrlProperty && isValidUrl(String(value)) ? (
-                            <a
-                              href={formatUrl(String(value))}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-sm text-[#6EA4F4] hover:underline break-words leading-[18px] ml-0 block"
-                            >
-                              {formatValue(value)}
-                            </a>
-                          ) : (
-                            <p className="text-sm text-[#F4F4F5] break-words leading-[18px] ml-0">
-                              {formatValue(value)}
-                            </p>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-                
-                {/* Edge Properties */}
-                {displayEdge && filteredEdgeProperties.length > 0 && (
-                  <div className="flex flex-col space-y-3">
-                    {filteredEdgeProperties.map(([key, value], index) => {
-                      const isUrlProperty = key.toLowerCase().includes('url') || key.toLowerCase() === 'link' || key.toLowerCase().includes('website') || key.toLowerCase().includes('webpage');
-                      return (
-                        <div key={index} className="mb-1 flex-shrink-0">
-                          <h4 className="text-xs font-normal text-[#7D7D7D] mb-0.5 leading-[18px]">{formatLabel(key)}:</h4>
-                          {isUrlProperty && isValidUrl(String(value)) ? (
-                            <a
-                              href={formatUrl(String(value))}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-sm text-[#6EA4F4] hover:underline break-words leading-[18px] ml-0 block"
-                            >
-                              {formatValue(value)}
-                            </a>
-                          ) : (
-                            <p className="text-sm text-[#F4F4F5] break-words leading-[18px] ml-0">
-                              {formatValue(value)}
-                            </p>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-                </div>
-              )}
-
-                        {/* Pagination Controls - Only show in Multi-Select mode with multiple items (Mobile) */}
-          {((selectedNodes?.size || 0) + (selectedEdges?.size || 0)) > 1 && (
-            <div className="mb-2 flex items-center justify-between px-2 py-1 flex-shrink-0 bg-[#1A1A1A] rounded-md border border-[#404040]">
-              <button
-                onClick={handlePrevious}
-                disabled={currentPage === 0}
-                className={`px-2 py-1 rounded text-xs flex items-center gap-1 transition-colors ${
-                  currentPage === 0
-                    ? 'text-gray-600 cursor-not-allowed'
-                    : 'text-white hover:bg-gray-700'
-                }`}
-              >
-                <FaChevronLeft size={10} />
-                Prev
-              </button>
-              <span className="text-xs font-medium text-[#F4F4F5]">
-                {currentPage + 1} / {selectedItems.length > 0 ? selectedItems.length : (selectedNodes.size + selectedEdges.size)}
-              </span>
-              <button
-                onClick={handleNext}
-                disabled={currentPage === totalItems - 1}
-                className={`px-2 py-1 rounded text-xs flex items-center gap-1 transition-colors ${
-                  currentPage === totalItems - 1
-                    ? 'text-gray-600 cursor-not-allowed'
-                    : 'text-white hover:bg-gray-700'
-                }`}
-              >
-                Next
-                <FaChevronRight size={10} />
-              </button>
-            </div>
-          )}
-          </div>
-        </div>
-
-        {}
-        <div className="hidden lg:block w-full flex flex-col h-full">
-              {/* Show content when there's a selected node, edge, or multi-select items */}
-              {((selectedNode || selectedEdge) || isMultiSelect) && (
-                <div className="flex flex-col h-full">
-                {/* Only show top image for non-entity nodes */}
-                {displayNode && !!displayNode.IMG_SRC && (
-                  <div className="mb-4 p-2 bg-[#09090B] rounded shadow-sm flex justify-center w-full border border-[#707070] flex-shrink-0">
-                    <div className="w-20 h-20 bg-gray-800 overflow-hidden flex items-center justify-center">
-                      {displayNode?.IMG_SRC ? (
-                        <img
-                          src={displayNode.IMG_SRC}
-                          alt={displayNode.name}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-full h-full bg-gray-800 flex items-center justify-center">
-                          <svg className="w-14 h-14 text-[#B4B4B4]" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
-                            <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd"></path>
-                          </svg>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-                  
-                  {/* Scrollable Content Container for Node Properties Tab */}
-                  {activeTab === 'node-properties' && (
-                    <div className="flex-1 overflow-y-auto pr-2 min-h-0">
-                  {/* Wikidata Information Section (for Entity Nodes) - Desktop */}
-                  {displayNode && isWikidataNode && wikidataInfo && (
-                    <div className="w-full flex-shrink-0 mb-4 py-2 pr-2 bg-[#09090B] rounded-md border border-[#707070]">
-                      {/* Content */}
-                      <div className="flex-1 flex flex-col ml-2">
-                        {/* Entity Name */}
-                        <span className="text-xs text-[#7D7D7D]">Name:</span>
-                        <h2 className="text-xl font-bold text-white">
-                          {wikidataInfo.name || entityName}
-                        </h2>
-                    
-                        {wikidataInfo.Type && (
-                          <>
-                            <span className="text-xs text-[#7D7D7D]">Type:</span>
-                            <p className="text-sm text-[#B4B4B4]">
-                              <span className="text-white">{wikidataInfo.type}</span>
-                            </p>
-                          </>
-                        )}
-                    
-                        {/* Image - Displayed after alias/type, before "Listed in" */}
-                        {displayImageUrl && (
-                          <div className="mb-3 flex justify-start">
-                            <div className="w-32 h-32 bg-gray-800 rounded-lg overflow-hidden flex items-center justify-center">
-                              {wikidataLoading ? (
-                                <div className="w-full h-full bg-gray-800 flex items-center justify-center">
-                                  <svg className="animate-spin w-8 h-8 text-[#B4B4B4]" fill="none" viewBox="0 0 24 24">
-                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                  </svg>
-                                </div>
-                              ) : (
-                                <img
-                                  src={displayImageUrl}
-                                  alt={wikidataInfo.name || entityName}
-                                  className="w-full h-full object-cover"
-                                  onError={(e) => {
-                                    console.error('Image failed to load in RightSidebar:', displayImageUrl);
-                                    e.target.style.display = 'none';
-                                  }}
-                                />
-                              )}
-                            </div>
-                          </div>
-                        )}
-                        
-                        {wikidataInfo.description && (
-                          <>
-                            <span className="text-xs text-[#7D7D7D]">Description:</span>
-                            <p className="text-sm text-[#F4F4F5] leading-relaxed mb-3">
-                              {wikidataInfo.description}
-                            </p>
-                          </>
-                        )}
-                    
-                        {/* All valid properties from entity + entity_wikidata */}
-                        {allWikidataProperties.length > 0 && (
-                          <div className="flex flex-col">
-                            {allWikidataProperties.map(([key, value], idx) => {
-                              const isUrlProperty = key.toLowerCase().includes('url') || key === 'url' || key.toLowerCase().includes('link');
-                              const href = (isUrlProperty && typeof value === 'string' && isValidUrl(value)) ? formatUrl(value) : null;
-                              return (
-                                <div key={idx}>
-                                  <span className="text-xs text-[#7D7D7D]">{formatLabel(key)}:</span>
-                                  {href ? (
-                                    <a href={href} target="_blank" rel="noopener noreferrer" className="text-sm text-[#6EA4F4] hover:underline block break-words">
-                                      {formatValue(value)}
-                                    </a>
+                            {/* Image - Displayed after alias/type, before "Listed in" */}
+                            {displayImageUrl && (
+                              <div className="mb-3 flex justify-start">
+                                <div className="w-32 h-32 bg-gray-800 rounded-lg overflow-hidden flex items-center justify-center">
+                                  {wikidataLoading ? (
+                                    <div className="w-full h-full bg-gray-800 flex items-center justify-center">
+                                      <svg className="animate-spin w-8 h-8 text-[#B4B4B4]" fill="none" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                      </svg>
+                                    </div>
                                   ) : (
-                                    <p className="text-sm text-[#F4F4F5] leading-relaxed break-words">{formatValue(value)}</p>
+                                    <img
+                                      src={displayImageUrl}
+                                      alt={wikidataInfo.name || entityName}
+                                      className="w-full h-full object-cover"
+                                      onError={(e) => {
+                                        console.error('Image failed to load in RightSidebar:', displayImageUrl);
+                                        e.target.style.display = 'none';
+                                      }}
+                                    />
                                   )}
                                 </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                  
-                  {/* Article details (from Postgres) - Desktop */}
-                  {displayNode && isArticleNode && (
-                    <div className="w-full flex-shrink-0 mb-4 py-2 pr-2 bg-[#09090B] rounded-md border border-[#707070]">
-                      <div className="flex flex-col w-full pl-2">
-                        <span className="text-sm text-[#7D7D7D]">Title</span>
-                        <h2 className="text-xl text-white mb-1">
-                          {articleLoading ? 'Loading...' : (articleInfo?.title ?? articleInfo?.name ?? entityName ?? 'Article')}
-                        </h2>
-                        {articleLoading && (
-                          <div className="flex items-center gap-2 text-sm text-[#B4B4B4] mb-2">
-                            <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
-                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                            </svg>
-                            Loading article details...
-                          </div>
-                        )}
-                        {!articleLoading && articleInfo && (
-                          <>
-                            {Object.entries(articleInfo)
-                              .filter(([key]) => !['title', 'name', 'archive_url', 'created_at', 'updated_at', 'id','description', 'summary', 'url', 'article_url', 'link'].includes(key))
-                              .map(([key, value]) => value != null && String(value).trim() !== '' && (
-                                <div key={key} className="mb-1">
-                                  <span className="text-sm text-[#7D7D7D]">{formatLabel(key)}</span>
-                                  <p className="text-sm text-[#F4F4F5] break-words mb-0.5">
-                                    {key === 'date' ? formatDateValue(value) : formatValue(value)}
-                                  </p>
-                                </div>
-                              ))}
-                            {(articleInfo.url || articleInfo.article_url || articleInfo.link) && (
-                              <div className="mb-1">
-                                <p className="text-[#7D7D7D] mb-1">URL</p>
-                                <a
-                                  href={formatUrl(String(articleInfo.url ?? articleInfo.article_url ?? articleInfo.link))}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-sm text-[#6EA4F4] hover:underline break-words"
-                                >
-                                  {String(articleInfo.url ?? articleInfo.article_url ?? articleInfo.link).length > 60
-                                    ? String(articleInfo.url ?? articleInfo.article_url ?? articleInfo.link).slice(0, 60) + '...'
-                                    : articleInfo.url ?? articleInfo.article_url ?? articleInfo.link}
-                                </a>
                               </div>
                             )}
-                          </>
-                        )}
+
+                            {/* Description */}
+                            {wikidataInfo.description && (
+                              <>
+                                <span className="text-xs text-[#7D7D7D]">Description:</span>
+                                <p className="text-sm text-[#F4F4F5] leading-relaxed mb-3">
+                                  {wikidataInfo.description}
+                                </p>
+                              </>
+                            )}
+
+                            {/* All valid properties from entity + entity_wikidata */}
+                            {allWikidataProperties.length > 0 && (
+                              <div className="flex flex-col space-y-2">
+                                {allWikidataProperties.map(([key, value], idx) => {
+                                  const isUrlProperty = key.toLowerCase().includes('url') || key === 'url' || key.toLowerCase().includes('link');
+                                  const href = (isUrlProperty && typeof value === 'string' && isValidUrl(value)) ? formatUrl(value) : null;
+                                  return (
+                                    <div key={idx} className='flex flex-row lg:flex-col'>
+                                      <span className="text-sm text-[#7D7D7D] flex-1">{formatLabel(key)}:</span>
+                                      {href ? (
+                                        <a href={href} target="_blank" rel="noopener noreferrer" className="text-sm text-[#6EA4F4] flex-5 hover:underline block break-words">
+                                          {formatValue(value)}
+                                        </a>
+                                      ) : (
+                                        <p className="text-sm text-[#F4F4F5] leading-relaxed break-words flex-5">{formatValue(value)}</p>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  )}
-                  {/* Node Details - Only show for non-entity nodes, or for entity nodes when wikidata/article details not available */}
-                  {displayNode && (!isWikidataNode || (isWikidataNode && !wikidataInfo)) && (!isArticleNode || (isArticleNode && !articleInfo)) && filteredNodeProperties.length > 0 && (
-                    <div className="w-full flex-shrink-0 mb-4">
-                      <div className="w-full flex-shrink-0 mb-4 pl-2 py-2 pr-2 bg-[#09090B] rounded-md border border-[#707070]">
+                    )}
+
+                    {/* Article details (from Postgres) - Mobile */}
+                    {displayNode && isArticleNode && (
+                      <div className="mb-4 flex flex-col space-y-3 pb-4">
+                        <div className="flex flex-row">
+                          <div className="flex-1 flex flex-col">
+                            <span className="text-xs text-[#7D7D7D]">Title</span>
+                            <h2 className="text-xl white mb-1">
+                              {articleLoading ? 'Loading...' : (articleInfo?.title ?? articleInfo?.name ?? entityName ?? 'Article')}
+                            </h2>
+                            {articleLoading && (
+                              <div className="flex items-center gap-2 text-sm text-[#B4B4B4] mb-2">
+                                <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                </svg>
+                                Loading article details...
+                              </div>
+                            )}
+                            {!articleLoading && articleInfo && (
+                              <>
+                                {Object.entries(articleInfo)
+                                  .filter(([key]) => !['title', 'name', 'archive_url', 'created_at', 'updated_at', 'id', 'description', 'summary', 'url', 'article_url', 'link'].includes(key))
+                                  .map(([key, value]) => value != null && String(value).trim() !== '' && (
+                                    <div key={key} className="mb-1 flex flex-row lg:flex-col">
+                                      <span className="text-xs text-[#7D7D7D] flex-1">{formatLabel(key)}:</span>
+                                      <p className="text-sm text-[#F4F4F5] break-words mb-0.5 flex-5">{key === 'date' ? formatDateValue(value) : formatValue(value)}</p>
+                                    </div>
+                                  ))}
+                                {(articleInfo.url || articleInfo.article_url || articleInfo.link) && (
+                                  <div className="mb-1 mt-2 flex flex-row lg:flex-col">
+                                    <p className="text-xs text-[#7D7D7D] mb-1 flex-1">URL</p>
+                                    <a
+                                      href={formatUrl(String(articleInfo.url ?? articleInfo.article_url ?? articleInfo.link))}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-sm text-[#6EA4F4] hover:underline break-words flex-5"
+                                    >
+                                      {String(articleInfo.url ?? articleInfo.article_url ?? articleInfo.link).length > 60
+                                        ? String(articleInfo.url ?? articleInfo.article_url ?? articleInfo.link).slice(0, 60) + '...'
+                                        : articleInfo.url ?? articleInfo.article_url ?? articleInfo.link}
+                                    </a>
+                                  </div>
+                                )}
+                              </>
+                            )}
+                            {!articleLoading && !articleInfo && (
+                              <p className="text-sm text-[#B4B4B4]">No article details found for this node.</p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Node Properties - Only show for non-entity nodes, or for entity nodes when wikidata/article details not available */}
+                    {displayNode && (!isWikidataNode || (isWikidataNode && !wikidataInfo)) && (!isArticleNode || (isArticleNode && !articleInfo)) && filteredNodeProperties.length > 0 && (
+                      <div className="flex flex-col space-y-3 pl-2">
                         {filteredNodeProperties.map(([key, value], index) => {
                           const isUrlProperty = key.toLowerCase().includes('url') || key.toLowerCase() === 'link' || key.toLowerCase().includes('website') || key.toLowerCase().includes('webpage');
                           return (
-                            <div key={index} className="mb-1 flex-shrink-0">
-                              <h4 className="text-xs font-normal text-[#7D7D7D] mb-0.5 leading-[18px]">{formatLabel(key)}:</h4>
+                            <div key={index} className="mb-1 flex flex-row lg:flex-col">
+                              <h4 className="text-xs font-normal text-[#7D7D7D] mb-0.5 leading-[18px] flex-1">{formatLabel(key)}:</h4>
                               {isUrlProperty && isValidUrl(String(value)) ? (
                                 <a
                                   href={formatUrl(String(value))}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="text-sm text-[#6EA4F4] hover:underline break-words leading-[18px] ml-0 block"
+                                  className="text-sm text-[#6EA4F4] hover:underline break-words leading-[18px] ml-0 block flex-5"
                                 >
                                   {formatValue(value)}
                                 </a>
                               ) : (
-                                <p className="text-sm text-[#F4F4F5] leading-relaxed break-words">
+                                <p className="text-sm text-[#F4F4F5] break-words leading-[18px] ml-0 flex-5">
                                   {formatValue(value)}
                                 </p>
                               )}
@@ -1291,24 +949,22 @@ const RightSidebar = forwardRef(({
                           );
                         })}
                       </div>
-                    </div>
-                  )}
-                  
-                  {/* Edge Details */}
-                  {displayEdge && filteredEdgeProperties.length > 0 && (
-                    <div className="w-full flex-shrink-0 mb-4">
-                      <div className="flex flex-col space-y-3">
+                    )}
+
+                    {/* Edge Properties */}
+                    {displayEdge && filteredEdgeProperties.length > 0 && (
+                      <div className="flex flex-col space-y-3 pl-2">
                         {filteredEdgeProperties.map(([key, value], index) => {
                           const isUrlProperty = key.toLowerCase().includes('url') || key.toLowerCase() === 'link' || key.toLowerCase().includes('website') || key.toLowerCase().includes('webpage');
                           return (
-                            <div key={index} className="mb-1 flex-shrink-0">
-                              <h4 className="text-xs font-normal text-[#7D7D7D] mb-0.5 leading-[18px]">{formatLabel(key)}:</h4>
+                            <div key={index} className="mb-1 flex flex-row lg:flex-col">
+                              <h4 className="text-xs font-normal text-[#7D7D7D] mb-0.5 leading-[18px] flex-1">{formatLabel(key)}:</h4>
                               {isUrlProperty && isValidUrl(String(value)) ? (
                                 <a
                                   href={formatUrl(String(value))}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="text-sm text-[#6EA4F4] hover:underline break-words leading-[18px] ml-0 block"
+                                  className="text-sm text-[#6EA4F4] hover:underline break-words leading-[18px] ml-0 block flex-5"
                                 >
                                   {formatValue(value)}
                                 </a>
@@ -1321,156 +977,406 @@ const RightSidebar = forwardRef(({
                           );
                         })}
                       </div>
-                    </div>
-                  )}
-
-                  {/* Pagination Controls - Only show in Multi-Select mode with multiple items */}
-                  {((selectedNodes?.size || 0) + (selectedEdges?.size || 0)) > 1 && (
-                    <div className="mb-3 flex items-center justify-center gap-3 px-2 py-1 flex-shrink-0 rounded-md">
-                      <button
-                        onClick={handlePrevious}
-                        disabled={currentPage === 0}
-                        className={`p-1 rounded transition-colors ${
-                          currentPage === 0
-                            ? 'text-gray-600 cursor-not-allowed'
-                            : 'text-white hover:bg-[#333333]'
-                        }`}
-                      >
-                        <FaChevronLeft size={12} />
-                      </button>
-                      <span className="text-sm font-medium text-[#F4F4F5]">
-                        {currentPage + 1} / {selectedItems.length > 0 ? selectedItems.length : (selectedNodes.size + selectedEdges.size)}
-                      </span>
-                      <button
-                        onClick={handleNext}
-                        disabled={currentPage === totalItems - 1}
-                        className={`p-1 rounded transition-colors ${
-                          currentPage === totalItems - 1
-                            ? 'text-gray-600 cursor-not-allowed'
-                            : 'text-white hover:bg-[#333333]'
-                        }`}
-                      >
-                        <FaChevronRight size={12} />
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Neighbors Graph - Show in BOTH individual and multi-select modes */}
-                  {/* This is a separate subgraph visualization in the sidebar, independent from the main THREE.js view */}
-                  {/* The deep copy mechanism ensures the main THREE.js graph is not affected */}
-                  {(() => {
-                    const nodeSource = filteredGraphData?.nodes || graphData?.nodes || [];
-                    const linkSource = filteredGraphData?.links || graphData?.links || [];
-                    const hasMultiSelection = selectedNodes.size > 1 || selectedEdges.size > 0;
-
-                    // PRIORITY 1: MULTI-SELECT – show selected nodes + depth-1 related nodes (direct neighbors)
-                    if (isMultiSelect && hasMultiSelection) {
-                      const selectedNodesList = Array.from(selectedNodes);
-                      const selectedEdgesList = Array.from(selectedEdges);
-                      const norm = (id) => (id != null ? String(id) : '');
-
-                      const edgeNodeIds = new Set();
-                      selectedEdgesList.forEach(edgeId => {
-                        const edge = linkSource.find(l => {
-                          const sid = l.source?.id ?? l.sourceId ?? l.source;
-                          const tid = l.target?.id ?? l.targetId ?? l.target;
-                          const linkId = l.id ?? `${norm(sid)}-${norm(tid)}`;
-                          return norm(linkId) === norm(edgeId) || (norm(sid) + '-' + norm(tid)) === norm(edgeId);
-                        });
-                        if (edge) {
-                          const sourceId = edge.source?.id ?? edge.sourceId ?? edge.source;
-                          const targetId = edge.target?.id ?? edge.targetId ?? edge.target;
-                          edgeNodeIds.add(norm(sourceId));
-                          edgeNodeIds.add(norm(targetId));
-                        }
-                      });
-
-                      // Core = only the selected nodes (and nodes from selected edges)
-                      const coreNodeIds = new Set([
-                        ...selectedNodesList.map(norm),
-                        ...Array.from(edgeNodeIds)
-                      ]);
-
-                      // Nodes to show: selected + nodes that are directly linked to at least one selected node
-                      const allNodeIds = new Set(coreNodeIds);
-                      linkSource.forEach(link => {
-                        const sourceId = norm(link.source?.id ?? link.sourceId ?? link.source);
-                        const targetId = norm(link.target?.id ?? link.targetId ?? link.target);
-                        if (coreNodeIds.has(sourceId)) allNodeIds.add(targetId);
-                        if (coreNodeIds.has(targetId)) allNodeIds.add(sourceId);
-                      });
-
-                      const subgraphNodes = nodeSource.filter(n => allNodeIds.has(norm(n.id || n.gid)));
-                      // Only show links that touch a selected node (selected ↔ neighbor). Hide links between neighbors.
-                      const subgraphLinks = linkSource.filter(link => {
-                        const sourceId = norm(link.source?.id ?? link.sourceId ?? link.source);
-                        const targetId = norm(link.target?.id ?? link.targetId ?? link.target);
-                        if (!allNodeIds.has(sourceId) || !allNodeIds.has(targetId)) return false;
-                        return coreNodeIds.has(sourceId) || coreNodeIds.has(targetId);
-                      });
-
-                      const computedSubgraph = { nodes: subgraphNodes, links: subgraphLinks };
-                      if (computedSubgraph.nodes.length > 0) {
-                        return (
-                          <div className="w-full flex-1 min-h-0 mt-2 mb-1 flex-auto overflow-hidden min-h-[320px]">
-                            <NeighborsGraph 
-                              selectedNode={null}
-                              graphData={computedSubgraph}
-                              isSubgraph={true}
-                            />
-                          </div>
-                        );
-                      }
-                    }
-
-                    // PRIORITY 2: Single node (or current page node in multi-select with only one node) – show its neighbors
-                    if (displayNode) {
-                      return (
-                        <div className="w-full flex-1 min-h-0 mt-2 mb-1 flex-auto overflow-hidden min-h-[320px]">
-                          <NeighborsGraph 
-                            selectedNode={displayNode} 
-                            graphData={graphData}
-                            isSubgraph={false}
-                          />
-                        </div>
-                      );
-                    }
-
-                    return null;
-                  })()}
-                </div>
-          )}
-
-              {}
-          {displayEdge && (
-                <div className="mb-4 p-2 bg-[#09090B] rounded shadow-sm flex justify-center w-full border border-[#707070]">
-                  <div className="w-20 h-20 bg-gray-800 rounded-full overflow-hidden flex items-center justify-center">
-                    <div className="w-full h-full bg-gray-700 flex items-center justify-center">
-                      <svg className="w-14 h-14 text-[#B4B4B4]" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
-                      </svg>
-              </div>
+                    )}
                   </div>
-            </div>
-          )}
+                )}
 
+                {/* Pagination Controls - Only show in Multi-Select mode with multiple items (Mobile) */}
+                {((selectedNodes?.size || 0) + (selectedEdges?.size || 0)) > 1 && (
+                  <div className="mb-2 flex items-center justify-between px-2 py-1 flex-shrink-0 bg-[#1A1A1A] rounded-md border border-[#404040]">
+                    <button
+                      onClick={handlePrevious}
+                      disabled={currentPage === 0}
+                      className={`px-2 py-1 rounded text-xs flex items-center gap-1 transition-colors ${currentPage === 0
+                          ? 'text-gray-600 cursor-not-allowed'
+                          : 'text-white hover:bg-gray-700'
+                        }`}
+                    >
+                      <FaChevronLeft size={10} />
+                      Prev
+                    </button>
+                    <span className="text-xs font-medium text-[#F4F4F5]">
+                      {currentPage + 1} / {selectedItems.length > 0 ? selectedItems.length : (selectedNodes.size + selectedEdges.size)}
+                    </span>
+                    <button
+                      onClick={handleNext}
+                      disabled={currentPage === totalItems - 1}
+                      className={`px-2 py-1 rounded text-xs flex items-center gap-1 transition-colors ${currentPage === totalItems - 1
+                          ? 'text-gray-600 cursor-not-allowed'
+                          : 'text-white hover:bg-gray-700'
+                        }`}
+                    >
+                      Next
+                      <FaChevronRight size={10} />
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            { }
+            <div className="hidden lg:block w-full flex flex-col h-full">
+              {/* Show content when there's a selected node, edge, or multi-select items */}
+              {((selectedNode || selectedEdge) || isMultiSelect) && (
+                <div className="flex flex-col h-full">
+                  {/* Only show top image for non-entity nodes */}
+                  {displayNode && !!displayNode.IMG_SRC && (
+                    <div className="mb-4 p-2 bg-[#09090B] rounded shadow-sm flex justify-center w-full border border-[#707070] flex-shrink-0">
+                      <div className="w-20 h-20 bg-gray-800 overflow-hidden flex items-center justify-center">
+                        {displayNode?.IMG_SRC ? (
+                          <img
+                            src={displayNode.IMG_SRC}
+                            alt={displayNode.name}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full bg-gray-800 flex items-center justify-center">
+                            <svg className="w-14 h-14 text-[#B4B4B4]" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+                              <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd"></path>
+                            </svg>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
-        </div>
+
+                  {/* Scrollable Content Container for Node Properties Tab */}
+                  {activeTab === 'node-properties' && (
+                    <div className="flex-1 overflow-y-auto min-h-0">
+                      {/* Wikidata Information Section (for Entity Nodes) - Desktop */}
+                      {displayNode && isWikidataNode && wikidataInfo && (
+                        <div className="w-full flex-shrink-0 mb-2 py-2 pr-2 bg-[#09090B] rounded-md border border-[#707070]">
+                          {/* Content */}
+                          <div className="flex-1 flex flex-col ml-2">
+                            {/* Entity Name */}
+                            <span className="text-xs text-[#7D7D7D]">Name:</span>
+                            <h2 className="text-xl font-bold text-white">
+                              {wikidataInfo.name || entityName}
+                            </h2>
+
+                            {wikidataInfo.Type && (
+                              <>
+                                <span className="text-xs text-[#7D7D7D]">Type:</span>
+                                <p className="text-sm text-[#B4B4B4]">
+                                  <span className="text-white">{wikidataInfo.type}</span>
+                                </p>
+                              </>
+                            )}
+
+                            {/* Image - Displayed after alias/type, before "Listed in" */}
+                            {displayImageUrl && (
+                              <div className="mb-3 flex justify-start">
+                                <div className="w-32 h-32 bg-gray-800 rounded-lg overflow-hidden flex items-center justify-center">
+                                  {wikidataLoading ? (
+                                    <div className="w-full h-full bg-gray-800 flex items-center justify-center">
+                                      <svg className="animate-spin w-8 h-8 text-[#B4B4B4]" fill="none" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                      </svg>
+                                    </div>
+                                  ) : (
+                                    <img
+                                      src={displayImageUrl}
+                                      alt={wikidataInfo.name || entityName}
+                                      className="w-full h-full object-cover"
+                                      onError={(e) => {
+                                        console.error('Image failed to load in RightSidebar:', displayImageUrl);
+                                        e.target.style.display = 'none';
+                                      }}
+                                    />
+                                  )}
+                                </div>
+                              </div>
+                            )}
+
+                            {wikidataInfo.description && (
+                              <>
+                                <span className="text-xs text-[#7D7D7D]">Description:</span>
+                                <p className="text-sm text-[#F4F4F5] leading-relaxed mb-3">
+                                  {wikidataInfo.description}
+                                </p>
+                              </>
+                            )}
+
+                            {/* All valid properties from entity + entity_wikidata */}
+                            {allWikidataProperties.length > 0 && (
+                              <div className="flex flex-col">
+                                {allWikidataProperties.map(([key, value], idx) => {
+                                  const isUrlProperty = key.toLowerCase().includes('url') || key === 'url' || key.toLowerCase().includes('link');
+                                  const href = (isUrlProperty && typeof value === 'string' && isValidUrl(value)) ? formatUrl(value) : null;
+                                  return (
+                                    <div key={idx} className='flex flex-row lg:flex-col'>
+                                      <span className="text-xs text-[#7D7D7D] flex-1">{formatLabel(key)}:</span>
+                                      {href ? (
+                                        <a href={href} target="_blank" rel="noopener noreferrer" className="text-sm text-[#6EA4F4] hover:underline block break-words flex-5">
+                                          {formatValue(value)}
+                                        </a>
+                                      ) : (
+                                        <p className="text-sm text-[#F4F4F5] leading-relaxed break-words flex-5">{formatValue(value)}</p>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Article details (from Postgres) - Desktop */}
+                      {displayNode && isArticleNode && (
+                        <div className="w-full flex-shrink-0 mb-2 py-2 pr-2 bg-[#09090B] rounded-md border border-[#707070]">
+                          <div className="flex flex-col w-full pl-2">
+                            <span className="text-sm text-[#7D7D7D]">Title</span>
+                            <h2 className="text-xl text-white mb-1">
+                              {articleLoading ? 'Loading...' : (articleInfo?.title ?? articleInfo?.name ?? entityName ?? 'Article')}
+                            </h2>
+                            {articleLoading && (
+                              <div className="flex items-center gap-2 text-sm text-[#B4B4B4] mb-2">
+                                <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                Loading article details...
+                              </div>
+                            )}
+                            {!articleLoading && articleInfo && (
+                              <>
+                                {Object.entries(articleInfo)
+                                  .filter(([key]) => !['title', 'name', 'archive_url', 'created_at', 'updated_at', 'id', 'description', 'summary', 'url', 'article_url', 'link'].includes(key))
+                                  .map(([key, value]) => value != null && String(value).trim() !== '' && (
+                                    <div key={key} className="mb-1">
+                                      <span className="text-sm text-[#7D7D7D]">{formatLabel(key)}</span>
+                                      <p className="text-sm text-[#F4F4F5] break-words mb-0.5">
+                                        {key === 'date' ? formatDateValue(value) : formatValue(value)}
+                                      </p>
+                                    </div>
+                                  ))}
+                                {(articleInfo.url || articleInfo.article_url || articleInfo.link) && (
+                                  <div className="mb-1">
+                                    <p className="text-[#7D7D7D] mb-1">URL</p>
+                                    <a
+                                      href={formatUrl(String(articleInfo.url ?? articleInfo.article_url ?? articleInfo.link))}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-sm text-[#6EA4F4] hover:underline break-words"
+                                    >
+                                      {String(articleInfo.url ?? articleInfo.article_url ?? articleInfo.link).length > 60
+                                        ? String(articleInfo.url ?? articleInfo.article_url ?? articleInfo.link).slice(0, 60) + '...'
+                                        : articleInfo.url ?? articleInfo.article_url ?? articleInfo.link}
+                                    </a>
+                                  </div>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      {/* Node Details - Only show for non-entity nodes, or for entity nodes when wikidata/article details not available */}
+                      {displayNode && (!isWikidataNode || (isWikidataNode && !wikidataInfo)) && (!isArticleNode || (isArticleNode && !articleInfo)) && filteredNodeProperties.length > 0 && (
+                        <div className="w-full mb-2">
+                          <div className="w-full mb-2 pl-2 py-2 pr-2 bg-[#09090B] rounded-md border border-[#707070]">
+                            {filteredNodeProperties.map(([key, value], index) => {
+                              const isUrlProperty = key.toLowerCase().includes('url') || key.toLowerCase() === 'link' || key.toLowerCase().includes('website') || key.toLowerCase().includes('webpage');
+                              return (
+                                <div key={index} className="mb-1 flex flex-row lg:flex-col">
+                                  <h4 className="text-xs font-normal text-[#7D7D7D] mb-0.5 leading-[18px] flex-1">{formatLabel(key)}:</h4>
+                                  {isUrlProperty && isValidUrl(String(value)) ? (
+                                    <a
+                                      href={formatUrl(String(value))}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-sm text-[#6EA4F4] hover:underline break-words leading-[18px] ml-0 block flex-5"
+                                    >
+                                      {formatValue(value)}
+                                    </a>
+                                  ) : (
+                                    <p className="text-sm text-[#F4F4F5] leading-relaxed break-words">
+                                      {formatValue(value)}
+                                    </p>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Edge Details */}
+                      {displayEdge && filteredEdgeProperties.length > 0 && (
+                        <div className="w-full flex-shrink-0 mb-4">
+                          <div className="flex flex-col space-y-3 pl-2">
+                            {filteredEdgeProperties.map(([key, value], index) => {
+                              const isUrlProperty = key.toLowerCase().includes('url') || key.toLowerCase() === 'link' || key.toLowerCase().includes('website') || key.toLowerCase().includes('webpage');
+                              return (
+                                <div key={index} className="mb-1 flex flex-row lg:flex-col">
+                                  <h4 className="text-xs font-normal text-[#7D7D7D] mb-0.5 leading-[18px] flex-1">{formatLabel(key)}:</h4>
+                                  {isUrlProperty && isValidUrl(String(value)) ? (
+                                    <a
+                                      href={formatUrl(String(value))}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-sm text-[#6EA4F4] hover:underline break-words leading-[18px] ml-0 block flex-5"
+                                    >
+                                      {formatValue(value)}
+                                    </a>
+                                  ) : (
+                                    <p className="text-sm text-[#F4F4F5] break-words leading-[18px] ml-0">
+                                      {formatValue(value)}
+                                    </p>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Pagination Controls - Only show in Multi-Select mode with multiple items */}
+                      {((selectedNodes?.size || 0) + (selectedEdges?.size || 0)) > 1 && (
+                        <div className="mb-3 flex items-center justify-center gap-3 px-2 py-1 flex-shrink-0 rounded-md">
+                          <button
+                            onClick={handlePrevious}
+                            disabled={currentPage === 0}
+                            className={`p-1 rounded transition-colors ${currentPage === 0
+                                ? 'text-gray-600 cursor-not-allowed'
+                                : 'text-white hover:bg-[#333333]'
+                              }`}
+                          >
+                            <FaChevronLeft size={12} />
+                          </button>
+                          <span className="text-sm font-medium text-[#F4F4F5]">
+                            {currentPage + 1} / {selectedItems.length > 0 ? selectedItems.length : (selectedNodes.size + selectedEdges.size)}
+                          </span>
+                          <button
+                            onClick={handleNext}
+                            disabled={currentPage === totalItems - 1}
+                            className={`p-1 rounded transition-colors ${currentPage === totalItems - 1
+                                ? 'text-gray-600 cursor-not-allowed'
+                                : 'text-white hover:bg-[#333333]'
+                              }`}
+                          >
+                            <FaChevronRight size={12} />
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Neighbors Graph - Show in BOTH individual and multi-select modes */}
+                      {/* This is a separate subgraph visualization in the sidebar, independent from the main THREE.js view */}
+                      {/* The deep copy mechanism ensures the main THREE.js graph is not affected */}
+                      {(() => {
+                        const nodeSource = filteredGraphData?.nodes || graphData?.nodes || [];
+                        const linkSource = filteredGraphData?.links || graphData?.links || [];
+                        const hasMultiSelection = selectedNodes.size > 1 || selectedEdges.size > 0;
+
+                        // PRIORITY 1: MULTI-SELECT – show selected nodes + depth-1 related nodes (direct neighbors)
+                        if (isMultiSelect && hasMultiSelection) {
+                          const selectedNodesList = Array.from(selectedNodes);
+                          const selectedEdgesList = Array.from(selectedEdges);
+                          const norm = (id) => (id != null ? String(id) : '');
+
+                          const edgeNodeIds = new Set();
+                          selectedEdgesList.forEach(edgeId => {
+                            const edge = linkSource.find(l => {
+                              const sid = l.source?.id ?? l.sourceId ?? l.source;
+                              const tid = l.target?.id ?? l.targetId ?? l.target;
+                              const linkId = l.id ?? `${norm(sid)}-${norm(tid)}`;
+                              return norm(linkId) === norm(edgeId) || (norm(sid) + '-' + norm(tid)) === norm(edgeId);
+                            });
+                            if (edge) {
+                              const sourceId = edge.source?.id ?? edge.sourceId ?? edge.source;
+                              const targetId = edge.target?.id ?? edge.targetId ?? edge.target;
+                              edgeNodeIds.add(norm(sourceId));
+                              edgeNodeIds.add(norm(targetId));
+                            }
+                          });
+
+                          // Core = only the selected nodes (and nodes from selected edges)
+                          const coreNodeIds = new Set([
+                            ...selectedNodesList.map(norm),
+                            ...Array.from(edgeNodeIds)
+                          ]);
+
+                          // Nodes to show: selected + nodes that are directly linked to at least one selected node
+                          const allNodeIds = new Set(coreNodeIds);
+                          linkSource.forEach(link => {
+                            const sourceId = norm(link.source?.id ?? link.sourceId ?? link.source);
+                            const targetId = norm(link.target?.id ?? link.targetId ?? link.target);
+                            if (coreNodeIds.has(sourceId)) allNodeIds.add(targetId);
+                            if (coreNodeIds.has(targetId)) allNodeIds.add(sourceId);
+                          });
+
+                          const subgraphNodes = nodeSource.filter(n => allNodeIds.has(norm(n.id || n.gid)));
+                          // Only show links that touch a selected node (selected ↔ neighbor). Hide links between neighbors.
+                          const subgraphLinks = linkSource.filter(link => {
+                            const sourceId = norm(link.source?.id ?? link.sourceId ?? link.source);
+                            const targetId = norm(link.target?.id ?? link.targetId ?? link.target);
+                            if (!allNodeIds.has(sourceId) || !allNodeIds.has(targetId)) return false;
+                            return coreNodeIds.has(sourceId) || coreNodeIds.has(targetId);
+                          });
+
+                          const computedSubgraph = { nodes: subgraphNodes, links: subgraphLinks };
+                          if (computedSubgraph.nodes.length > 0) {
+                            return (
+                              <div className="w-full flex-1 min-h-0 mt-2 mb-1 flex-auto overflow-hidden min-h-[320px]">
+                                <NeighborsGraph
+                                  selectedNode={null}
+                                  graphData={computedSubgraph}
+                                  isSubgraph={true}
+                                />
+                              </div>
+                            );
+                          }
+                        }
+
+                        // PRIORITY 2: Single node (or current page node in multi-select with only one node) – show its neighbors
+                        if (displayNode) {
+                          return (
+                            <div className="w-full flex-1 min-h-0 mt-2 mb-1 flex-auto overflow-hidden min-h-[320px]">
+                              <NeighborsGraph
+                                selectedNode={displayNode}
+                                graphData={graphData}
+                                isSubgraph={false}
+                              />
+                            </div>
+                          );
+                        }
+
+                        return null;
+                      })()}
+                    </div>
+                  )}
+
+                  { }
+                  {displayEdge && (
+                    <div className="mb-4 p-2 bg-[#09090B] rounded shadow-sm flex justify-center w-full border border-[#707070]">
+                      <div className="w-20 h-20 bg-gray-800 rounded-full overflow-hidden flex items-center justify-center">
+                        <div className="w-full h-full bg-gray-700 flex items-center justify-center">
+                          <svg className="w-14 h-14 text-[#B4B4B4]" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+                          </svg>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                </div>
+              )}
+            </div>
           </>
         )}
 
         {/* Data Visualization Tab */}
         {activeTab === 'data-visualization' && (
           <div className="w-full h-full flex flex-col overflow-y-auto overflow-x-hidden">
-            <div className="w-full flex-shrink-0 min-h-[300px] max-h-[300px]">
+            <div className="w-full">
               <GlobalActivity graphData={graphData} currentSubstory={currentSubstory} />
             </div>
             <div className="w-full flex-shrink-0 mt-0 mb-1 aspect-square min-h-full">
-              <ConnectedData 
-                onSectionClick={onSectionClick} 
-                graphData={graphData} 
-                filteredGraphData={filteredGraphData} 
+              <ConnectedData
+                onSectionClick={onSectionClick}
+                graphData={graphData}
+                filteredGraphData={filteredGraphData}
                 currentSubstory={currentSubstory}
               />
             </div>
@@ -1479,57 +1385,55 @@ const RightSidebar = forwardRef(({
 
         {/* Scene Layout Tab */}
         {activeTab === 'scene-layout' && (
-          <div className="w-full h-full overflow-hidden">
-            <div className={`${isCollapsed ? 'hidden' : 'block'} hidden lg:block`}>
+          <div className="w-full h-full overflow-auto">
+            <div className={`${isCollapsed ? 'hidden' : 'block'} lg:block`}>
               {/* Force Layout Section - Already implemented via GraphControls */}
               <div className='bg-[#0E0E0E] border border-[#202020] rounded-[5px] pb-[2px]'>
                 <h3 className="text-sm text-center font-semibold text-[#B4B4B4] my-[16px]">Force Layout</h3>
-              
+
                 {/* 2D/3D Toggle Buttons */}
                 <div className="mb-3 ml-[15px]">
                   <div className="inline-flex gap-1 justify-start">
-          <button
-            onClick={() => on3DToggle(false)}
-                      className={`rounded-[5px] border-[#404040] border-[1px] px-[3px] py-[1px] transition-colors flex items-center justify-center text-[13px] ${
-              !is3D
-                ? 'bg-[#3A3A3A] text-white border border-[#707070]'
-                : 'bg-[#09090B] text-[#707070] border-r border-[#707070]'
-            }`}
-            title="2D View"
-          >
+                    <button
+                      onClick={() => on3DToggle(false)}
+                      className={`rounded-[5px] border-[#404040] border-[1px] px-[3px] py-[1px] transition-colors flex items-center justify-center text-[13px] ${!is3D
+                          ? 'bg-[#3A3A3A] text-white border border-[#707070]'
+                          : 'bg-[#09090B] text-[#707070] border-r border-[#707070]'
+                        }`}
+                      title="2D View"
+                    >
                       2D
-          </button>
-          <button
-            onClick={() => on3DToggle(true)}
-                      className={`rounded-[5px] ml-[4px] border-[#404040] border-[1px] px-[3px] py-[1px] transition-colors flex items-center justify-center text-[13px] ${
-              is3D
-                ? 'bg-[#3A3A3A] text-white border border-[#707070]'
-                : 'bg-[#09090B] text-[#707070] border-r border-[#707070]'
-            }`}
-            title="3D View"
-          >
+                    </button>
+                    <button
+                      onClick={() => on3DToggle(true)}
+                      className={`rounded-[5px] ml-[4px] border-[#404040] border-[1px] px-[3px] py-[1px] transition-colors flex items-center justify-center text-[13px] ${is3D
+                          ? 'bg-[#3A3A3A] text-white border border-[#707070]'
+                          : 'bg-[#09090B] text-[#707070] border-r border-[#707070]'
+                        }`}
+                      title="3D View"
+                    >
                       3D
-          </button>
-        </div>
-      </div>
+                    </button>
+                  </div>
+                </div>
 
-            <GraphControls
-              onForceChange={onForceChange}
-              onNodeSizeChange={onNodeSizeChange}
-              onLabelSizeChange={onLabelSizeChange}
-              onEdgeLengthChange={onEdgeLengthChange}
-              onEdgeThicknessChange={onEdgeThicknessChange}
-              initialForceStrength={forceStrength}
-              initialNodeSize={nodeSize}
-              initialLabelSize={labelSize}
-              initialEdgeLength={edgeLength}
-              initialEdgeThickness={edgeThickness}
-              compact={true}
-              mobile={isMobile}
-            />
-            </div>
+                <GraphControls
+                  onForceChange={onForceChange}
+                  onNodeSizeChange={onNodeSizeChange}
+                  onLabelSizeChange={onLabelSizeChange}
+                  onEdgeLengthChange={onEdgeLengthChange}
+                  onEdgeThicknessChange={onEdgeThicknessChange}
+                  initialForceStrength={forceStrength}
+                  initialNodeSize={nodeSize}
+                  initialLabelSize={labelSize}
+                  initialEdgeLength={edgeLength}
+                  initialEdgeThickness={edgeThickness}
+                  compact={true}
+                  mobile={isMobile}
+                />
+              </div>
               <div className='bg-[#0E0E0E] border border-[#202020] rounded-[5px] my-[8px] px-[8px] pb-[2px]'>
-              {/* Layout Style Section */}
+                {/* Layout Style Section */}
                 <div className="p-2">
                   <h3 className="text-sm text-center font-semibold text-[#ffffff] mb-2 my-[8px]">Layout Style</h3>
                   <button
@@ -1558,11 +1462,10 @@ const RightSidebar = forwardRef(({
                           onSortConfigChange('time', sortNodeCategory, sortNodeProperty, 'asc');
                         }
                       }}
-                      className={`px-3 py-0.5 h-[20px] rounded-full flex items-center justify-center gap-1 text-[10px] transition-colors whitespace-nowrap ${
-                        sortBy === 'time'
+                      className={`px-3 py-0.5 h-[20px] rounded-full flex items-center justify-center gap-1 text-[10px] transition-colors whitespace-nowrap ${sortBy === 'time'
                           ? 'bg-[#3A3A3A] text-white border border-[#707070]'
                           : 'bg-[#24282F] text-[#ffffff] border border-[#363D46] hover:bg-[#2A2A2A]'
-                      }`}
+                        }`}
                     >
                       {StringConstants.SORT.TIME}
                       {sortBy === 'time' && (
@@ -1583,11 +1486,10 @@ const RightSidebar = forwardRef(({
                           onSortConfigChange('neighbors', sortNodeCategory, sortNodeProperty, 'asc');
                         }
                       }}
-                      className={`px-3 py-0.5 h-[20px] rounded-full flex items-center justify-center gap-1 text-[10px] transition-colors whitespace-nowrap ${
-                        sortBy === 'neighbors'
+                      className={`px-3 py-0.5 h-[20px] rounded-full flex items-center justify-center gap-1 text-[10px] transition-colors whitespace-nowrap ${sortBy === 'neighbors'
                           ? 'bg-[#3A3A3A] text-white border border-[#707070]'
                           : 'bg-[#24282F] text-[#ffffff] border border-[#363D46] hover:bg-[#2A2A2A]'
-                      }`}
+                        }`}
                     >
                       {StringConstants.SORT.COUNTING_NEIGHBORS}
                       {sortBy === 'neighbors' && (
@@ -1608,11 +1510,10 @@ const RightSidebar = forwardRef(({
                           onSortConfigChange('hierarchy', sortNodeCategory, sortNodeProperty, 'asc');
                         }
                       }}
-                      className={`px-3 py-0.5 h-[20px] rounded-full flex items-center justify-center gap-1 text-[10px] transition-colors whitespace-nowrap ${
-                        sortBy === 'hierarchy'
+                      className={`px-3 py-0.5 h-[20px] rounded-full flex items-center justify-center gap-1 text-[10px] transition-colors whitespace-nowrap ${sortBy === 'hierarchy'
                           ? 'bg-[#3A3A3A] text-white border border-[#707070]'
                           : 'bg-[#24282F] text-[#ffffff] border border-[#363D46] hover:bg-[#2A2A2A]'
-                      }`}
+                        }`}
                     >
                       {StringConstants.SORT.HIERARCHY}
                       {sortBy === 'hierarchy' && (
@@ -1678,10 +1579,10 @@ const RightSidebar = forwardRef(({
                         if (!nodeTypesWithPropertyKeys || nodeTypesWithPropertyKeys.length === 0) {
                           return null;
                         }
-                        
+
                         // Collect all unique property keys across all node types
                         const allPropertyKeys = new Set();
-                        
+
                         nodeTypesWithPropertyKeys.forEach(item => {
                           const properties = Array.isArray(item.propertyKeys) ? item.propertyKeys : [];
                           properties.forEach(prop => {
@@ -1690,12 +1591,12 @@ const RightSidebar = forwardRef(({
                             }
                           });
                         });
-                        
+
                         // Convert to sorted array
-                        const sortedProperties = Array.from(allPropertyKeys).sort((a, b) => 
+                        const sortedProperties = Array.from(allPropertyKeys).sort((a, b) =>
                           a.toLowerCase().localeCompare(b.toLowerCase())
                         );
-                        
+
                         return sortedProperties.map((prop) => (
                           <option key={prop} value={prop}>
                             {prop}
@@ -1711,11 +1612,11 @@ const RightSidebar = forwardRef(({
                   <h3 className="text-[13px] font-semibold text-[#ffffff] mb-[4px] flex items-center gap-2">
                     <span>{StringConstants.RIGHT_SIDEBAR.CALENDAR}</span>
                     <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M0 1.875C0 0.839466 0.726025 0 1.62162 0V12C0.726025 12 0 11.1605 0 10.125V1.875Z" fill="#9F9FA9"/>
-                      <path d="M3.40541 1.875C2.95761 1.875 2.59459 1.45527 2.59459 0.9375C2.59459 0.419733 2.95761 4.16035e-07 3.40541 3.93402e-07L11.1892 0C11.637 -2.26323e-08 12 0.419733 12 0.9375C12 1.45527 11.637 1.875 11.1892 1.875L3.40541 1.875Z" fill="#9F9FA9"/>
-                      <path d="M3.40541 5.25C2.95761 5.25 2.59459 4.83027 2.59459 4.3125C2.59459 3.79473 2.95761 3.375 3.40541 3.375L11.1892 3.375C11.637 3.375 12 3.79473 12 4.3125C12 4.83027 11.637 5.25 11.1892 5.25L3.40541 5.25Z" fill="#9F9FA9"/>
-                      <path d="M3.40541 8.625C2.95761 8.625 2.59459 8.20527 2.59459 7.6875C2.59459 7.16973 2.95761 6.75 3.40541 6.75L11.1892 6.75C11.637 6.75 12 7.16973 12 7.6875C12 8.20527 11.637 8.625 11.1892 8.625L3.40541 8.625Z" fill="#9F9FA9"/>
-                      <path d="M3.40541 12C2.95761 12 2.59459 11.5803 2.59459 11.0625C2.59459 10.5447 2.95761 10.125 3.40541 10.125L11.1892 10.125C11.637 10.125 12 10.5447 12 11.0625C12 11.5803 11.637 12 11.1892 12L3.40541 12Z" fill="#9F9FA9"/>
+                      <path d="M0 1.875C0 0.839466 0.726025 0 1.62162 0V12C0.726025 12 0 11.1605 0 10.125V1.875Z" fill="#9F9FA9" />
+                      <path d="M3.40541 1.875C2.95761 1.875 2.59459 1.45527 2.59459 0.9375C2.59459 0.419733 2.95761 4.16035e-07 3.40541 3.93402e-07L11.1892 0C11.637 -2.26323e-08 12 0.419733 12 0.9375C12 1.45527 11.637 1.875 11.1892 1.875L3.40541 1.875Z" fill="#9F9FA9" />
+                      <path d="M3.40541 5.25C2.95761 5.25 2.59459 4.83027 2.59459 4.3125C2.59459 3.79473 2.95761 3.375 3.40541 3.375L11.1892 3.375C11.637 3.375 12 3.79473 12 4.3125C12 4.83027 11.637 5.25 11.1892 5.25L3.40541 5.25Z" fill="#9F9FA9" />
+                      <path d="M3.40541 8.625C2.95761 8.625 2.59459 8.20527 2.59459 7.6875C2.59459 7.16973 2.95761 6.75 3.40541 6.75L11.1892 6.75C11.637 6.75 12 7.16973 12 7.6875C12 8.20527 11.637 8.625 11.1892 8.625L3.40541 8.625Z" fill="#9F9FA9" />
+                      <path d="M3.40541 12C2.95761 12 2.59459 11.5803 2.59459 11.0625C2.59459 10.5447 2.95761 10.125 3.40541 10.125L11.1892 10.125C11.637 10.125 12 10.5447 12 11.0625C12 11.5803 11.637 12 11.1892 12L3.40541 12Z" fill="#9F9FA9" />
                     </svg>
                   </h3>
                   <div className="space-y-2">
@@ -1759,11 +1660,10 @@ const RightSidebar = forwardRef(({
                           if (noCalendarActive) onSceneContainerChange(null);
                           else onSceneContainerChange('calendar');
                         }}
-                        className={`px-3 py-0.5 rounded-[20px] text-[10px] lowercase transition-colors ${
-                          calendarMode.linear
+                        className={`px-3 py-0.5 rounded-[20px] text-[10px] lowercase transition-colors ${calendarMode.linear
                             ? 'bg-[#3A3A3A] text-white border border-[#707070]'
                             : 'bg-[#24282F] text-[#ffffff] border border-[#363D46] hover:bg-[#2A2A2A]'
-                        }`}
+                          }`}
                       >
                         {StringConstants.CALENDAR_MODES.LINEAR.toLowerCase()}
                       </button>
@@ -1776,11 +1676,10 @@ const RightSidebar = forwardRef(({
                           if (noCalendarActive) onSceneContainerChange(null);
                           else onSceneContainerChange('calendar');
                         }}
-                        className={`px-3 py-0.5 rounded-[20px] text-[10px] lowercase transition-colors ${
-                          calendarMode.truncated
+                        className={`px-3 py-0.5 rounded-[20px] text-[10px] lowercase transition-colors ${calendarMode.truncated
                             ? 'bg-[#3A3A3A] text-white border border-[#707070]'
                             : 'bg-[#24282F] text-[#ffffff] border border-[#363D46] hover:bg-[#2A2A2A]'
-                        }`}
+                          }`}
                       >
                         {StringConstants.CALENDAR_MODES.TRUNCATED.toLowerCase()}
                       </button>
@@ -1793,7 +1692,7 @@ const RightSidebar = forwardRef(({
                   <h3 className="text-[13px] font-semibold text-[#ffffff] mb-[4px] flex items-center gap-2">
                     <span>{StringConstants.RIGHT_SIDEBAR.HIERARCHY_TREE}</span>
                     <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M6 0C6.73627 3.21834e-08 7.33283 0.596778 7.33301 1.33301C7.33301 1.67051 7.20675 1.97801 7 2.21289V4.8457C9.59015 5.01624 11.6402 7.15772 11.665 9.78516C11.8728 10.0203 12 10.3286 12 10.667C11.9998 11.4031 11.4031 11.9998 10.667 12C9.93072 12 9.33318 11.4032 9.33301 10.667C9.33301 10.3299 9.45871 10.0219 9.66504 9.78711C9.64202 8.26384 8.48499 7.01572 7 6.85156V9.78613C7.20704 10.0211 7.33301 10.3292 7.33301 10.667C7.33283 11.4032 6.73627 12 6 12C5.26373 12 4.66717 11.4032 4.66699 10.667C4.66699 10.3292 4.79296 10.0211 5 9.78613V6.85156C3.51485 7.0159 2.35749 8.26448 2.33496 9.78809C2.541 10.0228 2.66699 10.3301 2.66699 10.667C2.66682 11.4032 2.06928 12 1.33301 12C0.596886 11.9998 0.000176049 11.4031 0 10.667C1.48043e-08 10.3283 0.12692 10.0194 0.334961 9.78418C0.360265 7.1573 2.41032 5.01637 5 4.8457V2.21289C4.79325 1.97801 4.66699 1.67051 4.66699 1.33301C4.66717 0.596778 5.26373 3.22331e-08 6 0Z" fill="#9F9FA9"/>
+                      <path d="M6 0C6.73627 3.21834e-08 7.33283 0.596778 7.33301 1.33301C7.33301 1.67051 7.20675 1.97801 7 2.21289V4.8457C9.59015 5.01624 11.6402 7.15772 11.665 9.78516C11.8728 10.0203 12 10.3286 12 10.667C11.9998 11.4031 11.4031 11.9998 10.667 12C9.93072 12 9.33318 11.4032 9.33301 10.667C9.33301 10.3299 9.45871 10.0219 9.66504 9.78711C9.64202 8.26384 8.48499 7.01572 7 6.85156V9.78613C7.20704 10.0211 7.33301 10.3292 7.33301 10.667C7.33283 11.4032 6.73627 12 6 12C5.26373 12 4.66717 11.4032 4.66699 10.667C4.66699 10.3292 4.79296 10.0211 5 9.78613V6.85156C3.51485 7.0159 2.35749 8.26448 2.33496 9.78809C2.541 10.0228 2.66699 10.3301 2.66699 10.667C2.66682 11.4032 2.06928 12 1.33301 12C0.596886 11.9998 0.000176049 11.4031 0 10.667C1.48043e-08 10.3283 0.12692 10.0194 0.334961 9.78418C0.360265 7.1573 2.41032 5.01637 5 4.8457V2.21289C4.79325 1.97801 4.66699 1.67051 4.66699 1.33301C4.66717 0.596778 5.26373 3.22331e-08 6 0Z" fill="#9F9FA9" />
                     </svg>
                   </h3>
                   <div className="flex gap-3 items-center">
@@ -1804,11 +1703,10 @@ const RightSidebar = forwardRef(({
                         handleHierarchyTreeAxisChange(next);
                         if (!next.x && !next.y && !next.z) onSceneContainerChange(null);
                       }}
-                      className={`w-[22px] h-[20px] rounded-[20px] flex items-center justify-center text-xs transition-colors ${
-                        hierarchyTreeAxis.x
+                      className={`w-[22px] h-[20px] rounded-[20px] flex items-center justify-center text-xs transition-colors ${hierarchyTreeAxis.x
                           ? 'bg-[#3A3A3A] text-white border border-[#707070]'
                           : 'bg-[#24282F] text-[#ffffff] border border-[#363D46] hover:bg-[#2A2A2A]'
-                      }`}
+                        }`}
                       title={StringConstants.RIGHT_SIDEBAR.X_AXIS}
                     >
                       x
@@ -1820,11 +1718,10 @@ const RightSidebar = forwardRef(({
                         handleHierarchyTreeAxisChange(next);
                         if (!next.x && !next.y && !next.z) onSceneContainerChange(null);
                       }}
-                      className={`w-[22px] h-[20px] rounded-[20px] flex items-center justify-center text-xs transition-colors ${
-                        hierarchyTreeAxis.y
+                      className={`w-[22px] h-[20px] rounded-[20px] flex items-center justify-center text-xs transition-colors ${hierarchyTreeAxis.y
                           ? 'bg-[#3A3A3A] text-white border border-[#707070]'
                           : 'bg-[#24282F] text-[#ffffff] border border-[#363D46] hover:bg-[#2A2A2A]'
-                      }`}
+                        }`}
                       title={StringConstants.RIGHT_SIDEBAR.Y_AXIS}
                     >
                       y
@@ -1836,11 +1733,10 @@ const RightSidebar = forwardRef(({
                         handleHierarchyTreeAxisChange(next);
                         if (!next.x && !next.y && !next.z) onSceneContainerChange(null);
                       }}
-                      className={`w-[22px] h-[20px] rounded-[20px] flex items-center justify-center text-xs transition-colors ${
-                        hierarchyTreeAxis.z
+                      className={`w-[22px] h-[20px] rounded-[20px] flex items-center justify-center text-xs transition-colors ${hierarchyTreeAxis.z
                           ? 'bg-[#3A3A3A] text-white border border-[#707070]'
                           : 'bg-[#24282F] text-[#ffffff] border border-[#363D46] hover:bg-[#2A2A2A]'
-                      }`}
+                        }`}
                       title={StringConstants.RIGHT_SIDEBAR.Z_AXIS}
                     >
                       z
@@ -1853,52 +1749,50 @@ const RightSidebar = forwardRef(({
                   <h3 className="text-[13px] font-semibold text-[#ffffff] mb-[4px] flex items-center gap-2">
                     <span>{StringConstants.RIGHT_SIDEBAR.MAP_VIEW}</span>
                     <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <g clipPath="url(#clip0_236_3620)">
-                    <path d="M6 0C4.81331 0 3.65328 0.351894 2.66658 1.01118C1.67989 1.67047 0.910851 2.60754 0.456726 3.7039C0.00259972 4.80026 -0.11622 6.00666 0.115291 7.17054C0.346802 8.33443 0.918247 9.40353 1.75736 10.2426C2.59648 11.0818 3.66558 11.6532 4.82946 11.8847C5.99335 12.1162 7.19975 11.9974 8.2961 11.5433C9.39246 11.0892 10.3295 10.3201 10.9888 9.33342C11.6481 8.34673 12 7.18669 12 6C11.9983 4.40923 11.3656 2.88411 10.2407 1.75926C9.1159 0.634414 7.59077 0.00172054 6 0V0ZM6.25 10.4875V9.845C6.25 9.28937 6.02928 8.7565 5.63639 8.36361C5.2435 7.97072 4.71063 7.75 4.155 7.75H4.15C3.94357 7.75001 3.73915 7.70934 3.54844 7.63033C3.35772 7.55132 3.18445 7.4355 3.0385 7.2895L1.512 5.762C1.55278 4.96767 1.80371 4.19841 2.23915 3.53282C2.67459 2.86724 3.27892 2.32918 3.99041 1.97364C4.70189 1.6181 5.49501 1.45783 6.28872 1.50919C7.08243 1.56056 7.84828 1.82172 8.508 2.266C8.3756 2.36316 8.21573 2.4157 8.0515 2.416H7.3345C7.23227 2.416 7.13105 2.43616 7.03662 2.47533C6.94219 2.51449 6.85641 2.5719 6.7842 2.64425C6.71198 2.71661 6.65474 2.8025 6.61576 2.897C6.57677 2.99151 6.55681 3.09277 6.557 3.195V3.716C6.557 3.92221 6.47509 4.11997 6.32928 4.26578C6.18347 4.41159 5.98571 4.4935 5.7795 4.4935V4.4935C5.67723 4.49324 5.57591 4.51315 5.48135 4.55211C5.38679 4.59106 5.30084 4.64829 5.22843 4.72052C5.15602 4.79274 5.09858 4.87854 5.05938 4.973C5.02018 5.06746 5 5.16873 5 5.271V5.792C5 5.99821 5.08192 6.19597 5.22773 6.34178C5.37354 6.48759 5.5713 6.5695 5.7775 6.5695H7.8555C8.06171 6.5695 8.25947 6.65142 8.40528 6.79723C8.55109 6.94303 8.633 7.1408 8.633 7.347V8.107C8.63301 8.20916 8.65315 8.31032 8.69227 8.40469C8.73139 8.49906 8.78873 8.5848 8.861 8.657L9.2775 9.0735C8.48833 9.91745 7.40371 10.424 6.25 10.4875Z" fill="#9F9FA9"/>
-                    </g>
-                    <defs>
-                    <clipPath id="clip0_236_3620">
-                    <rect width="12" height="12" fill="white"/>
-                    </clipPath>
-                    </defs>
+                      <g clipPath="url(#clip0_236_3620)">
+                        <path d="M6 0C4.81331 0 3.65328 0.351894 2.66658 1.01118C1.67989 1.67047 0.910851 2.60754 0.456726 3.7039C0.00259972 4.80026 -0.11622 6.00666 0.115291 7.17054C0.346802 8.33443 0.918247 9.40353 1.75736 10.2426C2.59648 11.0818 3.66558 11.6532 4.82946 11.8847C5.99335 12.1162 7.19975 11.9974 8.2961 11.5433C9.39246 11.0892 10.3295 10.3201 10.9888 9.33342C11.6481 8.34673 12 7.18669 12 6C11.9983 4.40923 11.3656 2.88411 10.2407 1.75926C9.1159 0.634414 7.59077 0.00172054 6 0V0ZM6.25 10.4875V9.845C6.25 9.28937 6.02928 8.7565 5.63639 8.36361C5.2435 7.97072 4.71063 7.75 4.155 7.75H4.15C3.94357 7.75001 3.73915 7.70934 3.54844 7.63033C3.35772 7.55132 3.18445 7.4355 3.0385 7.2895L1.512 5.762C1.55278 4.96767 1.80371 4.19841 2.23915 3.53282C2.67459 2.86724 3.27892 2.32918 3.99041 1.97364C4.70189 1.6181 5.49501 1.45783 6.28872 1.50919C7.08243 1.56056 7.84828 1.82172 8.508 2.266C8.3756 2.36316 8.21573 2.4157 8.0515 2.416H7.3345C7.23227 2.416 7.13105 2.43616 7.03662 2.47533C6.94219 2.51449 6.85641 2.5719 6.7842 2.64425C6.71198 2.71661 6.65474 2.8025 6.61576 2.897C6.57677 2.99151 6.55681 3.09277 6.557 3.195V3.716C6.557 3.92221 6.47509 4.11997 6.32928 4.26578C6.18347 4.41159 5.98571 4.4935 5.7795 4.4935V4.4935C5.67723 4.49324 5.57591 4.51315 5.48135 4.55211C5.38679 4.59106 5.30084 4.64829 5.22843 4.72052C5.15602 4.79274 5.09858 4.87854 5.05938 4.973C5.02018 5.06746 5 5.16873 5 5.271V5.792C5 5.99821 5.08192 6.19597 5.22773 6.34178C5.37354 6.48759 5.5713 6.5695 5.7775 6.5695H7.8555C8.06171 6.5695 8.25947 6.65142 8.40528 6.79723C8.55109 6.94303 8.633 7.1408 8.633 7.347V8.107C8.63301 8.20916 8.65315 8.31032 8.69227 8.40469C8.73139 8.49906 8.78873 8.5848 8.861 8.657L9.2775 9.0735C8.48833 9.91745 7.40371 10.424 6.25 10.4875Z" fill="#9F9FA9" />
+                      </g>
+                      <defs>
+                        <clipPath id="clip0_236_3620">
+                          <rect width="12" height="12" fill="white" />
+                        </clipPath>
+                      </defs>
                     </svg>
                   </h3>
                   <div className="flex gap-2 flex-wrap">
                     <button
-                    onClick={() => {
-                      if (mapView === 'flat') {
-                        setMapView(null);
-                        onMapViewChange(null);
-                        onSceneContainerChange(null);
-                      } else {
-                        resetSceneStates('map');
-                        handleMapViewChange('flat');
-                      }
-                    }}
-                      className={`px-3 py-0.5 rounded-[20px] text-[10px] transition-colors ${
-                        mapView === 'flat'
+                      onClick={() => {
+                        if (mapView === 'flat') {
+                          setMapView(null);
+                          onMapViewChange(null);
+                          onSceneContainerChange(null);
+                        } else {
+                          resetSceneStates('map');
+                          handleMapViewChange('flat');
+                        }
+                      }}
+                      className={`px-3 py-0.5 rounded-[20px] text-[10px] transition-colors ${mapView === 'flat'
                           ? 'bg-[#3A3A3A] text-white border border-[#707070]'
                           : 'bg-[#24282F] text-[#ffffff] border border-[#363D46] hover:bg-[#2A2A2A]'
-                      }`}
+                        }`}
                     >
                       {StringConstants.MAP_VIEWS.FLAT}
                     </button>
                     <button
-                    onClick={() => {
-                      if (mapView === 'spherical') {
-                        setMapView(null);
-                        onMapViewChange(null);
-                        onSceneContainerChange(null);
-                      } else {
-                        resetSceneStates('map');
-                        handleMapViewChange('spherical');
-                      }
-                    }}
-                      className={`px-3 py-0.5 rounded-[20px] text-[10px] transition-colors ${
-                        mapView === 'spherical'
+                      onClick={() => {
+                        if (mapView === 'spherical') {
+                          setMapView(null);
+                          onMapViewChange(null);
+                          onSceneContainerChange(null);
+                        } else {
+                          resetSceneStates('map');
+                          handleMapViewChange('spherical');
+                        }
+                      }}
+                      className={`px-3 py-0.5 rounded-[20px] text-[10px] transition-colors ${mapView === 'spherical'
                           ? 'bg-[#3A3A3A] text-white border border-[#707070]'
                           : 'bg-[#24282F] text-[#ffffff] border border-[#363D46] hover:bg-[#2A2A2A]'
-                      }`}
+                        }`}
                     >
                       {StringConstants.MAP_VIEWS.SPHERICAL}
                     </button>
@@ -1910,7 +1804,7 @@ const RightSidebar = forwardRef(({
                   <h3 className="text-sm font-semibold text-[#ffffff] mb-[4px] flex items-center gap-2">
                     {StringConstants.RIGHT_SIDEBAR.CLUSTER_NODES}
                     <svg width="13" height="12" viewBox="0 0 13 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M4.95215 0C6.85407 0 8.50428 1.03998 9.33398 2.56445C11.4453 3.11347 13 4.98055 13 7.2002C12.9999 9.851 10.7828 11.9999 8.04785 12C6.14544 12 4.49453 10.9597 3.66504 9.43457C1.55428 8.88517 0 7.01905 0 4.7998C0.000109006 2.149 2.2172 0.000121884 4.95215 0ZM9.8877 4.42383C9.89763 4.54794 9.90429 4.67322 9.9043 4.7998C9.9043 7.21848 8.05895 9.2187 5.6582 9.55078C6.27286 10.1377 7.11681 10.5 8.04785 10.5C9.92808 10.4999 11.452 9.02257 11.4521 7.2002C11.4521 6.03483 10.8287 5.01098 9.8877 4.42383ZM8.04785 3.90039C6.16745 3.90039 4.64258 5.37766 4.64258 7.2002C4.6426 7.51032 4.68797 7.81017 4.77051 8.09473C4.83067 8.0978 4.8912 8.09961 4.95215 8.09961C6.83255 8.09961 8.35742 6.62234 8.35742 4.7998C8.3574 4.48926 8.31127 4.1892 8.22852 3.9043C8.16869 3.90126 8.10845 3.90039 8.04785 3.90039ZM4.95215 1.5C3.07192 1.50012 1.54796 2.97743 1.54785 4.7998C1.54785 5.9647 2.17091 6.98793 3.11133 7.5752C3.10145 7.45142 3.09571 7.32642 3.0957 7.2002C3.0957 4.7818 4.94048 2.78067 7.34082 2.44824C6.72624 1.86184 5.88269 1.5 4.95215 1.5Z" fill="#9F9FA9"/>
+                      <path d="M4.95215 0C6.85407 0 8.50428 1.03998 9.33398 2.56445C11.4453 3.11347 13 4.98055 13 7.2002C12.9999 9.851 10.7828 11.9999 8.04785 12C6.14544 12 4.49453 10.9597 3.66504 9.43457C1.55428 8.88517 0 7.01905 0 4.7998C0.000109006 2.149 2.2172 0.000121884 4.95215 0ZM9.8877 4.42383C9.89763 4.54794 9.90429 4.67322 9.9043 4.7998C9.9043 7.21848 8.05895 9.2187 5.6582 9.55078C6.27286 10.1377 7.11681 10.5 8.04785 10.5C9.92808 10.4999 11.452 9.02257 11.4521 7.2002C11.4521 6.03483 10.8287 5.01098 9.8877 4.42383ZM8.04785 3.90039C6.16745 3.90039 4.64258 5.37766 4.64258 7.2002C4.6426 7.51032 4.68797 7.81017 4.77051 8.09473C4.83067 8.0978 4.8912 8.09961 4.95215 8.09961C6.83255 8.09961 8.35742 6.62234 8.35742 4.7998C8.3574 4.48926 8.31127 4.1892 8.22852 3.9043C8.16869 3.90126 8.10845 3.90039 8.04785 3.90039ZM4.95215 1.5C3.07192 1.50012 1.54796 2.97743 1.54785 4.7998C1.54785 5.9647 2.17091 6.98793 3.11133 7.5752C3.10145 7.45142 3.09571 7.32642 3.0957 7.2002C3.0957 4.7818 4.94048 2.78067 7.34082 2.44824C6.72624 1.86184 5.88269 1.5 4.95215 1.5Z" fill="#9F9FA9" />
                     </svg>
                   </h3>
                   <div className="space-y-1">
@@ -1957,7 +1851,7 @@ const RightSidebar = forwardRef(({
                         ));
                       })()}
                     </select>
-                    <select 
+                    <select
                       value={clusterProperty}
                       className="w-full px-3 py-0.5 rounded-md bg-[#1F1F1F] text-[#F4F4F5] text-xs border border-[#424242] hover:bg-[#2A2A2A] transition-colors"
                       onChange={(e) => {
@@ -1976,15 +1870,15 @@ const RightSidebar = forwardRef(({
                         if (!clusterMethod || !nodeTypesWithPropertyKeys || nodeTypesWithPropertyKeys.length === 0) {
                           return null;
                         }
-                        
+
                         // Find the node type that matches the cluster method
                         const normalizedMethod = clusterMethod.toLowerCase().replace(/_/g, ' ');
                         const nodeTypeData = nodeTypesWithPropertyKeys.find(item => {
                           const nodeType = item.nodeType || '';
                           const normalizedNodeType = nodeType.toLowerCase().replace(/[`:]/g, '').trim();
-                          return normalizedNodeType === normalizedMethod || 
-                                 normalizedNodeType.includes(normalizedMethod) ||
-                                 normalizedMethod.includes(normalizedNodeType);
+                          return normalizedNodeType === normalizedMethod ||
+                            normalizedNodeType.includes(normalizedMethod) ||
+                            normalizedMethod.includes(normalizedNodeType);
                         });
 
                         // Build a union of ALL property keys across the DB, but prioritize the selected node type first.
@@ -2014,17 +1908,6 @@ const RightSidebar = forwardRef(({
             </div>
           </div>
         )}
-      </div>
-
-      {}
-      <div className="lg:hidden absolute top-0 left-0 right-0 flex justify-center z-10">
-        <button
-          onClick={toggleCollapse}
-          className="text-white bg-transparent rounded-full p-0 hover:bg-[#333333]"
-          aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-        >
-          {isCollapsed ? <FaChevronUp size={14} /> : <FaChevronDown size={14} />}
-        </button>
       </div>
     </div>
   );
