@@ -11,13 +11,13 @@ const Layout = ({
   stories = [],
   currentStory = null,
   currentChapter = null,
-  currentSubstory = null,
+  currentSection = null,
   currentStoryId = null,
   currentChapterId = null,
-  currentSubstoryId = null,
+  currentSectionId = null,
   onStorySelect,
   onChapterSelect,
-  onSubstorySelect,
+  onSectionSelect,
   onPrevious,
   onNext,
   selectedNode = null,
@@ -113,13 +113,13 @@ const Layout = ({
           stories={stories}
           currentStory={currentStory}
           currentChapter={currentChapter}
-          currentSubstory={currentSubstory}
+          currentSection={currentSection}
           currentStoryId={currentStoryId}
           currentChapterId={currentChapterId}
-          currentSubstoryId={currentSubstoryId}
+          currentSectionId={currentSectionId}
           onStorySelect={onStorySelect}
           onChapterSelect={onChapterSelect}
-          onSubstorySelect={onSubstorySelect}
+          onSectionSelect={onSectionSelect}
           onPrevious={onPrevious}
           onNext={onNext}
           onCollapseChange={handleLeftSidebarCollapse}
@@ -143,10 +143,10 @@ const Layout = ({
           stories={stories}
           currentStoryId={currentStoryId}
           currentChapterId={currentChapterId}
-          currentSubstoryId={currentSubstoryId}
+          currentSectionId={currentSectionId}
           onStorySelect={onStorySelect}
           onChapterSelect={onChapterSelect}
-          onSubstorySelect={onSubstorySelect}
+          onSectionSelect={onSectionSelect}
           showStoryDropdown={true}
           onHomePageClick={onHomePageClick}
         />
@@ -308,7 +308,7 @@ const Layout = ({
           onClusterConfigChange={onClusterConfigChange}
           clusterMethod={clusterMethod}
           clusterProperty={clusterProperty}
-          currentSubstory={currentSubstory}
+          currentSection={currentSection}
           onSectionClick={onSectionClick}
           graphData={graphData}
           filteredGraphData={filteredGraphData}

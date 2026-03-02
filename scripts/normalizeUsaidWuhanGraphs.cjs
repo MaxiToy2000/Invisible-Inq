@@ -11,7 +11,7 @@ function getAllGraphFiles(dir) {
     const stat = fs.statSync(filePath);
     if (stat && stat.isDirectory()) {
       results = results.concat(getAllGraphFiles(filePath));
-    } else if (/substory\d*_graph.*\.json$/.test(file)) {
+    } else if (/section\d*_graph.*\.json$/.test(file)) {
       results.push(filePath);
     }
   });

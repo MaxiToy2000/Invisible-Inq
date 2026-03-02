@@ -5,7 +5,7 @@
 When you load a story (click a card → first section graph), the backend logs show where time is spent:
 
 - **`[perf] get_graph_data: db=X.XXs format=X.XXs nodes=N links=L`** — Neo4j query time (`db`) and Python formatting time (`format`).
-- **`[perf] get_graph_by_substory_id total=X.XXs`** — Full request (graph + description in parallel).
+- **`[perf] get_graph_by_section_id total=X.XXs`** — Full request (graph + description in parallel).
 
 Use these to see if the bottleneck is **Neo4j** (db), **Python** (format), or **description/network**.
 
@@ -84,14 +84,14 @@ If logs show `format=` at 2s+, consider:
 
 ### 7. **Frontend**
 
-- **Prefetch:** You already prefetch on story card hover; ensure that request hits the same `GET /api/graph/{substory_id}` so the backend cache is used when the user clicks.
+- **Prefetch:** You already prefetch on story card hover; ensure that request hits the same `GET /api/graph/{section_id}` so the backend cache is used when the user clicks.
 - **Worker:** Move `formatGraphData` to a Web Worker so the main thread stays responsive (doesn’t shorten total time but improves perceived speed).
 
 ---
 
 ## Quick checks
 
-1. **Backend:** Load a slow section and look at logs: note `db=` and `format=` from `get_graph_data` and `get_graph_by_substory_id total=`.
+1. **Backend:** Load a slow section and look at logs: note `db=` and `format=` from `get_graph_data` and `get_graph_by_section_id total=`.
 2. **Neo4j:** In Neo4j Browser, run `EXPLAIN` or `PROFILE` of the graph query (from `get_graph_data_by_section_query`) to see if indexes are used.
 3. **Network:** In browser DevTools → Network, check the size and time of `GET /api/graph/...` (after GZip). If the response is very large, reducing caps or doing two-phase load will help.
 

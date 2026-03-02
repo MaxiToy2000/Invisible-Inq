@@ -6,7 +6,7 @@ import Loader from './Loader';
 // Calendar "Linear" layout with dynamic timeline + free-floating items
 // Timeline items (Milestone/Result/Action) are locked left-to-right in sequence
 // Free-floating items (Entity/Location/etc.) appear based on connections to visible timeline items
-const CalendarContainer = ({ sectionQuery = null, currentSubstory = null }) => {
+const CalendarContainer = ({ sectionQuery = null, currentSection = null }) => {
   const { showError } = useToast();
   const designWidth = 1600;
   const designHeight = 1200;
@@ -20,7 +20,7 @@ const CalendarContainer = ({ sectionQuery = null, currentSubstory = null }) => {
 
   useEffect(() => {
     const fetchCalendarData = async () => {
-      const queryToUse = sectionQuery || currentSubstory?.section_query || currentSubstory?.id;
+      const queryToUse = sectionQuery || currentSection?.section_query || currentSection?.id;
       if (!queryToUse) {
         setCalendarData(null);
         return;
@@ -57,7 +57,7 @@ const CalendarContainer = ({ sectionQuery = null, currentSubstory = null }) => {
     };
 
     fetchCalendarData();
-  }, [sectionQuery, currentSubstory?.section_query, currentSubstory?.id]);
+  }, [sectionQuery, currentSection?.section_query, currentSection?.id]);
 
   // Parse date safely
   const safeParseDate = (dateStr) => {

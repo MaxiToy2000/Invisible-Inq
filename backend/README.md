@@ -70,7 +70,7 @@ The API will be available at `http://localhost:8000`
 
 ### GET `/api/stories`
 
-Returns all stories with their chapters and substories, matching the structure of `index.json`.
+Returns all stories with their chapters and sections, matching the structure of `index.json`.
 
 **Response:**
 ```json
@@ -87,12 +87,12 @@ Returns all stories with their chapters and substories, matching the structure o
         "title": "Chapter Title",
         "headline": "Chapter Headline",
         "brief": "Chapter description",
-        "substories": [
+        "sections": [
           {
-            "id": "substory_id",
-            "title": "Substory Title",
-            "headline": "Substory Headline",
-            "brief": "Substory description",
+            "id": "section_id",
+            "title": "Section Title",
+            "headline": "Section Headline",
+            "brief": "Section description",
             "graphPath": "path/to/graph"
           }
         ]
@@ -102,9 +102,9 @@ Returns all stories with their chapters and substories, matching the structure o
 ]
 ```
 
-### GET `/api/graph/{substory_id}`
+### GET `/api/graph/{section_id}`
 
-Returns graph data (nodes and links) for a specific substory.
+Returns graph data (nodes and links) for a specific section.
 
 **Response:**
 ```json
@@ -133,7 +133,7 @@ Returns graph data (nodes and links) for a specific substory.
 
 ### GET `/api/graph?graph_path=...`
 
-Alternative endpoint to fetch graph data by graph path instead of substory ID.
+Alternative endpoint to fetch graph data by graph path instead of section ID.
 
 ## Neo4j Schema Requirements
 
@@ -143,15 +143,15 @@ The queries in `queries.py` expect the following Neo4j structure:
 
 - **Story nodes**: Label `:Story` with properties: `id`, `title`, `headline`, `brief`, `path`
 - **Chapter nodes**: Label `:Chapter` with properties: `id`, `title`, `headline`, `brief`
-- **Substory nodes**: Label `:Substory` with properties: `id`, `title`, `headline`, `brief`, `graphPath`
+- **Section nodes**: Label `:Section` with properties: `id`, `title`, `headline`, `brief`, `graphPath`
 - **Entity nodes**: Various labels with properties: `id`, `name`, `category`, `color`, `highlight`, etc.
 
 ### Relationships
 
 - `Chapter-[:IN_STORY]->Story` (chapter belongs to story)
 - `Section-[:IN_CHAPTER]->Chapter` (section belongs to chapter)
-- `Chapter-[:HAS_SUBSTORY]->Substory`
-- `Substory-[:HAS_NODE|BELONGS_TO|CONTAINS*]->Entity`
+- `Chapter-[:HAS_SUBSTORY]->Section`
+- `Section-[:HAS_NODE|BELONGS_TO|CONTAINS*]->Entity`
 - `Entity-[:RELATIONSHIP_TYPE]->Entity` (for links/edges)
 
 **Note:** You may need to adjust the queries in `queries.py` to match your actual Neo4j schema. The current queries are templates that should be customized based on your data model.
@@ -160,10 +160,10 @@ The queries in `queries.py` expect the following Neo4j structure:
 
 Edit `queries.py` to match your Neo4j schema:
 
-1. Adjust node labels (e.g., `:Story`, `:Chapter`, `:Substory`)
+1. Adjust node labels (e.g., `:Story`, `:Chapter`, `:Section`)
 2. Adjust relationship types (e.g., `:IN_STORY`, `:IN_CHAPTER`, `:HAS_SUBSTORY`)
 3. Modify property names to match your node/relationship properties
-4. Update the graph data query to match how nodes and links are connected to substories
+4. Update the graph data query to match how nodes and links are connected to sections
 
 ## Testing
 
@@ -173,8 +173,8 @@ Test the API endpoints:
 # Get all stories
 curl http://localhost:8000/api/stories
 
-# Get graph data by substory ID
-curl http://localhost:8000/api/graph/substory1
+# Get graph data by section ID
+curl http://localhost:8000/api/graph/section1
 
 # Get graph data by path
 curl http://localhost:8000/api/graph?graph_path=story1/graph.json

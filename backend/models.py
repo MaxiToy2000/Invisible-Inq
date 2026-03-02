@@ -3,7 +3,7 @@ from pydantic import BaseModel, EmailStr, Field
 from datetime import datetime
 from enum import Enum
 
-class Substory(BaseModel):
+class Section(BaseModel):
     id: str
     title: str
     headline: str
@@ -17,7 +17,7 @@ class Chapter(BaseModel):
     title: str
     headline: str
     brief: str
-    substories: List[Substory]
+    sections: List[Section]
     total_nodes: Optional[int] = 0
     chapter_number: Optional[int] = None  # from Postgres gr_id (id match), overrides Neo4j
 

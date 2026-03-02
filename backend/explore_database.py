@@ -93,43 +93,43 @@ def explore_database():
         LIMIT 20
 
         MATCH (n)
-        WHERE NOT 'Story' IN labels(n) AND NOT 'Chapter' IN labels(n) AND NOT 'Substory' IN labels(n)
+        WHERE NOT 'Story' IN labels(n) AND NOT 'Chapter' IN labels(n) AND NOT 'Section' IN labels(n)
         RETURN DISTINCT labels(n)[0] as label, count(*) as count
         ORDER BY count DESC
         LIMIT 20
 
         MATCH (n)
-        WHERE NOT 'Story' IN labels(n) AND NOT 'Chapter' IN labels(n) AND NOT 'Substory' IN labels(n)
+        WHERE NOT 'Story' IN labels(n) AND NOT 'Chapter' IN labels(n) AND NOT 'Section' IN labels(n)
         RETURN n, labels(n) as node_labels
         LIMIT 3
 
         MATCH (c:Chapter)-[r]-(entity)
-        WHERE NOT 'Story' IN labels(entity) AND NOT 'Chapter' IN labels(entity) AND NOT 'Substory' IN labels(entity)
+        WHERE NOT 'Story' IN labels(entity) AND NOT 'Chapter' IN labels(entity) AND NOT 'Section' IN labels(entity)
         RETURN type(r) as rel_type, labels(entity)[0] as entity_label, count(*) as count
         ORDER BY count DESC
         LIMIT 15
 
             MATCH (c:Chapter)-[*1..3]-(entity)
-            WHERE NOT 'Story' IN labels(entity) AND NOT 'Chapter' IN labels(entity) AND NOT 'Substory' IN labels(entity)
+            WHERE NOT 'Story' IN labels(entity) AND NOT 'Chapter' IN labels(entity) AND NOT 'Section' IN labels(entity)
             RETURN DISTINCT labels(entity)[0] as entity_label, count(*) as count
             ORDER BY count DESC
             LIMIT 10
 
         MATCH (e1)-[r]-(e2)
-        WHERE NOT 'Story' IN labels(e1) AND NOT 'Chapter' IN labels(e1) AND NOT 'Substory' IN labels(e1)
-          AND NOT 'Story' IN labels(e2) AND NOT 'Chapter' IN labels(e2) AND NOT 'Substory' IN labels(e2)
+        WHERE NOT 'Story' IN labels(e1) AND NOT 'Chapter' IN labels(e1) AND NOT 'Section' IN labels(e1)
+          AND NOT 'Story' IN labels(e2) AND NOT 'Chapter' IN labels(e2) AND NOT 'Section' IN labels(e2)
         RETURN type(r) as rel_type, count(*) as count
         ORDER BY count DESC
         LIMIT 20
 
         MATCH (e1)-[r]-(e2)
-        WHERE NOT 'Story' IN labels(e1) AND NOT 'Chapter' IN labels(e1) AND NOT 'Substory' IN labels(e1)
-          AND NOT 'Story' IN labels(e2) AND NOT 'Chapter' IN labels(e2) AND NOT 'Substory' IN labels(e2)
+        WHERE NOT 'Story' IN labels(e1) AND NOT 'Chapter' IN labels(e1) AND NOT 'Section' IN labels(e1)
+          AND NOT 'Story' IN labels(e2) AND NOT 'Chapter' IN labels(e2) AND NOT 'Section' IN labels(e2)
         RETURN type(r) as rel_type, properties(r) as props, labels(e1)[0] as from_label, labels(e2)[0] as to_label
         LIMIT 3
 
         MATCH path = (s:Story)-[*1..5]-(e)
-        WHERE NOT 'Story' IN labels(e) AND NOT 'Chapter' IN labels(e) AND NOT 'Substory' IN labels(e)
+        WHERE NOT 'Story' IN labels(e) AND NOT 'Chapter' IN labels(e) AND NOT 'Section' IN labels(e)
         WITH s, e, relationships(path) as rels
         RETURN DISTINCT s.id as story_id, labels(e)[0] as entity_label, count(*) as count
         ORDER BY story_id, count DESC

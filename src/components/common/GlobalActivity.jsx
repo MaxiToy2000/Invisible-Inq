@@ -31,7 +31,7 @@ const countryNameMap = {
   'NZL': ['New Zealand', 'NZL']
 };
 
-const GlobalActivity = ({ graphData, currentSubstory, onSectionClick, onHighlightCountries }) => {
+const GlobalActivity = ({ graphData, currentSection, onSectionClick, onHighlightCountries }) => {
   const [activeCountries] = useState([
     'USA', 'CAN', 'MEX', 'BRA', 'ARG', 'CHL',
     'GBR', 'FRA', 'DEU', 'ESP', 'ITA', 'SWE',
@@ -53,7 +53,7 @@ const GlobalActivity = ({ graphData, currentSubstory, onSectionClick, onHighligh
       .replace(/[^\w\s]/g, '');
   };
 
-  // Find highlighted countries based on selected section from LeftSidebar (currentSubstory)
+  // Find highlighted countries based on selected section from LeftSidebar (currentSection)
   const highlightedCountries = useMemo(() => {
     // Check if we have graph data
     if (!graphData || !graphData.nodes || !graphData.links) {

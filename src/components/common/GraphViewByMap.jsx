@@ -24,7 +24,7 @@ const getNodeTypeDisplayName = (node) => {
   return node?.node_type ?? node?.type ?? 'entity';
 };
 
-const GraphViewByMap = forwardRef(({ mapView = 'flat', graphData = { nodes: [], links: [] }, currentSubstoryId = null, currentSubstory = null }, ref) => {
+const GraphViewByMap = forwardRef(({ mapView = 'flat', graphData = { nodes: [], links: [] }, currentSectionId = null, currentSection = null }, ref) => {
   const containerRef = useRef(null);
   const svgRef = useRef(null);
   const [containerDimensions, setContainerDimensions] = useState({ width: 0, height: 0 });
@@ -52,12 +52,12 @@ const GraphViewByMap = forwardRef(({ mapView = 'flat', graphData = { nodes: [], 
   const bounceAnimationsRef = useRef(new Map());
   const isRotationPausedRef = useRef(false);
   const countryDataMap = useRef(new Map());
-  const prevSubstoryIdRef = useRef(undefined);
+  const prevSectionIdRef = useRef(undefined);
   const graphSimulationRef = useRef(null);
 
-  // On substory/section change (Map view): clear map, show loading; new map appears when data is loaded
+  // On section/section change (Map view): clear map, show loading; new map appears when data is loaded
   useEffect(() => {
-    if (prevSubstoryIdRef.current !== undefined && prevSubstoryIdRef.current !== currentSubstoryId) {
+    if (prevSectionIdRef.current !== undefined && prevSectionIdRef.current !== currentSectionId) {
       setLoadingCountryData(true);
       setSelectedCountryId(null);
       setSelectedCountryPosition(null);
@@ -72,8 +72,8 @@ const GraphViewByMap = forwardRef(({ mapView = 'flat', graphData = { nodes: [], 
         d3.select(graphSvgRef.current).selectAll('*').remove();
       }
     }
-    prevSubstoryIdRef.current = currentSubstoryId;
-  }, [currentSubstoryId]);
+    prevSectionIdRef.current = currentSectionId;
+  }, [currentSectionId]);
 
   // Helper function to get consistent country ID
   const getCountryId = (feature, index) => {
@@ -605,7 +605,7 @@ const GraphViewByMap = forwardRef(({ mapView = 'flat', graphData = { nodes: [], 
       cancelled = true;
       cancelAnimationFrame(rafId);
     };
-  }, [mapView, worldData, mapDimensions, highlightedCountries, selectedCountryId, graphData, currentSubstory, currentSubstoryId, containerDimensions]);
+  }, [mapView, worldData, mapDimensions, highlightedCountries, selectedCountryId, graphData, currentSection, currentSectionId, containerDimensions]);
 
   // Render graph in remaining space (excluding map) when country is selected (DOM updates batched in rAF)
   useEffect(() => {

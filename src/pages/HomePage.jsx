@@ -92,10 +92,10 @@ const HomePage = () => {
   const rightSidebarRef = useRef(null);
   const graphViewByMapRef = useRef(null);
   const pendingSessionRestoreRef = useRef(null); // { selectedNodeId, selectedEdgeId } applied when graphData is ready
-  const hasRestoredSessionRef = useRef(false); // only restore session once per login so changing chapter/substory is not overwritten
-  const prefetchedGraphIdsRef = useRef(new Set()); // substory IDs we've prefetched (warms backend cache for faster first load)
+  const hasRestoredSessionRef = useRef(false); // only restore session once per login so changing chapter/section is not overwritten
+  const prefetchedGraphIdsRef = useRef(new Set()); // section IDs we've prefetched (warms backend cache for faster first load)
   const sessionRestoreAttemptedRef = useRef(false); // true after GET /api/user-session has settled (so we pull saved section first, not first section)
-  const weRestoredStoryFromSessionRef = useRef(false); // true when we applied story/chapter/substory from session (URL effect must not overwrite)
+  const weRestoredStoryFromSessionRef = useRef(false); // true when we applied story/chapter/section from session (URL effect must not overwrite)
 
   // Ref to track if we're reading from URL to prevent infinite loops
   const isReadingFromURL = useRef(false);
@@ -106,10 +106,10 @@ const HomePage = () => {
     stories,
     currentStory,
     currentChapter,
-    currentSubstory,
+    currentSection,
     currentStoryId,
     currentChapterId,
-    currentSubstoryId,
+    currentSectionId,
     graphData,
     graphDescription,
     entityHighlights,
@@ -119,9 +119,9 @@ const HomePage = () => {
     error,
     selectStory,
     selectChapter,
-    selectSubstory,
-    goToPreviousSubstory,
-    goToNextSubstory,
+    selectSection,
+    goToPreviousSection,
+    goToNextSection,
     selectNode,
     selectEdge,
     selectEntityById,
@@ -134,16 +134,16 @@ const HomePage = () => {
 
   const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
-  // Prefetch graph API for a substory (fire-and-forget) to warm backend cache so first load after card click is fast
-  const prefetchGraphForSubstory = useCallback((substoryId) => {
-    if (!substoryId) return;
-    if (prefetchedGraphIdsRef.current.has(substoryId)) return;
-    prefetchedGraphIdsRef.current.add(substoryId);
-    fetch(`${apiBaseUrl}/api/graph/${encodeURIComponent(substoryId)}`).catch(() => {});
+  // Prefetch graph API for a section (fire-and-forget) to warm backend cache so first load after card click is fast
+  const prefetchGraphForSection = useCallback((sectionId) => {
+    if (!sectionId) return;
+    if (prefetchedGraphIdsRef.current.has(sectionId)) return;
+    prefetchedGraphIdsRef.current.add(sectionId);
+    fetch(`${apiBaseUrl}/api/graph/${encodeURIComponent(sectionId)}`).catch(() => {});
   }, [apiBaseUrl]);
 
   // Load saved user session once when authenticated (full UI state including camera).
-  // Only restore once per login so that when the user changes chapter/substory, we don't overwrite with saved session.
+  // Only restore once per login so that when the user changes chapter/section, we don't overwrite with saved session.
   useEffect(() => {
     if (!isAuthenticated()) {
       setSavedGraphCameraPosition(null);
@@ -175,7 +175,7 @@ const HomePage = () => {
           weRestoredStoryFromSessionRef.current = true; // so URL effect does not overwrite with URL params
         }
         if (s.currentChapterId) setTimeout(() => selectChapter(s.currentChapterId), 50);
-        if (s.currentSubstoryId != null) setTimeout(() => selectSubstory(s.currentSubstoryId), 100);
+        if (s.currentSectionId != null) setTimeout(() => selectSection(s.currentSectionId), 100);
         if (s.viewMode != null) setViewMode(s.viewMode);
         if (s.showRightSidebar !== undefined) setShowRightSidebar(s.showRightSidebar);
         if (s.is3D !== undefined) setIs3D(s.is3D);
@@ -206,7 +206,7 @@ const HomePage = () => {
       ac.abort();
       clearTimeout(timeoutId);
     };
-    // Intentionally omit selectStory, selectChapter, selectSubstory so changing chapter/substory does not re-run this effect
+    // Intentionally omit selectStory, selectChapter, selectSection so changing chapter/section does not re-run this effect
   }, [isAuthenticated, apiBaseUrl, user?.email]);
 
   // Apply pending selected node/edge when graphData is ready
@@ -238,7 +238,7 @@ const HomePage = () => {
       userEmail: user?.email ?? null,
       currentStoryId: currentStoryId ?? null,
       currentChapterId: currentChapterId ?? null,
-      currentSubstoryId: currentSubstoryId ?? null,
+      currentSectionId: currentSectionId ?? null,
       viewMode: viewMode ?? 'Graph',
       selectedNodeId: selectedNode?.id ?? null,
       selectedEdgeId: selectedEdge ? (selectedEdge.id ?? `${selectedEdge.source?.id ?? selectedEdge.source ?? selectedEdge.sourceId}-${selectedEdge.target?.id ?? selectedEdge.target ?? selectedEdge.targetId}`) : null,
@@ -269,7 +269,7 @@ const HomePage = () => {
       body: JSON.stringify({ session_data: sessionData }),
     });
     if (!res.ok) throw new Error('Failed to save session');
-  }, [apiBaseUrl, user?.email, currentStoryId, currentChapterId, currentSubstoryId, viewMode, selectedNode, selectedEdge, isFullscreen, aiSummaryQuery, rightSidebarActiveTab, showRightSidebar, is3D, forceStrength, nodeSize, labelSize, edgeLength, edgeThickness, sortBy, sortOrder, hierarchyTreeAxis, mapView]);
+  }, [apiBaseUrl, user?.email, currentStoryId, currentChapterId, currentSectionId, viewMode, selectedNode, selectedEdge, isFullscreen, aiSummaryQuery, rightSidebarActiveTab, showRightSidebar, is3D, forceStrength, nodeSize, labelSize, edgeLength, edgeThickness, sortBy, sortOrder, hierarchyTreeAxis, mapView]);
 
   const handleSavePositionClick = useCallback(async () => {
     const state = graphRef.current?.getCurrentCameraState?.();
@@ -346,84 +346,11 @@ const HomePage = () => {
     });
   }, [normalizeTitleForURL]);
 
-  // Helper function to update URL with current selections (using normalized titles for all: story/chapter/substory)
-  // storyTitle, chapterTitle, substoryTitle can be passed directly (from option objects) or will be found from IDs
-  const updateURLWithSelections = useCallback((storyId, chapterTitle, substoryTitle, storyTitleDirect = null) => {
-    // Get current URL params using window.location to avoid stale closure issues
-    const currentSearchParams = new URLSearchParams(window.location.search);
-    const searchParams = new URLSearchParams();
-    
-    // Use storyTitleDirect if provided (from option object), otherwise find story title from storyId
-    if (storyId) {
-      let storyTitle = storyTitleDirect || null;
-      // If not provided directly, try to find story title from stories array
-      if (!storyTitle && stories.length > 0) {
-        const story = stories.find(s => s.id === storyId);
-        if (story && story.title) {
-          storyTitle = story.title;
-        }
-      }
-      
-      if (storyTitle) {
-        // Normalize story title: lowercase with underscores (same format as chapter/substory)
-        const normalized = normalizeTitleForURL(storyTitle);
-        if (normalized) {
-          searchParams.set('story', normalized);
-        }
-      } else {
-        // Fallback: if story title not found, use storyId (but this shouldn't happen normally)
-        console.warn(`Story title not found for storyId: ${storyId}, using ID as fallback`);
-        searchParams.set('story', String(storyId));
-      }
-    }
-    if (chapterTitle) {
-      // Normalize chapter title: lowercase with underscores
-      const normalized = normalizeTitleForURL(chapterTitle);
-      if (normalized) {
-        searchParams.set('chapter', normalized);
-      }
-    }
-    if (substoryTitle) {
-      // Normalize substory title: lowercase with underscores
-      const normalized = normalizeTitleForURL(substoryTitle);
-      if (normalized) {
-        searchParams.set('substory', normalized);
-      }
-    }
-    
-    // Preserve view and scene from current URL
-    const currentView = currentSearchParams.get('view');
-    const currentScene = currentSearchParams.get('scene');
-    if (currentView && currentView !== 'Graph') {
-      searchParams.set('view', currentView);
-    }
-    if (currentScene) {
-      searchParams.set('scene', currentScene);
-    }
-    
-    const newSearch = searchParams.toString();
-    const newPath = newSearch ? `/?${newSearch}` : '/';
-    const currentPath = window.location.pathname + window.location.search;
-
-    // Normalize paths for comparison
-    const normalizePath = (path) => {
-      if (path === '/') return '/';
-      if (path.startsWith('/?')) return path;
-      if (path.startsWith('?')) return `/${path}`;
-      return path;
-    };
-    
-    const normalizedNewPath = normalizePath(newPath);
-    const normalizedCurrentPath = normalizePath(currentPath);
-    
-    // Mark this URL as one we set ourselves BEFORE navigating
-    // This prevents the URL sync useEffect from re-processing our own URL change
-    lastURLWeSet.current = normalizedNewPath;
-    
-    if (normalizedNewPath !== normalizedCurrentPath) {
-      navigate(newPath, { replace: true });
-    }
-  }, [navigate, normalizeTitleForURL, stories]);
+  // URL is not updated when user changes story/chapter/section selection (per product requirement).
+  // Initial load can still read from URL if present (e.g. shared link).
+  const updateURLWithSelections = useCallback((_storyId, _chapterTitle, _sectionTitle, _storyTitleDirect = null) => {
+    // No-op: do not change URL when selection changes.
+  }, []);
 
   // Wrapper handlers: define handleChapterSelect first so handleStorySelect can call it
   const handleChapterSelect = useCallback((chapterId, option) => {
@@ -479,9 +406,9 @@ const HomePage = () => {
       storyIdForURL = foundStory?.id || null;
     }
 
-    const firstSubstory = selectedChapter?.substories?.[0];
-    const firstSubstoryId = firstSubstory?.id || null;
-    const firstSubstoryTitle = firstSubstory?.title || null;
+    const firstSection = selectedChapter?.sections?.[0];
+    const firstSectionId = firstSection?.id || null;
+    const firstSectionTitle = firstSection?.title || null;
     const finalStoryId = storyIdForURL || currentStoryId;
 
     if (!finalStoryId) {
@@ -491,15 +418,15 @@ const HomePage = () => {
     }
 
     const storyTitle = stories.find(s => s.id === finalStoryId)?.title || null;
-    updateURLWithSelections(finalStoryId, chapterTitle, firstSubstoryTitle || null, storyTitle || null);
+    updateURLWithSelections(finalStoryId, chapterTitle, firstSectionTitle || null, storyTitle || null);
     selectChapter(chapterId);
 
-    if (firstSubstoryId) {
+    if (firstSectionId) {
       setTimeout(() => {
-        selectSubstory(firstSubstoryId);
+        selectSection(firstSectionId);
       }, 50);
     }
-  }, [selectChapter, selectSubstory, updateURLWithSelections, currentStoryId, currentStory, stories]);
+  }, [selectChapter, selectSection, updateURLWithSelections, currentStoryId, currentStory, stories]);
 
   const handleStorySelect = useCallback((storyId, option) => {
     if (!storyId) return;
@@ -530,13 +457,13 @@ const HomePage = () => {
     }
   }, [selectStory, updateURLWithSelections, stories, handleChapterSelect]);
 
-  const handleSubstorySelect = useCallback((substoryId, option) => {
+  const handleSectionSelect = useCallback((sectionId, option) => {
     // Mark that we're updating from user action, not URL
     isReadingFromURL.current = false;
     weRestoredStoryFromSessionRef.current = false; // allow URL to drive selection again after user change
 
-    if (!substoryId) {
-      // Update URL to remove substory but keep story and chapter
+    if (!sectionId) {
+      // Update URL to remove section but keep story and chapter
       if (currentStoryId && currentChapterId) {
         const storyTitle = currentStory?.title || null;
         const chapterTitle = currentChapter?.title || null;
@@ -546,32 +473,32 @@ const HomePage = () => {
           updateURLWithSelections(currentStoryId, chapterTitle, null);
         }
       }
-      selectSubstory(null);
+      selectSection(null);
       return;
     }
 
-    // Get substory title from option object - use label (displayed text) first, then title
-    let substoryTitle = option?.label || option?.title || null;
-    let selectedSubstory = option || null;
+    // Get section title from option object - use label (displayed text) first, then title
+    let sectionTitle = option?.label || option?.title || null;
+    let selectedSection = option || null;
 
-    // If not in option, find the substory title (try currentChapter first, then search all stories)
-    if (!substoryTitle && currentChapter && currentChapter.substories) {
-      selectedSubstory = currentChapter.substories.find(s => s.id === substoryId);
-      if (selectedSubstory && selectedSubstory.title) {
-        substoryTitle = selectedSubstory.title;
+    // If not in option, find the section title (try currentChapter first, then search all stories)
+    if (!sectionTitle && currentChapter && currentChapter.sections) {
+      selectedSection = currentChapter.sections.find(s => s.id === sectionId);
+      if (selectedSection && selectedSection.title) {
+        sectionTitle = selectedSection.title;
       }
     }
     
     // If still not found, search all stories
-    if (!substoryTitle && stories.length > 0 && currentStoryId && currentChapterId) {
+    if (!sectionTitle && stories.length > 0 && currentStoryId && currentChapterId) {
       const story = stories.find(s => s.id === currentStoryId);
       if (story && story.chapters) {
         const chapter = story.chapters.find(c => c.id === currentChapterId);
-        if (chapter && chapter.substories) {
-          const substory = chapter.substories.find(s => s.id === substoryId);
-          if (substory && substory.title) {
-            selectedSubstory = substory;
-            substoryTitle = substory.title;
+        if (chapter && chapter.sections) {
+          const section = chapter.sections.find(s => s.id === sectionId);
+          if (section && section.title) {
+            selectedSection = section;
+            sectionTitle = section.title;
           }
         }
       }
@@ -597,34 +524,29 @@ const HomePage = () => {
     
     // Ensure we have all required information
     if (!currentStoryId || !chapterTitle) {
-      console.warn(`[handleSubstorySelect] Missing storyId (${currentStoryId}) or chapterTitle (${chapterTitle})`);
-      selectSubstory(substoryId);
+      console.warn(`[handleSectionSelect] Missing storyId (${currentStoryId}) or chapterTitle (${chapterTitle})`);
+      selectSection(sectionId);
       return;
     }
     
-    if (!substoryTitle) {
-      console.warn(`[handleSubstorySelect] Substory title not found, will update URL without substory`);
+    if (!sectionTitle) {
+      console.warn(`[handleSectionSelect] Section title not found, will update URL without section`);
     }
     
     // Get story title for URL
     const storyTitle = currentStory?.title || stories.find(s => s.id === currentStoryId)?.title || null;
-    updateURLWithSelections(currentStoryId, chapterTitle, substoryTitle || null, storyTitle || null);
+    updateURLWithSelections(currentStoryId, chapterTitle, sectionTitle || null, storyTitle || null);
     
     // Update state
-    selectSubstory(substoryId);
-  }, [selectSubstory, updateURLWithSelections, currentStoryId, currentChapterId, currentStory, currentChapter]);
+    selectSection(sectionId);
+  }, [selectSection, updateURLWithSelections, currentStoryId, currentChapterId, currentStory, currentChapter]);
 
   // Update URL when view mode or scene container changes
   // Defined after useGraphData so it can access currentStoryId, currentChapterId, etc.
   const updateURL = useCallback((updates) => {
     const searchParams = new URLSearchParams(location.search);
-    
-    // Preserve existing story/chapter/substory parameters
-    const storyId = searchParams.get('story') || (currentStoryId ? String(currentStoryId) : null);
-    const chapterId = searchParams.get('chapter') || (currentChapterId ? String(currentChapterId) : null);
-    const substoryId = searchParams.get('substory') || (currentSubstoryId ? String(currentSubstoryId) : null);
-    
-    // Update with new values
+
+    // Only update view and scene in URL; do not write story/chapter/section (selection does not change URL).
     if (updates.view !== undefined) {
       if (updates.view && updates.view !== 'Graph') {
         searchParams.set('view', updates.view);
@@ -636,7 +558,7 @@ const HomePage = () => {
     } else {
       searchParams.delete('view');
     }
-    
+
     if (updates.scene !== undefined) {
       if (updates.scene) {
         searchParams.set('scene', updates.scene);
@@ -648,18 +570,11 @@ const HomePage = () => {
     } else {
       searchParams.delete('scene');
     }
-    
-    // Preserve story parameters
-    if (storyId) searchParams.set('story', storyId);
-    if (chapterId) searchParams.set('chapter', chapterId);
-    if (substoryId) searchParams.set('substory', substoryId);
-    
     const newSearch = searchParams.toString();
     const newPath = newSearch ? `/?${newSearch}` : '/';
-    
-    // Use replace: false to allow back button navigation
+
     navigate(newPath, { replace: false });
-  }, [location.search, navigate, currentStoryId, currentChapterId, currentSubstoryId, viewMode, selectedSceneContainer]);
+  }, [location.search, navigate, viewMode, selectedSceneContainer]);
 
   // Handle cluster node selection (from RightSidebar)
   const handleClusterNodeSelect = useCallback((value) => {
@@ -920,11 +835,11 @@ const HomePage = () => {
     }
 
     // Map section type to section_query if needed
-    // For now, we'll use the sectionType directly or try to match with currentSubstory
+    // For now, we'll use the sectionType directly or try to match with currentSection
     let sectionQuery = null;
     
-    if (currentSubstory && currentSubstory.section_query) {
-      sectionQuery = currentSubstory.section_query;
+    if (currentSection && currentSection.section_query) {
+      sectionQuery = currentSection.section_query;
     } else {
       // Fallback: try to find section by matching sectionLabel or sectionType
       // This is a simplified approach - in real implementation, you'd match with actual section data
@@ -999,7 +914,7 @@ const HomePage = () => {
         selectEntityById(connectedCountryNodes[0].id || connectedCountryNodes[0].gid);
       }
     }
-  }, [graphData, currentSubstory, selectEntityById]);
+  }, [graphData, currentSection, selectEntityById]);
 
   // Section description comes from the same graph response as graphData (useGraphData)
   useEffect(() => {
@@ -1007,7 +922,7 @@ const HomePage = () => {
   }, [graphDescription]);
 
   // Read URL parameters on mount and when URL changes (e.g., back button)
-  // URL now uses titles for chapter and substory instead of IDs
+  // URL now uses titles for chapter and section instead of IDs
   useEffect(() => {
     // When authenticated, wait for session restore so we load the saved section first, not the first section then saved
     if (isAuthenticated() && !sessionRestoreAttemptedRef.current) return;
@@ -1048,17 +963,17 @@ const HomePage = () => {
     const searchParams = new URLSearchParams(location.search);
     const storyTitleParam = searchParams.get('story'); // Now this is a normalized title, not an ID
     const chapterTitle = searchParams.get('chapter');
-    const substoryTitle = searchParams.get('substory');
+    const sectionTitle = searchParams.get('section');
     const viewParam = searchParams.get('view');
     const sceneParam = searchParams.get('scene');
 
-    // Helper function to find story, chapter, and substory IDs from normalized titles
+    // Helper function to find story, chapter, and section IDs from normalized titles
     const findIdsFromTitles = () => {
       let foundStoryId = null;
       let foundChapterId = null;
-      let foundSubstoryId = null;
+      let foundSectionId = null;
       
-      // Find story by normalized title (same format as chapter/substory)
+      // Find story by normalized title (same format as chapter/section)
       if (storyTitleParam && stories.length > 0) {
         const story = findTitleByNormalized(storyTitleParam, stories);
         if (story) {
@@ -1082,8 +997,8 @@ const HomePage = () => {
         }
       }
       
-      // Try to find substory by normalized title (need chapter to be found first)
-      if (substoryTitle && stories.length > 0) {
+      // Try to find section by normalized title (need chapter to be found first)
+      if (sectionTitle && stories.length > 0) {
         // Use foundStoryId if available, otherwise try to find story from title param
         const storyToUse = foundStoryId 
           ? stories.find(s => s.id === foundStoryId)
@@ -1091,27 +1006,27 @@ const HomePage = () => {
           
         if (storyToUse && foundChapterId) {
           const chapter = storyToUse.chapters.find(c => c.id === foundChapterId);
-          if (chapter && chapter.substories) {
-            // Find substory by matching normalized title
-            const substory = findTitleByNormalized(substoryTitle, chapter.substories);
-            if (substory) {
-              foundSubstoryId = substory.id;
+          if (chapter && chapter.sections) {
+            // Find section by matching normalized title
+            const section = findTitleByNormalized(sectionTitle, chapter.sections);
+            if (section) {
+              foundSectionId = section.id;
             }
           }
-        } else if (currentChapter && currentChapter.substories) {
+        } else if (currentChapter && currentChapter.sections) {
           // Fallback to current chapter if available
-          const substory = findTitleByNormalized(substoryTitle, currentChapter.substories);
-          if (substory) {
-            foundSubstoryId = substory.id;
+          const section = findTitleByNormalized(sectionTitle, currentChapter.sections);
+          if (section) {
+            foundSectionId = section.id;
           }
         }
       }
       
-      return { foundStoryId, foundChapterId, foundSubstoryId };
+      return { foundStoryId, foundChapterId, foundSectionId };
     };
 
-    // Find story, chapter, and substory IDs from normalized titles
-    let { foundStoryId: storyIdFromURL, foundChapterId: chapterId, foundSubstoryId: substoryId } = findIdsFromTitles();
+    // Find story, chapter, and section IDs from normalized titles
+    let { foundStoryId: storyIdFromURL, foundChapterId: chapterId, foundSectionId: sectionId } = findIdsFromTitles();
 
     // Additional safety check: If we're not reading from URL and we just set the URL,
     // and the found IDs match current state, this means we're in the middle of a user-initiated selection
@@ -1125,10 +1040,10 @@ const HomePage = () => {
     }
 
     // Check if URL values match current state - if they do, don't update (prevent loops)
-    // Compare by checking if current chapter/substory titles match URL titles
+    // Compare by checking if current chapter/section titles match URL titles
     // But be more lenient - if we just updated state, the titles might not match yet
     let urlChapterMatches = true;
-    let urlSubstoryMatches = true;
+    let urlSectionMatches = true;
     
     if (chapterTitle) {
       // Compare normalized titles
@@ -1155,31 +1070,31 @@ const HomePage = () => {
       }
     }
     
-    if (substoryTitle) {
+    if (sectionTitle) {
       // Compare normalized titles
-      const normalizedURLTitle = normalizeTitleForURL(decodeURIComponent(substoryTitle));
-      // Check both currentSubstory title and if currentSubstoryId matches
-      if (currentSubstory?.title) {
-        const normalizedCurrentTitle = normalizeTitleForURL(currentSubstory.title);
-        urlSubstoryMatches = normalizedCurrentTitle === normalizedURLTitle;
-      } else if (currentSubstoryId) {
-        // If substory is selected but title not loaded yet, try to find it
+      const normalizedURLTitle = normalizeTitleForURL(decodeURIComponent(sectionTitle));
+      // Check both currentSection title and if currentSectionId matches
+      if (currentSection?.title) {
+        const normalizedCurrentTitle = normalizeTitleForURL(currentSection.title);
+        urlSectionMatches = normalizedCurrentTitle === normalizedURLTitle;
+      } else if (currentSectionId) {
+        // If section is selected but title not loaded yet, try to find it
         const story = stories.find(s => s.id === currentStoryId);
         if (story && story.chapters) {
           const chapter = story.chapters.find(c => c.id === (chapterId || currentChapterId));
-          if (chapter && chapter.substories) {
-            const substory = chapter.substories.find(s => s.id === currentSubstoryId);
-            if (substory?.title) {
-              const normalizedCurrentTitle = normalizeTitleForURL(substory.title);
-              urlSubstoryMatches = normalizedCurrentTitle === normalizedURLTitle;
+          if (chapter && chapter.sections) {
+            const section = chapter.sections.find(s => s.id === currentSectionId);
+            if (section?.title) {
+              const normalizedCurrentTitle = normalizeTitleForURL(section.title);
+              urlSectionMatches = normalizedCurrentTitle === normalizedURLTitle;
             } else {
-              urlSubstoryMatches = true; // Can't verify, assume match
+              urlSectionMatches = true; // Can't verify, assume match
             }
           } else {
-            urlSubstoryMatches = true; // Can't verify, assume match
+            urlSectionMatches = true; // Can't verify, assume match
           }
         } else {
-          urlSubstoryMatches = true; // Can't verify, assume match
+          urlSectionMatches = true; // Can't verify, assume match
         }
       }
     }
@@ -1203,14 +1118,14 @@ const HomePage = () => {
       }
     }
     
-    const urlMatchesState = urlStoryMatches && urlChapterMatches && urlSubstoryMatches;
+    const urlMatchesState = urlStoryMatches && urlChapterMatches && urlSectionMatches;
 
     // Only read from URL if values don't match current state (i.e., URL was changed externally like back button)
-    // OR if we need to find story/chapter/substory but haven't found them yet (stories might not be loaded)
+    // OR if we need to find story/chapter/section but haven't found them yet (stories might not be loaded)
     const needsUpdate = !urlMatchesState || 
       (storyTitleParam && !storyIdFromURL && stories.length > 0) ||
       (chapterTitle && !chapterId && stories.length > 0) || 
-      (substoryTitle && !substoryId && stories.length > 0);
+      (sectionTitle && !sectionId && stories.length > 0);
     
     if (needsUpdate) {
       isReadingFromURL.current = true;
@@ -1233,13 +1148,13 @@ const HomePage = () => {
         }
       }
 
-      // Do not overwrite story/chapter/substory from URL when we just restored them from saved session (pull saved section first)
+      // Do not overwrite story/chapter/section from URL when we just restored them from saved session (pull saved section first)
       if (weRestoredStoryFromSessionRef.current) {
         setTimeout(() => { isReadingFromURL.current = false; }, 0);
         return;
       }
 
-      // Handle story/chapter/substory selection from URL
+      // Handle story/chapter/section selection from URL
       if (storyIdFromURL) {
         // First, select the story
         selectStory(storyIdFromURL);
@@ -1263,39 +1178,39 @@ const HomePage = () => {
             if (retryChapterId) {
               selectChapter(retryChapterId);
 
-              // Then find and select substory
-              if (substoryTitle) {
-                const selectSubstoryFromURL = () => {
-                  // Re-find substory ID in case chapter wasn't loaded when we first checked
-                  let retrySubstoryId = substoryId;
-                  if (!retrySubstoryId && stories.length > 0 && storyIdFromURL && retryChapterId) {
+              // Then find and select section
+              if (sectionTitle) {
+                const selectSectionFromURL = () => {
+                  // Re-find section ID in case chapter wasn't loaded when we first checked
+                  let retrySectionId = sectionId;
+                  if (!retrySectionId && stories.length > 0 && storyIdFromURL && retryChapterId) {
                     const story = stories.find(s => s.id === storyIdFromURL);
                     if (story && story.chapters) {
                       const chapter = story.chapters.find(c => c.id === retryChapterId);
-                      if (chapter && chapter.substories) {
-                        const substory = findTitleByNormalized(substoryTitle, chapter.substories);
-                        if (substory) {
-                          retrySubstoryId = substory.id;
+                      if (chapter && chapter.sections) {
+                        const section = findTitleByNormalized(sectionTitle, chapter.sections);
+                        if (section) {
+                          retrySectionId = section.id;
                         }
                       }
                     }
                   }
                   
-                  if (retrySubstoryId) {
-                    selectSubstory(retrySubstoryId);
+                  if (retrySectionId) {
+                    selectSection(retrySectionId);
                   }
                   
                   // Reset flag after all selections are done
-                  // Graph will load automatically via useGraphData hook when currentSubstoryId changes
+                  // Graph will load automatically via useGraphData hook when currentSectionId changes
                   setTimeout(() => {
                     isReadingFromURL.current = false;
                   }, 50);
                 };
                 
-                // Wait for chapter to be selected before selecting substory
-                setTimeout(selectSubstoryFromURL, 150);
+                // Wait for chapter to be selected before selecting section
+                setTimeout(selectSectionFromURL, 150);
               } else {
-                // Reset flag if no substory
+                // Reset flag if no section
                 setTimeout(() => {
                   isReadingFromURL.current = false;
                 }, 150);
@@ -1312,13 +1227,13 @@ const HomePage = () => {
                     const chapter = findTitleByNormalized(chapterTitle, story.chapters);
                     if (chapter) {
                       selectChapter(chapter.id);
-                      if (substoryTitle) {
+                      if (sectionTitle) {
                         setTimeout(() => {
-                          const chapterForSubstory = story.chapters.find(c => c.id === chapter.id);
-                          if (chapterForSubstory && chapterForSubstory.substories) {
-                            const substory = findTitleByNormalized(substoryTitle, chapterForSubstory.substories);
-                            if (substory) {
-                              selectSubstory(substory.id);
+                          const chapterForSection = story.chapters.find(c => c.id === chapter.id);
+                          if (chapterForSection && chapterForSection.sections) {
+                            const section = findTitleByNormalized(sectionTitle, chapterForSection.sections);
+                            if (section) {
+                              selectSection(section.id);
                             }
                           }
                           isReadingFromURL.current = false;
@@ -1365,7 +1280,7 @@ const HomePage = () => {
         setSelectedSceneContainer(null);
       }
     }
-  }, [location.search, selectStory, selectChapter, selectSubstory, currentStoryId, currentChapterId, currentSubstoryId, currentStory, currentChapter, currentSubstory, stories, findTitleByNormalized, normalizeTitleForURL]);
+  }, [location.search, selectStory, selectChapter, selectSection, currentStoryId, currentChapterId, currentSectionId, currentStory, currentChapter, currentSection, stories, findTitleByNormalized, normalizeTitleForURL]);
   // Note: viewMode and selectedSceneContainer removed from deps to prevent race conditions
   // This effect should only run when the URL changes, not when view state changes
 
@@ -1377,28 +1292,28 @@ const HomePage = () => {
     if (showGraphView || !stories?.length) return;
     if (isAuthenticated() && !sessionRestoreAttemptedRef.current) return; // wait for session restore so saved section loads first
     if (currentStoryId) return; // already have a selection (e.g. from session) — don't prefetch first section
-    const firstSubstoryId = stories[0]?.chapters?.[0]?.substories?.[0]?.id;
-    if (firstSubstoryId) prefetchGraphForSubstory(firstSubstoryId);
-  }, [showGraphView, stories, currentStoryId, prefetchGraphForSubstory]);
+    const firstSectionId = stories[0]?.chapters?.[0]?.sections?.[0]?.id;
+    if (firstSectionId) prefetchGraphForSection(firstSectionId);
+  }, [showGraphView, stories, currentStoryId, prefetchGraphForSection]);
 
-  // Note: URL updates are now handled directly in the handlers (handleStorySelect, handleChapterSelect, handleSubstorySelect)
+  // Note: URL updates are now handled directly in the handlers (handleStorySelect, handleChapterSelect, handleSectionSelect)
   // This useEffect is removed to prevent conflicts and race conditions
 
   // Update URL when viewMode changes (only if not reading from URL)
   useEffect(() => {
     // Only update URL if we have a story selected and we're not reading from URL
-    if (!isReadingFromURL.current && (currentStoryId || currentSubstoryId)) {
+    if (!isReadingFromURL.current && (currentStoryId || currentSectionId)) {
       updateURL({ view: viewMode });
     }
-  }, [viewMode, currentStoryId, currentSubstoryId, updateURL]);
+  }, [viewMode, currentStoryId, currentSectionId, updateURL]);
 
   // Update URL when selectedSceneContainer changes (only if not reading from URL)
   useEffect(() => {
     // Only update URL if we have a story selected and we're not reading from URL
-    if (!isReadingFromURL.current && (currentStoryId || currentSubstoryId)) {
+    if (!isReadingFromURL.current && (currentStoryId || currentSectionId)) {
       updateURL({ scene: selectedSceneContainer });
     }
-  }, [selectedSceneContainer, currentStoryId, currentSubstoryId, updateURL]);
+  }, [selectedSceneContainer, currentStoryId, currentSectionId, updateURL]);
 
   useEffect(() => {
     const hasGraphData = graphData && graphData.nodes && Array.isArray(graphData.nodes) && graphData.nodes.length > 0;
@@ -1499,11 +1414,11 @@ const HomePage = () => {
 
   // Reset graph layout mode to 'force' when graph is redrawn with new data
   useEffect(() => {
-    // Reset to force layout when story/chapter/substory changes (graph is redrawn)
+    // Reset to force layout when story/chapter/section changes (graph is redrawn)
     if (graphData && graphData.nodes && graphData.nodes.length > 0) {
       setGraphLayoutMode('force');
     }
-  }, [currentStoryId, currentChapterId, currentSubstoryId]);
+  }, [currentStoryId, currentChapterId, currentSectionId]);
 
   const handleDownload = () => {
     const dataStr = JSON.stringify(graphData, null, 2);
@@ -1511,7 +1426,7 @@ const HomePage = () => {
     const url = URL.createObjectURL(dataBlob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `graph-data-${currentStoryId}-${currentChapterId}-${currentSubstoryId || 'all'}.json`;
+    link.download = `graph-data-${currentStoryId}-${currentChapterId}-${currentSectionId || 'all'}.json`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -1886,7 +1801,7 @@ const HomePage = () => {
     const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
     
     try {
-      const sectionGid = currentSubstory?.id || currentSubstoryId || null;
+      const sectionGid = currentSection?.id || currentSectionId || null;
 
       // Send request to backend to create node in Neo4j
       const response = await fetch(`${apiBaseUrl}/api/nodes/create`, {
@@ -2144,14 +2059,14 @@ const HomePage = () => {
   }, [graphData, categoryCounts]);
 
   const handleStorySelection = (option) => {
-    if (option && option.storyId && option.chapterId && option.substoryId) {
+    if (option && option.storyId && option.chapterId && option.sectionId) {
       selectStory(option.storyId);
 
       setTimeout(() => {
         selectChapter(option.chapterId);
 
         setTimeout(() => {
-          selectSubstory(option.substoryId);
+          selectSection(option.sectionId);
         }, 100);
       }, 100);
     }
@@ -2421,21 +2336,21 @@ const HomePage = () => {
                 {stories.map((story) => {
                   // Calculate total sections for this story
                   const totalSections = story?.chapters?.reduce((sum, chapter) => {
-                    return sum + (chapter?.substories?.length || 0);
+                    return sum + (chapter?.sections?.length || 0);
                   }, 0) || 0;
 
                   const handleStoryCardClick = () => {
                     if (story?.id) {
                       // Navigate to the story by selecting it
                       selectStory(story.id);
-                      // If story has chapters and substories, select the first one
+                      // If story has chapters and sections, select the first one
                       if (story.chapters && story.chapters.length > 0) {
                         const firstChapter = story.chapters[0];
-                        if (firstChapter.substories && firstChapter.substories.length > 0) {
+                        if (firstChapter.sections && firstChapter.sections.length > 0) {
                           setTimeout(() => {
                             selectChapter(firstChapter.id);
                             setTimeout(() => {
-                              selectSubstory(firstChapter.substories[0].id);
+                              selectSection(firstChapter.sections[0].id);
                             }, 100);
                           }, 100);
                         }
@@ -2456,10 +2371,10 @@ const HomePage = () => {
                         if (selectedChapter) {
                           setTimeout(() => {
                             selectChapter(chapterId);
-                            // Select the first substory if available
-                            if (selectedChapter.substories && selectedChapter.substories.length > 0) {
+                            // Select the first section if available
+                            if (selectedChapter.sections && selectedChapter.sections.length > 0) {
                               setTimeout(() => {
-                                selectSubstory(selectedChapter.substories[0].id);
+                                selectSection(selectedChapter.sections[0].id);
                               }, 100);
                             }
                           }, 100);
@@ -2473,8 +2388,8 @@ const HomePage = () => {
                   const stats = storyStatistics[story.id] || { total_nodes: 0, entity_count: 0, highlighted_nodes: 0, updated_date: null };
 
                   const handleStoryCardMouseEnter = () => {
-                    const firstSubstoryId = story?.chapters?.[0]?.substories?.[0]?.id;
-                    if (firstSubstoryId) prefetchGraphForSubstory(firstSubstoryId);
+                    const firstSectionId = story?.chapters?.[0]?.sections?.[0]?.id;
+                    if (firstSectionId) prefetchGraphForSection(firstSectionId);
                   };
 
                   return (
@@ -2505,15 +2420,15 @@ const HomePage = () => {
       stories={stories}
       currentStory={currentStory}
       currentChapter={currentChapter}
-      currentSubstory={currentSubstory}
+      currentSection={currentSection}
       currentStoryId={currentStoryId}
       currentChapterId={currentChapterId}
-      currentSubstoryId={currentSubstoryId}
+      currentSectionId={currentSectionId}
       onStorySelect={handleStorySelect}
       onChapterSelect={handleChapterSelect}
-      onSubstorySelect={handleSubstorySelect}
-      onPrevious={goToPreviousSubstory}
-      onNext={goToNextSubstory}
+      onSectionSelect={handleSectionSelect}
+      onPrevious={goToPreviousSection}
+      onNext={goToNextSection}
       selectedNode={selectedNode}
       selectedEdge={selectedEdge}
       forceStrength={forceStrength}
@@ -2592,8 +2507,8 @@ const HomePage = () => {
                   ref={graphViewByMapRef}
                   mapView={mapView}
                   graphData={graphData}
-                  currentSubstoryId={currentSubstoryId}
-                  currentSubstory={currentSubstory}
+                  currentSectionId={currentSectionId}
+                  currentSection={currentSection}
                 />
               )}
               {/* Other scene containers */}
@@ -2605,7 +2520,7 @@ const HomePage = () => {
                       graphData={graphData}
                       clusterMethod={clusterMethod}
                       clusterProperty={clusterProperty}
-                      currentSubstory={currentSubstory}
+                      currentSection={currentSection}
                     />
                   </div>
                 </div>
@@ -2621,8 +2536,8 @@ const HomePage = () => {
                 <div className="absolute inset-0 flex items-center justify-center">
                   <div className="w-2/3 h-1/2">
                     <CalendarContainer 
-                      sectionQuery={currentSubstory?.section_query}
-                      currentSubstory={currentSubstory}
+                      sectionQuery={currentSection?.section_query}
+                      currentSection={currentSection}
                     />
                   </div>
                 </div>
@@ -2632,7 +2547,7 @@ const HomePage = () => {
                   <div className="w-2/3 h-1/2">
                     <ConnectedData
                       graphData={graphData}
-                      currentSubstory={currentSubstory}
+                      currentSection={currentSection}
                       filteredGraphData={filteredGraphData}
                       onSectionClick={handleSectionClick}
                     />

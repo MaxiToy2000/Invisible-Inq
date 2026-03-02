@@ -6,10 +6,10 @@ const CombinedStoryDropdown = ({
   stories = [],
   selectedStoryId = null,
   selectedChapterId = null,
-  selectedSubstoryId = null,
+  selectedSectionId = null,
   onStorySelect,
   onChapterSelect,
-  onSubstorySelect,
+  onSectionSelect,
   onOptionSelect,
   inHeader = false,
   isMobileFullWidth = false,
@@ -32,20 +32,20 @@ const CombinedStoryDropdown = ({
         label: `${story.title}`,
         storyId: story.id,
         chapterId: null,
-        substoryId: null,
+        sectionId: null,
         isHeader: true
       });
 
       if (story.chapters && story.chapters.length > 0) {
         story.chapters.forEach(chapter => {
-          if (chapter.substories && chapter.substories.length > 0) {
-            chapter.substories.forEach(substory => {
+          if (chapter.sections && chapter.sections.length > 0) {
+            chapter.sections.forEach(section => {
               newOptions.push({
-                value: `${story.id}-${chapter.id}-${substory.id}`,
-                label: `   ${chapter.title} > ${substory.title}`,
+                value: `${story.id}-${chapter.id}-${section.id}`,
+                label: `   ${chapter.title} > ${section.title}`,
                 storyId: story.id,
                 chapterId: chapter.id,
-                substoryId: substory.id
+                sectionId: section.id
               });
             });
           }
@@ -57,12 +57,12 @@ const CombinedStoryDropdown = ({
   }, [stories]);
 
   useEffect(() => {
-    if (selectedStoryId && selectedChapterId && selectedSubstoryId) {
-      setSelectedValue(`${selectedStoryId}-${selectedChapterId}-${selectedSubstoryId}`);
+    if (selectedStoryId && selectedChapterId && selectedSectionId) {
+      setSelectedValue(`${selectedStoryId}-${selectedChapterId}-${selectedSectionId}`);
     } else {
       setSelectedValue('');
     }
-  }, [selectedStoryId, selectedChapterId, selectedSubstoryId]);
+  }, [selectedStoryId, selectedChapterId, selectedSectionId]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -101,7 +101,7 @@ const CombinedStoryDropdown = ({
       if (onChapterSelect) onChapterSelect(option.chapterId);
 
       setTimeout(() => {
-        if (onSubstorySelect) onSubstorySelect(option.substoryId);
+        if (onSectionSelect) onSectionSelect(option.sectionId);
       }, 50);
     }, 50);
   };
@@ -233,10 +233,10 @@ CombinedStoryDropdown.propTypes = {
   stories: PropTypes.array,
   selectedStoryId: PropTypes.string,
   selectedChapterId: PropTypes.string,
-  selectedSubstoryId: PropTypes.string,
+  selectedSectionId: PropTypes.string,
   onStorySelect: PropTypes.func,
   onChapterSelect: PropTypes.func,
-  onSubstorySelect: PropTypes.func,
+  onSectionSelect: PropTypes.func,
   onOptionSelect: PropTypes.func,
   inHeader: PropTypes.bool,
   isMobileFullWidth: PropTypes.bool,
