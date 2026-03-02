@@ -45,6 +45,8 @@ const NeighborsGraph = ({ selectedNode, graphData, onClose, isSubgraph = false }
   const svgRef = useRef(null);
   const containerRef = useRef(null);
   const zoomRef = useRef(null);
+  const simulationRef = useRef(null);
+  const zoomTimeoutRef = useRef(null);
 
   // Extract neighbors and links for the selected node, or use subgraph directly
   const neighborData = useMemo(() => {
@@ -166,12 +168,15 @@ const NeighborsGraph = ({ selectedNode, graphData, onClose, isSubgraph = false }
   useEffect(() => {
     if (!svgRef.current || !containerRef.current || neighborData.nodes.length === 0) return;
 
-    const width = containerRef.current.clientWidth;
-    const height = containerRef.current.clientHeight;
-    const margin = { top: 20, right: 20, bottom: 20, left: 20 };
+    let cancelled = false;
+    const rafId = requestAnimationFrame(() => {
+      if (cancelled || !svgRef.current || !containerRef.current) return;
 
-    // Clear previous render
-    d3.select(svgRef.current).selectAll('*').remove();
+      const width = containerRef.current.clientWidth;
+      const height = containerRef.current.clientHeight;
+      const margin = { top: 20, right: 20, bottom: 20, left: 20 };
+
+      d3.select(svgRef.current).selectAll('*').remove();
 
     const svg = d3.select(svgRef.current)
       .attr('width', width)
@@ -270,7 +275,9 @@ const NeighborsGraph = ({ selectedNode, graphData, onClose, isSubgraph = false }
     });
 
     // Create force simulation
-    const simulation = d3.forceSimulation(neighborData.nodes)
+    const simulation = d3.forceSimulation(neighborData.nodes);
+    simulationRef.current = simulation;
+    simulation
       .force('link', d3.forceLink(neighborData.links)
         .id(d => d.id || d.gid)
         .distance(80))
@@ -395,16 +402,24 @@ const NeighborsGraph = ({ selectedNode, graphData, onClose, isSubgraph = false }
     });
 
     // Also zoom to fit after a delay as fallback (in case 'end' event doesn't fire)
-    const zoomTimeout = setTimeout(() => {
+    zoomTimeoutRef.current = setTimeout(() => {
       if (simulation.alpha() < 0.1) {
         zoomToFit();
       }
     }, 2000);
 
-    // Cleanup
+    });
     return () => {
-      simulation.stop();
-      clearTimeout(zoomTimeout);
+      cancelled = true;
+      cancelAnimationFrame(rafId);
+      if (simulationRef.current) {
+        simulationRef.current.stop();
+        simulationRef.current = null;
+      }
+      if (zoomTimeoutRef.current != null) {
+        clearTimeout(zoomTimeoutRef.current);
+        zoomTimeoutRef.current = null;
+      }
     };
   }, [neighborData, selectedNode, isSubgraph]);
 

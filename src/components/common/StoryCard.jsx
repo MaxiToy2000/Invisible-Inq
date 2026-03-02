@@ -2,7 +2,7 @@ import PropTypes from 'prop-types';
 import { useState, useEffect, useRef } from 'react';
 import { FaChevronDown } from 'react-icons/fa';
 
-const StoryCard = ({ story, onClick, onChapterSelect, totalNodes = 0, entityCount = 0, highlightedNodes = 0, updatedDate = null }) => {
+const StoryCard = ({ story, onClick, onChapterSelect, onMouseEnter, totalNodes = 0, entityCount = 0, highlightedNodes = 0, updatedDate = null }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [selectedChapter, setSelectedChapter] = useState(null);
   const [imgError, setImgError] = useState(false);
@@ -76,6 +76,7 @@ const StoryCard = ({ story, onClick, onChapterSelect, totalNodes = 0, entityCoun
     <div 
       className="flex flex-col w-full cursor-pointer group transition-all duration-300 ease-in-out hover:scale-[1.02] hover:shadow-md hover:shadow-white/10 gap-[15px] p-[1px] relative min-h-0 border border-[#d3d3d3] rounded-[5px]"
       onClick={onClick}
+      onMouseEnter={onMouseEnter}
     >
       {/* Top section: image from gr_id img_url or placeholder */}
       <div 
@@ -204,6 +205,7 @@ StoryCard.propTypes = {
   }),
   onClick: PropTypes.func,
   onChapterSelect: PropTypes.func,
+  onMouseEnter: PropTypes.func,
   totalNodes: PropTypes.number,
   entityCount: PropTypes.number,
   highlightedNodes: PropTypes.number,

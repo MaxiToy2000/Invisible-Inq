@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback, lazy, Suspense } from 'react';
 import { useLocation, Link, useNavigate } from 'react-router-dom';
 import { useToast } from '../contexts/ToastContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -15,10 +15,10 @@ import StringConstants from '../components/StringConstants';
 import AddNodeModal from '../components/common/AddNodeModal';
 import ContextMenu from '../components/common/ContextMenu';
 import StoryCard from '../components/common/StoryCard';
-import GraphViewByMap from '../components/common/GraphViewByMap';
-import ClusterContainer from '../components/common/ClusterContainer';
-import TimelineContainer from '../components/common/TimelineContainer';
-import CalendarContainer from '../components/common/CalendarContainer';
+const GraphViewByMap = lazy(() => import('../components/common/GraphViewByMap'));
+const ClusterContainer = lazy(() => import('../components/common/ClusterContainer'));
+const TimelineContainer = lazy(() => import('../components/common/TimelineContainer'));
+const CalendarContainer = lazy(() => import('../components/common/CalendarContainer'));
 import ConnectedData from '../components/common/ConnectedData';
 import VirtualizedTable from '../components/common/VirtualizedTable';
 import LazyJSONViewer from '../components/common/LazyJSONViewer';
@@ -93,6 +93,9 @@ const HomePage = () => {
   const graphViewByMapRef = useRef(null);
   const pendingSessionRestoreRef = useRef(null); // { selectedNodeId, selectedEdgeId } applied when graphData is ready
   const hasRestoredSessionRef = useRef(false); // only restore session once per login so changing chapter/substory is not overwritten
+  const prefetchedGraphIdsRef = useRef(new Set()); // substory IDs we've prefetched (warms backend cache for faster first load)
+  const sessionRestoreAttemptedRef = useRef(false); // true after GET /api/user-session has settled (so we pull saved section first, not first section)
+  const weRestoredStoryFromSessionRef = useRef(false); // true when we applied story/chapter/substory from session (URL effect must not overwrite)
 
   // Ref to track if we're reading from URL to prevent infinite loops
   const isReadingFromURL = useRef(false);
@@ -131,6 +134,14 @@ const HomePage = () => {
 
   const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
+  // Prefetch graph API for a substory (fire-and-forget) to warm backend cache so first load after card click is fast
+  const prefetchGraphForSubstory = useCallback((substoryId) => {
+    if (!substoryId) return;
+    if (prefetchedGraphIdsRef.current.has(substoryId)) return;
+    prefetchedGraphIdsRef.current.add(substoryId);
+    fetch(`${apiBaseUrl}/api/graph/${encodeURIComponent(substoryId)}`).catch(() => {});
+  }, [apiBaseUrl]);
+
   // Load saved user session once when authenticated (full UI state including camera).
   // Only restore once per login so that when the user changes chapter/substory, we don't overwrite with saved session.
   useEffect(() => {
@@ -159,7 +170,10 @@ const HomePage = () => {
         if (cancelled || !row?.session_data) return;
         hasRestoredSessionRef.current = true; // mark restored so we don't re-apply when deps change
         const s = row.session_data;
-        if (s.currentStoryId) selectStory(s.currentStoryId);
+        if (s.currentStoryId) {
+          selectStory(s.currentStoryId);
+          weRestoredStoryFromSessionRef.current = true; // so URL effect does not overwrite with URL params
+        }
         if (s.currentChapterId) setTimeout(() => selectChapter(s.currentChapterId), 50);
         if (s.currentSubstoryId != null) setTimeout(() => selectSubstory(s.currentSubstoryId), 100);
         if (s.viewMode != null) setViewMode(s.viewMode);
@@ -183,7 +197,10 @@ const HomePage = () => {
         }
       })
       .catch(() => {})
-      .finally(() => clearTimeout(timeoutId));
+      .finally(() => {
+        sessionRestoreAttemptedRef.current = true; // allow URL effect and prefetch to run after we've tried restore
+        clearTimeout(timeoutId);
+      });
     return () => {
       cancelled = true;
       ac.abort();
@@ -411,6 +428,7 @@ const HomePage = () => {
   // Wrapper handlers: define handleChapterSelect first so handleStorySelect can call it
   const handleChapterSelect = useCallback((chapterId, option) => {
     isReadingFromURL.current = false;
+    weRestoredStoryFromSessionRef.current = false; // allow URL to drive selection again after user change
 
     if (!chapterId) {
       const currentStoryId = currentStory?.id || null;
@@ -487,6 +505,7 @@ const HomePage = () => {
     if (!storyId) return;
 
     isReadingFromURL.current = false;
+    weRestoredStoryFromSessionRef.current = false; // allow URL to drive selection again after user change
 
     let storyTitle = option?.label || option?.title || null;
     const story = stories.find(s => s.id === storyId);
@@ -514,7 +533,8 @@ const HomePage = () => {
   const handleSubstorySelect = useCallback((substoryId, option) => {
     // Mark that we're updating from user action, not URL
     isReadingFromURL.current = false;
-    
+    weRestoredStoryFromSessionRef.current = false; // allow URL to drive selection again after user change
+
     if (!substoryId) {
       // Update URL to remove substory but keep story and chapter
       if (currentStoryId && currentChapterId) {
@@ -683,6 +703,11 @@ const HomePage = () => {
     }
     // If switching away from map, clear mapView? keep mapView; leave as is to preserve selection
   }, [updateURL]);
+
+  // Stable callbacks for Layout to avoid unnecessary re-renders of sidebars
+  const handleToggleRightSidebar = useCallback(() => setShowRightSidebar((prev) => !prev), []);
+  const handle3DToggle = useCallback((nextIs3D) => setIs3D(nextIs3D), []);
+  const handleHomePageClick = useCallback(() => setShowGraphView(false), []);
 
   // Handle selection mode changes (must be after useGraphData to access selectNode/selectEdge)
   const handleSelectionModeChange = useCallback((newMode) => {
@@ -984,6 +1009,9 @@ const HomePage = () => {
   // Read URL parameters on mount and when URL changes (e.g., back button)
   // URL now uses titles for chapter and substory instead of IDs
   useEffect(() => {
+    // When authenticated, wait for session restore so we load the saved section first, not the first section then saved
+    if (isAuthenticated() && !sessionRestoreAttemptedRef.current) return;
+
     const currentPath = location.pathname + location.search;
     
     // Normalize path for comparison (same logic as in updateURLWithSelections)
@@ -1205,6 +1233,12 @@ const HomePage = () => {
         }
       }
 
+      // Do not overwrite story/chapter/substory from URL when we just restored them from saved session (pull saved section first)
+      if (weRestoredStoryFromSessionRef.current) {
+        setTimeout(() => { isReadingFromURL.current = false; }, 0);
+        return;
+      }
+
       // Handle story/chapter/substory selection from URL
       if (storyIdFromURL) {
         // First, select the story
@@ -1335,20 +1369,17 @@ const HomePage = () => {
   // Note: viewMode and selectedSceneContainer removed from deps to prevent race conditions
   // This effect should only run when the URL changes, not when view state changes
 
-  // On first load at "/" with no story in URL: auto-select first story so APIs run and content shows (avoids blank page)
-  const hasAutoSelectedInitialRef = useRef(false);
+  // Do not auto-select a story on first load: after sign-in user sees the dashboard (story cards).
+  // Graph view is shown only when the user clicks a story card (handleStoryCardClick sets showGraphView true).
+
+  // Prefetch first story's first section only when on dashboard with no selection (after session restore attempted so we don't pull first section before saved section)
   useEffect(() => {
-    if (hasAutoSelectedInitialRef.current || !stories?.length || currentStoryId) return;
-    const params = new URLSearchParams(location.search);
-    if (params.has('story')) return;
-    hasAutoSelectedInitialRef.current = true;
-    const firstStory = stories[0];
-    if (firstStory?.chapters?.length > 0) {
-      handleStorySelect(firstStory.id, firstStory);
-    } else {
-      selectStory(firstStory.id);
-    }
-  }, [stories, currentStoryId, location.search, handleStorySelect, selectStory]);
+    if (showGraphView || !stories?.length) return;
+    if (isAuthenticated() && !sessionRestoreAttemptedRef.current) return; // wait for session restore so saved section loads first
+    if (currentStoryId) return; // already have a selection (e.g. from session) — don't prefetch first section
+    const firstSubstoryId = stories[0]?.chapters?.[0]?.substories?.[0]?.id;
+    if (firstSubstoryId) prefetchGraphForSubstory(firstSubstoryId);
+  }, [showGraphView, stories, currentStoryId, prefetchGraphForSubstory]);
 
   // Note: URL updates are now handled directly in the handlers (handleStorySelect, handleChapterSelect, handleSubstorySelect)
   // This useEffect is removed to prevent conflicts and race conditions
@@ -1378,12 +1409,15 @@ const HomePage = () => {
     }
   }, [currentStoryId, graphData]);
 
-  // Fetch statistics for all stories
+  // Fetch statistics for all stories (deferred so first paint is not blocked)
   useEffect(() => {
     if (!stories || stories.length === 0) return;
 
     const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
-    const fetchStatistics = async () => {
+    const schedule = typeof requestIdleCallback !== 'undefined' ? requestIdleCallback : (fn) => setTimeout(fn, 0);
+    const cancel = typeof cancelIdleCallback !== 'undefined' ? cancelIdleCallback : clearTimeout;
+    const run = () => {
+      const fetchStatistics = async () => {
       const statsPromises = stories.map(async (story) => {
         try {
           const response = await fetch(`${apiBaseUrl}/api/stories/${encodeURIComponent(story.id)}/statistics`, {
@@ -1411,7 +1445,10 @@ const HomePage = () => {
       setStoryStatistics(statsMap);
     };
 
-    fetchStatistics();
+      fetchStatistics();
+    };
+    const id = typeof requestIdleCallback !== 'undefined' ? schedule(run, { timeout: 2000 }) : schedule(run);
+    return () => cancel(id);
   }, [stories]);
 
   useEffect(() => {
@@ -2435,12 +2472,18 @@ const HomePage = () => {
 
                   const stats = storyStatistics[story.id] || { total_nodes: 0, entity_count: 0, highlighted_nodes: 0, updated_date: null };
 
+                  const handleStoryCardMouseEnter = () => {
+                    const firstSubstoryId = story?.chapters?.[0]?.substories?.[0]?.id;
+                    if (firstSubstoryId) prefetchGraphForSubstory(firstSubstoryId);
+                  };
+
                   return (
                     <StoryCard
                       key={story.id}
                       story={story}
                       onClick={handleStoryCardClick}
                       onChapterSelect={handleChapterSelect}
+                      onMouseEnter={handleStoryCardMouseEnter}
                       totalNodes={stats.total_nodes || 0}
                       entityCount={stats.entity_count || 0}
                       highlightedNodes={stats.highlighted_nodes || 0}
@@ -2484,9 +2527,9 @@ const HomePage = () => {
       onEdgeLengthChange={setEdgeLength}
       onEdgeThicknessChange={setEdgeThickness}
       is3D={is3D}
-      on3DToggle={(nextIs3D) => setIs3D(nextIs3D)}
+      on3DToggle={handle3DToggle}
       showRightSidebar={showRightSidebar}
-      onToggleRightSidebar={() => setShowRightSidebar(!showRightSidebar)}
+      onToggleRightSidebar={handleToggleRightSidebar}
       onAISearch={handleAISearch}
       onAISummary={handleAISummary}
       graphData={graphData}
@@ -2519,7 +2562,7 @@ const HomePage = () => {
       onResetPositionClick={handleResetPositionClick}
       rightSidebarRef={rightSidebarRef}
       graphViewByMapRef={graphViewByMapRef}
-      onHomePageClick={() => setShowGraphView(false)}
+      onHomePageClick={handleHomePageClick}
     >
         <div className="flex flex-col h-full">
           {}
@@ -2538,7 +2581,11 @@ const HomePage = () => {
             const showOtherScene = selectedSceneContainer && selectedSceneContainer !== 'map';
             return showMapScene || showOtherScene;
           })() ? (
-            <>
+            <Suspense fallback={
+              <div className="absolute inset-0 flex items-center justify-center">
+                <Loader size={36} />
+              </div>
+            }>
               {/* Map View - displayed between left and right sidebars */}
               {selectedSceneContainer === 'map' && mapView && (
                 <GraphViewByMap
@@ -2583,7 +2630,7 @@ const HomePage = () => {
               {selectedSceneContainer === 'connected-data' && (
                 <div className="absolute inset-0 flex items-center justify-center">
                   <div className="w-2/3 h-1/2">
-                    <ConnectedData 
+                    <ConnectedData
                       graphData={graphData}
                       currentSubstory={currentSubstory}
                       filteredGraphData={filteredGraphData}
@@ -2592,7 +2639,7 @@ const HomePage = () => {
                   </div>
                 </div>
               )}
-            </>
+            </Suspense>
           ) : viewMode === 'Graph' && (
             <>
               {/* Filter Controls for Graph View */}

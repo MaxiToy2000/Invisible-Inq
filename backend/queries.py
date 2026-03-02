@@ -227,12 +227,13 @@ def get_graph_data_by_section_query(section_gid: Optional[str] = None, section_q
     Fallback: legacy :section schema in get_graph_data_by_section_query_legacy.
     """
     if section_gid:
+        # Direct equality so Neo4j can use index on section.id / section.gid / section.g_id
         match_clause = """
         MATCH (section:gr_id)
         WHERE toLower(trim(coalesce(section.category, ''))) = 'section'
-          AND toString(coalesce(section.id, section.g_id, section.gid)) = toString($section_gid)
+          AND (section.id = $section_gid OR section.gid = $section_gid OR section.g_id = $section_gid)
         """
-        params = {"section_gid": section_gid}
+        params = {"section_gid": section_gid, "section_scope": str(section_gid)}
     elif section_query:
         match_clause = """
         MATCH (section:gr_id)
@@ -255,6 +256,24 @@ def get_graph_data_by_section_query(section_gid: Optional[str] = None, section_q
     else:
         raise ValueError("At least one of section_gid, section_query, or section_title must be provided")
 
+    # For section_gid we use parameterized scope so Neo4j can use index on node.gr_id/g_id/gid/id
+    use_param_scope = bool(section_gid)
+    if use_param_scope:
+        with_scope = "WITH section, fromHops, $section_scope AS section_scope"
+        scope_where = (
+            "NONE(l IN labels(node) WHERE toLower(l) = 'gr_id') "
+            "AND (node.gr_id = $section_scope OR node.g_id = $section_scope OR node.gid = $section_scope OR node.id = $section_scope)"
+        )
+    else:
+        with_scope = (
+            "WITH section, fromHops, "
+            "toString(coalesce(section.`graph name`, section.name, section.g_id, section.gid, section.id)) AS section_scope"
+        )
+        scope_where = (
+            "NONE(l IN labels(node) WHERE toLower(l) = 'gr_id') "
+            "AND toString(coalesce(node.gr_id, node.g_id, node.gid, node.id)) = section_scope"
+        )
+
     # Get section's immediate subgraph: nodes within 1..2 hops (keeps result small, tens of nodes).
     # Also include nodes that match section scope by gr_id if any (for schemas where that is set).
     query = f"""
@@ -266,26 +285,26 @@ def get_graph_data_by_section_query(section_gid: Optional[str] = None, section_q
     WITH section, COLLECT(DISTINCT node) AS hopNodes
     WITH section, [n IN hopNodes WHERE n IS NOT NULL] AS fromHops
     // Also include nodes that belong to section by gr_id/g_id/gid (legacy-style scope)
-    WITH section, fromHops,
-         toString(coalesce(section.`graph name`, section.name, section.g_id, section.gid, section.id)) AS section_scope
+    {with_scope}
     OPTIONAL MATCH (node)
-    WHERE NONE(l IN labels(node) WHERE toLower(l) = 'gr_id')
-      AND toString(coalesce(node.gr_id, node.g_id, node.gid, node.id)) = section_scope
+    WHERE {scope_where}
     WITH section_scope, fromHops, COLLECT(DISTINCT node) AS scopeNodes
     WITH [n IN scopeNodes WHERE n IS NOT NULL] + fromHops AS combined
     UNWIND combined AS n
     WITH COLLECT(DISTINCT n) AS all_nodes
     WITH all_nodes,
          [(a)-[rel]-(b) WHERE a IN all_nodes AND b IN all_nodes AND id(a) < id(b) | {{ rel: rel, from: a, to: b }}] AS all_rels
+    // Cap result size for faster response (frontend also limits; avoids 10s+ loads for huge sections)
+    WITH all_nodes[0..2500] AS capped_nodes, all_rels[0..6000] AS capped_rels
     RETURN {{
-      nodes: [n IN all_nodes | n {{
+      nodes: [n IN capped_nodes | n {{
         .*,
         date: coalesce(n.date, n.`Date`, n.`Relationship Date`, n.`Action Date`, n.`Process Date`, n.`Disb Date`),
         elementId: elementId(n),
         labels: labels(n),
         node_type: head(labels(n))
       }}],
-      links: [rd IN all_rels | {{
+      links: [rd IN capped_rels | {{
         gid: coalesce(toString(rd.rel.gid), toString(rd.rel.id), elementId(rd.rel)),
         elementId: elementId(rd.rel),
         type: type(rd.rel),
