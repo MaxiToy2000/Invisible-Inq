@@ -297,11 +297,12 @@ const EntityTooltipLayout = ({ node, color, graphData }) => {
             style={{ backgroundColor: '#358EE2' }}
           />
         {imageUrl && !imageError ? (<>
-          {/* Image Container */}
+          {/* Image Container - square avatar */}
           <div
-            className="rounded-r-lg overflow-hidden self-stretch"
+            className="rounded-r-lg overflow-hidden flex-shrink-0"
             style={{
               width: '140px',
+              height: '140px',
               background: '#9CA3AF',
             }}
           >
