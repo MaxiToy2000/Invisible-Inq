@@ -306,10 +306,10 @@ const GlobalActivity = ({ graphData, currentSubstory, onSectionClick, onHighligh
 
   return (
     <div className='bg-[#0E0E0E] border border-[#202020] rounded-[5px] pb-[2px]'>
-      <div className="w-full flex-shrink-0" style={{ minHeight: '300px', maxHeight: '300px' }}>
+      <div className="w-full flex-shrink-0">
 
         {/* Header Section */}
-        <div className="absolute top-0 left-0 py-[8px] right-0 z-10 flex justify-center items-center px-[16px]">
+        <div className="py-[8px] right-0 z-10 flex justify-center items-center px-[16px]">
           {/* Global Activity Button */}
           <div className="text-center">
             <span className="text-white  text-[14px] font-medium">Global Activity</span>

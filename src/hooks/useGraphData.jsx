@@ -129,6 +129,24 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
     }
   }, [currentStoryId, stories]);
 
+  // On initial load: auto-select first story when stories are available and nothing is selected
+  useEffect(() => {
+    if (!stories || stories.length === 0 || currentStoryId != null) return;
+    setCurrentStoryId(stories[0].id);
+  }, [stories, currentStoryId]);
+
+  // When a story is selected but no chapter: auto-select first chapter so the graph can load
+  useEffect(() => {
+    if (!currentStory || !currentStory.chapters || currentStory.chapters.length === 0 || currentChapterId != null) return;
+    setCurrentChapterId(currentStory.chapters[0].id);
+  }, [currentStory, currentChapterId]);
+
+  // When a chapter is selected but no section: auto-select first section so the graph can load
+  useEffect(() => {
+    if (!currentChapter || !currentChapter.substories || currentChapter.substories.length === 0 || currentSubstoryId != null) return;
+    setCurrentSubstoryId(currentChapter.substories[0].id);
+  }, [currentChapter, currentSubstoryId]);
+
   useEffect(() => {
     if (!currentStoryId || !currentChapterId) {
       setCurrentChapter(null);
@@ -142,8 +160,6 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
       const chapter = story.chapters.find(c => c.id === currentChapterId);
       if (chapter) {
         setCurrentChapter(chapter);
-        // DON'T auto-select first substory - let user explicitly select it
-        // This prevents overriding user selections
       } else {
         setCurrentChapter(null);
       }

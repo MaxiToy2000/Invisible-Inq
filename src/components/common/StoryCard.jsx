@@ -122,7 +122,7 @@ const StoryCard = ({ story, onClick, onChapterSelect, onMouseEnter, totalNodes =
               <ul className="py-1">
                 {/* Story Header */}
                 <li
-                  className="px-2 py-1 font-bold bg-[#1f1f1f] text-[#F4F4F5] sticky top-0 z-10 text-sm"
+                  className="px-2 py-1 font-bold bg-[#2C2C90] text-[#F4F4F5] sticky top-0 z-10 text-sm"
                   role="presentation"
                 >
                   {story?.title || 'Untitled Story'}

@@ -278,7 +278,7 @@ const AISummaryModal = ({
         </form>
 
         {/* Content Area */}
-        <div className="flex-1 overflow-y-auto p-4 min-h-[200px]">
+        <div className="flex-1 overflow-y-auto p-2 min-h-[200px]">
           {/* Loading State */}
           {loading && (
             <div className="flex flex-col items-center justify-center h-full gap-3 text-[#707070]">

@@ -99,14 +99,16 @@ const Layout = ({
   const { toasts, removeToast } = useToast();
 
   return (
-    <div className="flex h-screen bg-black text-white overflow-hidden">
+    <div className="flex flex-col lg:flex-row h-screen bg-black text-white overflow-hidden">
       <ToastContainer toasts={toasts} removeToast={removeToast} />
       {}
-      <div className={`w-80 flex-shrink-0 h-full ${
-        isMobile ? 'border-b-2' : ''
-      } ${
-        isMobile && leftSidebarCollapsed ? 'h-[60px]' : isMobile ? 'h-[25vh]' : ''
-      }`}>
+      <div
+        className={`hidden lg:block w-full lg:w-80 flex-shrink-0 ${
+          isMobile ? 'border-b-2' : ''
+        } ${
+          isMobile && leftSidebarCollapsed ? 'h-[60px]' : isMobile ? 'h-[25vh]' : 'h-full'
+        }`}
+      >
         <LeftSidebar
           stories={stories}
           currentStory={currentStory}
@@ -135,7 +137,7 @@ const Layout = ({
       </div>
 
       {}
-      <div className="flex flex-col flex-1 min-w-0 bg-[red]">
+      <div className="flex flex-col flex-1 min-w-0 bg-[red] order-first lg:order-none">
         {}
         <Header
           stories={stories}
@@ -150,53 +152,135 @@ const Layout = ({
         />
 
         {}
-        <main className={`flex-1 bg-black overflow-hidden ${
-          isMobile ? 'h-[calc(100vh-32px-' +
-            (leftSidebarCollapsed ? '60px' : '25vh') + '-' +
-            (rightSidebarCollapsed ? '45px' : '20vh') + ')]' : ''
-        }`}>
+        <main
+          className={`bg-black overflow-hidden ${
+            isMobile ? 'flex-none h-[60vh]' : 'flex-1'
+          }`}
+        >
           {children}
         </main>
       </div>
 
       {}
-      {/* Floating Right Sidebar Toggle Button */}
-      <div className={`fixed z-50 pointer-events-auto transition-all duration-300 ${
-        showRightSidebar 
-          ? 'right-[390px] top-1/8 -translate-y-1/2' 
-          : 'right-4 top-1/8 -translate-y-1/2'
-      }`}>
+      {/* Floating Right Sidebar Toggle Button - desktop / large screens */}
+      <div
+        className={`hidden lg:block fixed z-50 pointer-events-auto transition-all duration-300 ${
+          showRightSidebar
+            ? 'right-[345px] top-1/8 -translate-y-1/2'
+            : 'right-2 top-1/8 -translate-y-1/2'
+        }`}
+      >
         <button
           onClick={onToggleRightSidebar}
           className="group relative flex items-center justify-start transition-all duration-3000"
-          title={showRightSidebar ? "Hide Sidebar" : "Show Sidebar"}
+          title={showRightSidebar ? 'Hide Sidebar' : 'Show Sidebar'}
         >
           {showRightSidebar ? (
-            <svg width="20" height="20" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-[#B4B4B4] group-hover:text-[#5C9EFF] transition-colors">
-              <rect x="1" y="1" width="14" height="14" rx="2" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-              <line x1="8" y1="1" x2="8" y2="15" stroke="currentColor" strokeWidth="1.5"/>
-              <line x1="4" y1="6" x2="6" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-              <line x1="4" y1="10" x2="6" y2="10" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-              <path d="M11 8L9 6L9 10L11 8Z" fill="currentColor"/>
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 16 16"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              className="text-[#B4B4B4] group-hover:text-[#5C9EFF] transition-colors"
+            >
+              <rect
+                x="1"
+                y="1"
+                width="14"
+                height="14"
+                rx="2"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                fill="none"
+              />
+              <line
+                x1="8"
+                y1="1"
+                x2="8"
+                y2="15"
+                stroke="currentColor"
+                strokeWidth="1.5"
+              />
+              <line
+                x1="4"
+                y1="6"
+                x2="6"
+                y2="6"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
+              <line
+                x1="4"
+                y1="10"
+                x2="6"
+                y2="10"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
+              <path d="M11 8L9 6L9 10L11 8Z" fill="currentColor" />
             </svg>
           ) : (
-            <svg width="20" height="20" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-[#B4B4B4] group-hover:text-[#5C9EFF] transition-colors">
-              <rect x="1" y="1" width="14" height="14" rx="2" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-              <line x1="8" y1="1" x2="8" y2="15" stroke="currentColor" strokeWidth="1.5"/>
-              <path d="M5 8L7 6L7 10L5 8Z" fill="currentColor"/>
-              <line x1="10" y1="6" x2="12" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-              <line x1="10" y1="10" x2="12" y2="10" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 16 16"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              className="text-[#B4B4B4] group-hover:text-[#5C9EFF] transition-colors"
+            >
+              <rect
+                x="1"
+                y="1"
+                width="14"
+                height="14"
+                rx="2"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                fill="none"
+              />
+              <line
+                x1="8"
+                y1="1"
+                x2="8"
+                y2="15"
+                stroke="currentColor"
+                strokeWidth="1.5"
+              />
+              <path d="M5 8L7 6L7 10L5 8Z" fill="currentColor" />
+              <line
+                x1="10"
+                y1="6"
+                x2="12"
+                y2="6"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
+              <line
+                x1="10"
+                y1="10"
+                x2="12"
+                y2="10"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
             </svg>
           )}
         </button>
       </div>
 
       {showRightSidebar && (
-      <div className={`w-85 flex-shrink-0 h-full relative ${
-        isMobile ? 'border-t-2 sticky bottom-0 bg-[#09090B] z-10' : ''
-      } ${
-        isMobile && rightSidebarCollapsed ? 'h-[45px]' : isMobile ? 'h-[20vh]' : ''
-      }`}>
+      <div
+        className={`w-full lg:w-85 flex-shrink-0 relative ${
+          isMobile ? 'border-t-2 bg-[#09090B] z-10' : 'h-full'
+        } ${
+          isMobile && rightSidebarCollapsed ? 'h-[45px]' : isMobile ? 'h-[40vh]' : 'h-full'
+        }`}
+      >
         <RightSidebar
           ref={rightSidebarRef}
           selectedNode={selectedNode}

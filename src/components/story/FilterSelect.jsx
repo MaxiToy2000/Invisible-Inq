@@ -130,7 +130,7 @@ const FilterSelect = ({
                   return (
                     <li
                       key={uniqueKey}
-                      className={`                        px-2 py-1 cursor-pointer text-sm
+                      className={`px-2 py-1 cursor-pointer text-sm
                         ${isSelected
                           ? 'bg-[#2C2C37] font-bold text-[#F4F4F5]'
                           : 'hover:bg-[#2C2C37] text-[#F4F4F5]'

@@ -170,7 +170,7 @@ const CombinedStoryDropdown = ({
             ${inHeader ? "px-3" : isMobileFullWidth ? "px-4" : "px-4"}
             ${inHeader ? "border-r" : isMobileFullWidth ? "border-none" : "border"} border-[#707070]
             ${inHeader ? "rounded-none" : isMobileFullWidth ? "rounded-none" : "rounded-lg"}
-            text-white bg-[#1F1F1F] flex items-center justify-center text-sm font-bold`}
+            text-white flex items-center justify-center text-sm font-bold`}
           onClick={toggleDropdown}
           aria-haspopup="listbox"
           aria-expanded={isOpen}
@@ -204,11 +204,11 @@ const CombinedStoryDropdown = ({
                 return (
                   <li
                     key={uniqueKey}
-                    className={`                      px-2 py-1 cursor-pointer text-sm
+                    className={`px-2 py-1 cursor-pointer text-sm
                       ${option.isHeader
                         ? 'font-bold bg-[#1f1f1f] text-[#F4F4F5] sticky top-[38px] z-10'
                         : 'hover:bg-[#2C2C37] pl-5 text-[#F4F4F5]'}
-                      ${option.value === selectedValue ? 'bg-blue-50 font-bold' : ''}
+                      ${option.value === selectedValue ? 'bg-blue-90 font-bold' : ''}
                     `}
                     onClick={() => handleOptionSelect(option)}
                     role={option.isHeader ? 'presentation' : 'option'}
