@@ -346,11 +346,37 @@ const HomePage = () => {
     });
   }, [normalizeTitleForURL]);
 
-  // URL is not updated when user changes story/chapter/section selection (per product requirement).
-  // Initial load can still read from URL if present (e.g. shared link).
-  const updateURLWithSelections = useCallback((_storyId, _chapterTitle, _sectionTitle, _storyTitleDirect = null) => {
-    // No-op: do not change URL when selection changes.
-  }, []);
+  // Client requirement: URL must change when changing story/chapter/section so each section has a permalink (shareable, e.g. for blogs).
+  // Implemented via navigate() so the address bar always reflects the current selection and links can be used externally.
+  const updateURLWithSelections = useCallback((storyId, chapterId, sectionId) => {
+    const currentSearchParams = new URLSearchParams(window.location.search);
+    const searchParams = new URLSearchParams();
+
+    if (storyId) searchParams.set('story', String(storyId));
+    if (chapterId) searchParams.set('chapter', String(chapterId));
+    if (sectionId) searchParams.set('section', String(sectionId));
+
+    const currentView = currentSearchParams.get('view');
+    const currentScene = currentSearchParams.get('scene');
+    if (currentView && currentView !== 'Graph') searchParams.set('view', currentView);
+    if (currentScene) searchParams.set('scene', currentScene);
+
+    const newSearch = searchParams.toString();
+    const newPath = newSearch ? `/?${newSearch}` : '/';
+    const currentPath = window.location.pathname + window.location.search;
+    const normalizePath = (path) => {
+      if (path === '/') return '/';
+      if (path.startsWith('/?')) return path;
+      if (path.startsWith('?')) return `/${path}`;
+      return path;
+    };
+    const normalizedNewPath = normalizePath(newPath);
+    const normalizedCurrentPath = normalizePath(currentPath);
+    lastURLWeSet.current = normalizedNewPath;
+    if (normalizedNewPath !== normalizedCurrentPath) {
+      navigate(newPath, { replace: true });
+    }
+  }, [navigate]);
 
   // Wrapper handlers: define handleChapterSelect first so handleStorySelect can call it
   const handleChapterSelect = useCallback((chapterId, option) => {
@@ -360,12 +386,7 @@ const HomePage = () => {
     if (!chapterId) {
       const currentStoryId = currentStory?.id || null;
       if (currentStoryId) {
-        const storyTitle = currentStory?.title || null;
-        if (storyTitle) {
-          updateURLWithSelections(currentStoryId, null, null, storyTitle);
-        } else {
-          updateURLWithSelections(currentStoryId, null, null);
-        }
+        updateURLWithSelections(currentStoryId, null, null);
       }
       selectChapter(null);
       return;
@@ -417,8 +438,7 @@ const HomePage = () => {
       return;
     }
 
-    const storyTitle = stories.find(s => s.id === finalStoryId)?.title || null;
-    updateURLWithSelections(finalStoryId, chapterTitle, firstSectionTitle || null, storyTitle || null);
+    updateURLWithSelections(finalStoryId, chapterId, firstSectionId);
     selectChapter(chapterId);
 
     if (firstSectionId) {
@@ -434,19 +454,8 @@ const HomePage = () => {
     isReadingFromURL.current = false;
     weRestoredStoryFromSessionRef.current = false; // allow URL to drive selection again after user change
 
-    let storyTitle = option?.label || option?.title || null;
     const story = stories.find(s => s.id === storyId);
-    if (!storyTitle && story) {
-      storyTitle = story?.title || null;
-    }
-
-    if (storyTitle) {
-      updateURLWithSelections(storyId, null, null, storyTitle);
-    } else {
-      console.warn('[handleStorySelect] No story title found, updating URL with ID only');
-      updateURLWithSelections(storyId, null, null);
-    }
-
+    updateURLWithSelections(storyId, null, null);
     selectStory(storyId);
 
     if (story?.chapters?.length > 0) {
@@ -463,15 +472,8 @@ const HomePage = () => {
     weRestoredStoryFromSessionRef.current = false; // allow URL to drive selection again after user change
 
     if (!sectionId) {
-      // Update URL to remove section but keep story and chapter
       if (currentStoryId && currentChapterId) {
-        const storyTitle = currentStory?.title || null;
-        const chapterTitle = currentChapter?.title || null;
-        if (storyTitle && chapterTitle) {
-          updateURLWithSelections(currentStoryId, chapterTitle, null, storyTitle);
-        } else {
-          updateURLWithSelections(currentStoryId, chapterTitle, null);
-        }
+        updateURLWithSelections(currentStoryId, currentChapterId, null);
       }
       selectSection(null);
       return;
@@ -535,9 +537,7 @@ const HomePage = () => {
     
     // Get story title for URL
     const storyTitle = currentStory?.title || stories.find(s => s.id === currentStoryId)?.title || null;
-    updateURLWithSelections(currentStoryId, chapterTitle, sectionTitle || null, storyTitle || null);
-    
-    // Update state
+    updateURLWithSelections(currentStoryId, currentChapterId, sectionId);
     selectSection(sectionId);
   }, [selectSection, updateURLWithSelections, currentStoryId, currentChapterId, currentStory, currentChapter]);
 
@@ -546,7 +546,14 @@ const HomePage = () => {
   const updateURL = useCallback((updates) => {
     const searchParams = new URLSearchParams(location.search);
 
-    // Only update view and scene in URL; do not write story/chapter/section (selection does not change URL).
+    // Preserve story/chapter/section IDs so permalink stays valid when switching view/scene
+    const storyParam = searchParams.get('story') || (currentStoryId ? String(currentStoryId) : null);
+    const chapterParam = searchParams.get('chapter') || (currentChapterId ? String(currentChapterId) : null);
+    const sectionParam = searchParams.get('section') || (currentSectionId ? String(currentSectionId) : null);
+    if (storyParam) searchParams.set('story', storyParam);
+    if (chapterParam) searchParams.set('chapter', chapterParam);
+    if (sectionParam) searchParams.set('section', sectionParam);
+
     if (updates.view !== undefined) {
       if (updates.view && updates.view !== 'Graph') {
         searchParams.set('view', updates.view);
@@ -574,7 +581,7 @@ const HomePage = () => {
     const newPath = newSearch ? `/?${newSearch}` : '/';
 
     navigate(newPath, { replace: false });
-  }, [location.search, navigate, viewMode, selectedSceneContainer]);
+  }, [location.search, navigate, viewMode, selectedSceneContainer, currentStoryId, currentChapterId, currentSectionId]);
 
   // Handle cluster node selection (from RightSidebar)
   const handleClusterNodeSelect = useCallback((value) => {
@@ -921,8 +928,8 @@ const HomePage = () => {
     setSectionDescription(graphDescription ?? null);
   }, [graphDescription]);
 
-  // Read URL parameters on mount and when URL changes (e.g., back button)
-  // URL now uses titles for chapter and section instead of IDs
+  // Read URL on mount and when URL changes (e.g. back button, shared link).
+  // story, chapter, section params accept either ID or normalized title.
   useEffect(() => {
     // When authenticated, wait for session restore so we load the saved section first, not the first section then saved
     if (isAuthenticated() && !sessionRestoreAttemptedRef.current) return;
@@ -961,72 +968,49 @@ const HomePage = () => {
     }
     
     const searchParams = new URLSearchParams(location.search);
-    const storyTitleParam = searchParams.get('story'); // Now this is a normalized title, not an ID
-    const chapterTitle = searchParams.get('chapter');
-    const sectionTitle = searchParams.get('section');
+    const storyParam = searchParams.get('story');   // ID or normalized title
+    const chapterParam = searchParams.get('chapter');
+    const sectionParam = searchParams.get('section');
     const viewParam = searchParams.get('view');
     const sceneParam = searchParams.get('scene');
 
-    // Helper function to find story, chapter, and section IDs from normalized titles
-    const findIdsFromTitles = () => {
+    // Resolve story/chapter/section params to IDs. Accept either ID (match by id) or title (match by normalized title).
+    const findIdsFromParams = () => {
       let foundStoryId = null;
       let foundChapterId = null;
       let foundSectionId = null;
-      
-      // Find story by normalized title (same format as chapter/section)
-      if (storyTitleParam && stories.length > 0) {
-        const story = findTitleByNormalized(storyTitleParam, stories);
-        if (story) {
-          foundStoryId = story.id;
-        }
-      }
-      
-      // Try to find chapter by normalized title (need story to be found first)
-      if (chapterTitle && stories.length > 0) {
-        // If we found a story, use it; otherwise try currentStory
-        const storyToUse = foundStoryId 
-          ? stories.find(s => s.id === foundStoryId)
-          : (storyTitleParam ? findTitleByNormalized(storyTitleParam, stories) : null) || currentStory;
-          
-        if (storyToUse && storyToUse.chapters) {
-          // Find chapter by matching normalized title
-          const chapter = findTitleByNormalized(chapterTitle, storyToUse.chapters);
-          if (chapter) {
-            foundChapterId = chapter.id;
-          }
-        }
-      }
-      
-      // Try to find section by normalized title (need chapter to be found first)
-      if (sectionTitle && stories.length > 0) {
-        // Use foundStoryId if available, otherwise try to find story from title param
-        const storyToUse = foundStoryId 
-          ? stories.find(s => s.id === foundStoryId)
-          : (storyTitleParam ? findTitleByNormalized(storyTitleParam, stories) : null);
-          
-        if (storyToUse && foundChapterId) {
-          const chapter = storyToUse.chapters.find(c => c.id === foundChapterId);
-          if (chapter && chapter.sections) {
-            // Find section by matching normalized title
-            const section = findTitleByNormalized(sectionTitle, chapter.sections);
-            if (section) {
-              foundSectionId = section.id;
-            }
-          }
-        } else if (currentChapter && currentChapter.sections) {
-          // Fallback to current chapter if available
-          const section = findTitleByNormalized(sectionTitle, currentChapter.sections);
-          if (section) {
-            foundSectionId = section.id;
-          }
-        }
-      }
-      
+
+      if (!storyParam || !stories.length) return { foundStoryId, foundChapterId, foundSectionId };
+
+      // Story: try ID first, then normalized title
+      const storyById = stories.find(s => s.id === storyParam);
+      const story = storyById || findTitleByNormalized(storyParam, stories);
+      if (story) foundStoryId = story.id;
+
+      if (!chapterParam || !foundStoryId) return { foundStoryId, foundChapterId, foundSectionId };
+
+      const storyToUse = stories.find(s => s.id === foundStoryId);
+      if (!storyToUse?.chapters?.length) return { foundStoryId, foundChapterId, foundSectionId };
+
+      // Chapter: try ID first, then normalized title
+      const chapterById = storyToUse.chapters.find(c => c.id === chapterParam);
+      const chapter = chapterById || findTitleByNormalized(chapterParam, storyToUse.chapters);
+      if (chapter) foundChapterId = chapter.id;
+
+      if (!sectionParam || !foundChapterId) return { foundStoryId, foundChapterId, foundSectionId };
+
+      const chapterToUse = storyToUse.chapters.find(c => c.id === foundChapterId);
+      if (!chapterToUse?.sections?.length) return { foundStoryId, foundChapterId, foundSectionId };
+
+      // Section: try ID first, then normalized title
+      const sectionById = chapterToUse.sections.find(s => s.id === sectionParam);
+      const section = sectionById || findTitleByNormalized(sectionParam, chapterToUse.sections);
+      if (section) foundSectionId = section.id;
+
       return { foundStoryId, foundChapterId, foundSectionId };
     };
 
-    // Find story, chapter, and section IDs from normalized titles
-    let { foundStoryId: storyIdFromURL, foundChapterId: chapterId, foundSectionId: sectionId } = findIdsFromTitles();
+    let { foundStoryId: storyIdFromURL, foundChapterId: chapterId, foundSectionId: sectionId } = findIdsFromParams();
 
     // Additional safety check: If we're not reading from URL and we just set the URL,
     // and the found IDs match current state, this means we're in the middle of a user-initiated selection
@@ -1039,99 +1023,21 @@ const HomePage = () => {
       return;
     }
 
-    // Check if URL values match current state - if they do, don't update (prevent loops)
-    // Compare by checking if current chapter/section titles match URL titles
-    // But be more lenient - if we just updated state, the titles might not match yet
-    let urlChapterMatches = true;
-    let urlSectionMatches = true;
-    
-    if (chapterTitle) {
-      // Compare normalized titles
-      const normalizedURLTitle = normalizeTitleForURL(decodeURIComponent(chapterTitle));
-      // Check both currentChapter title and if currentChapterId matches
-      if (currentChapter?.title) {
-        const normalizedCurrentTitle = normalizeTitleForURL(currentChapter.title);
-        urlChapterMatches = normalizedCurrentTitle === normalizedURLTitle;
-      } else if (currentChapterId) {
-        // If chapter is selected but title not loaded yet, try to find it
-        const story = stories.find(s => s.id === currentStoryId);
-        if (story && story.chapters) {
-          const chapter = story.chapters.find(c => c.id === currentChapterId);
-          if (chapter?.title) {
-            const normalizedCurrentTitle = normalizeTitleForURL(chapter.title);
-            urlChapterMatches = normalizedCurrentTitle === normalizedURLTitle;
-          } else {
-            urlChapterMatches = true; // Can't verify, assume match
-          }
-        } else {
-          // If we can't verify, assume it matches to prevent reset
-          urlChapterMatches = true;
-        }
-      }
-    }
-    
-    if (sectionTitle) {
-      // Compare normalized titles
-      const normalizedURLTitle = normalizeTitleForURL(decodeURIComponent(sectionTitle));
-      // Check both currentSection title and if currentSectionId matches
-      if (currentSection?.title) {
-        const normalizedCurrentTitle = normalizeTitleForURL(currentSection.title);
-        urlSectionMatches = normalizedCurrentTitle === normalizedURLTitle;
-      } else if (currentSectionId) {
-        // If section is selected but title not loaded yet, try to find it
-        const story = stories.find(s => s.id === currentStoryId);
-        if (story && story.chapters) {
-          const chapter = story.chapters.find(c => c.id === (chapterId || currentChapterId));
-          if (chapter && chapter.sections) {
-            const section = chapter.sections.find(s => s.id === currentSectionId);
-            if (section?.title) {
-              const normalizedCurrentTitle = normalizeTitleForURL(section.title);
-              urlSectionMatches = normalizedCurrentTitle === normalizedURLTitle;
-            } else {
-              urlSectionMatches = true; // Can't verify, assume match
-            }
-          } else {
-            urlSectionMatches = true; // Can't verify, assume match
-          }
-        } else {
-          urlSectionMatches = true; // Can't verify, assume match
-        }
-      }
-    }
-    
-    // Check if story matches - compare normalized titles
-    let urlStoryMatches = true;
-    if (storyTitleParam) {
-      const normalizedURLStoryTitle = normalizeTitleForURL(decodeURIComponent(storyTitleParam));
-      if (currentStory?.title) {
-        const normalizedCurrentStoryTitle = normalizeTitleForURL(currentStory.title);
-        urlStoryMatches = normalizedCurrentStoryTitle === normalizedURLStoryTitle;
-      } else if (currentStoryId) {
-        // If story is selected but title not loaded yet, try to find it
-        const story = stories.find(s => s.id === currentStoryId);
-        if (story?.title) {
-          const normalizedCurrentStoryTitle = normalizeTitleForURL(story.title);
-          urlStoryMatches = normalizedCurrentStoryTitle === normalizedURLStoryTitle;
-        } else {
-          urlStoryMatches = true; // Can't verify, assume match
-        }
-      }
-    }
-    
+    // Check if URL-resolved IDs match current state (prevents loops)
+    const urlStoryMatches = !storyParam || storyIdFromURL === currentStoryId;
+    const urlChapterMatches = !chapterParam || chapterId === currentChapterId;
+    const urlSectionMatches = !sectionParam || sectionId === currentSectionId;
     const urlMatchesState = urlStoryMatches && urlChapterMatches && urlSectionMatches;
 
-    // Only read from URL if values don't match current state (i.e., URL was changed externally like back button)
-    // OR if we need to find story/chapter/section but haven't found them yet (stories might not be loaded)
-    const needsUpdate = !urlMatchesState || 
-      (storyTitleParam && !storyIdFromURL && stories.length > 0) ||
-      (chapterTitle && !chapterId && stories.length > 0) || 
-      (sectionTitle && !sectionId && stories.length > 0);
+    const needsUpdate = !urlMatchesState ||
+      (storyParam && !storyIdFromURL && stories.length > 0) ||
+      (chapterParam && !chapterId && stories.length > 0) ||
+      (sectionParam && !sectionId && stories.length > 0);
     
     if (needsUpdate) {
       isReadingFromURL.current = true;
 
-      // When no story context in URL (e.g. fresh load / default route), always show Graph and no scene
-      const hasStoryContextInURL = !!(storyTitleParam || storyIdFromURL);
+      const hasStoryContextInURL = !!(storyParam || storyIdFromURL);
       if (!hasStoryContextInURL) {
         setViewMode('Graph');
         setSelectedSceneContainer(null);
@@ -1156,46 +1062,34 @@ const HomePage = () => {
 
       // Handle story/chapter/section selection from URL
       if (storyIdFromURL) {
-        // First, select the story
         selectStory(storyIdFromURL);
 
-        // Wait for story to be selected, then find and select chapter
-        if (chapterTitle) {
-          // If we found chapterId, use it; otherwise try to find it again after story loads
+        if (chapterParam) {
           const selectChapterFromURL = () => {
-            // Re-find chapter ID in case stories weren't loaded when we first checked
             let retryChapterId = chapterId;
             if (!retryChapterId && stories.length > 0 && storyIdFromURL) {
               const story = stories.find(s => s.id === storyIdFromURL);
-              if (story && story.chapters) {
-                const chapter = findTitleByNormalized(chapterTitle, story.chapters);
-                if (chapter) {
-                  retryChapterId = chapter.id;
-                }
+              if (story?.chapters?.length) {
+                const byId = story.chapters.find(c => c.id === chapterParam);
+                retryChapterId = (byId || findTitleByNormalized(chapterParam, story.chapters))?.id;
               }
             }
-            
+
             if (retryChapterId) {
               selectChapter(retryChapterId);
 
-              // Then find and select section
-              if (sectionTitle) {
+              if (sectionParam) {
                 const selectSectionFromURL = () => {
-                  // Re-find section ID in case chapter wasn't loaded when we first checked
                   let retrySectionId = sectionId;
                   if (!retrySectionId && stories.length > 0 && storyIdFromURL && retryChapterId) {
                     const story = stories.find(s => s.id === storyIdFromURL);
-                    if (story && story.chapters) {
-                      const chapter = story.chapters.find(c => c.id === retryChapterId);
-                      if (chapter && chapter.sections) {
-                        const section = findTitleByNormalized(sectionTitle, chapter.sections);
-                        if (section) {
-                          retrySectionId = section.id;
-                        }
-                      }
+                    const chapter = story?.chapters?.find(c => c.id === retryChapterId);
+                    if (chapter?.sections?.length) {
+                      const byId = chapter.sections.find(s => s.id === sectionParam);
+                      retrySectionId = (byId || findTitleByNormalized(sectionParam, chapter.sections))?.id;
                     }
                   }
-                  
+
                   if (retrySectionId) {
                     selectSection(retrySectionId);
                   }
@@ -1216,26 +1110,25 @@ const HomePage = () => {
                 }, 150);
               }
             } else {
-              // If chapter not found and stories are loaded, try one more time after a delay
+              // Retry resolving from URL (ID or title) after a delay in case stories weren't loaded
               if (stories.length > 0) {
                 setTimeout(() => {
-                  // Re-find story from normalized title in case it wasn't found initially
-                  const story = storyIdFromURL 
+                  const story = storyIdFromURL
                     ? stories.find(s => s.id === storyIdFromURL)
-                    : (storyTitleParam ? findTitleByNormalized(storyTitleParam, stories) : null);
-                  if (story && story.chapters) {
-                    const chapter = findTitleByNormalized(chapterTitle, story.chapters);
+                    : (storyParam ? (stories.find(s => s.id === storyParam) || findTitleByNormalized(storyParam, stories)) : null);
+                  if (story?.chapters?.length) {
+                    const chapter = chapterParam
+                      ? (story.chapters.find(c => c.id === chapterParam) || findTitleByNormalized(chapterParam, story.chapters))
+                      : null;
                     if (chapter) {
                       selectChapter(chapter.id);
-                      if (sectionTitle) {
+                      if (sectionParam) {
                         setTimeout(() => {
                           const chapterForSection = story.chapters.find(c => c.id === chapter.id);
-                          if (chapterForSection && chapterForSection.sections) {
-                            const section = findTitleByNormalized(sectionTitle, chapterForSection.sections);
-                            if (section) {
-                              selectSection(section.id);
-                            }
-                          }
+                          const section = chapterForSection?.sections?.length && sectionParam
+                            ? (chapterForSection.sections.find(s => s.id === sectionParam) || findTitleByNormalized(sectionParam, chapterForSection.sections))
+                            : null;
+                          if (section) selectSection(section.id);
                           isReadingFromURL.current = false;
                         }, 150);
                       } else {
@@ -1299,18 +1192,16 @@ const HomePage = () => {
   // Note: URL updates are now handled directly in the handlers (handleStorySelect, handleChapterSelect, handleSectionSelect)
   // This useEffect is removed to prevent conflicts and race conditions
 
-  // Update URL when viewMode changes (only if not reading from URL)
+  // Update URL when viewMode changes (only if not reading from URL and we're not right after a selection change)
   useEffect(() => {
-    // Only update URL if we have a story selected and we're not reading from URL
-    if (!isReadingFromURL.current && (currentStoryId || currentSectionId)) {
+    if (!isReadingFromURL.current && (currentStoryId || currentSectionId) && !lastURLWeSet.current) {
       updateURL({ view: viewMode });
     }
   }, [viewMode, currentStoryId, currentSectionId, updateURL]);
 
-  // Update URL when selectedSceneContainer changes (only if not reading from URL)
+  // Update URL when selectedSceneContainer changes (only if not reading from URL and we're not right after a selection change)
   useEffect(() => {
-    // Only update URL if we have a story selected and we're not reading from URL
-    if (!isReadingFromURL.current && (currentStoryId || currentSectionId)) {
+    if (!isReadingFromURL.current && (currentStoryId || currentSectionId) && !lastURLWeSet.current) {
       updateURL({ scene: selectedSceneContainer });
     }
   }, [selectedSceneContainer, currentStoryId, currentSectionId, updateURL]);
