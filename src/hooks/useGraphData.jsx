@@ -6,7 +6,8 @@ import {
 } from '../utils/dataUtils';
 import { useStories } from '../contexts/StoriesContext';
 
-const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000') => {
+const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000', options = {}) => {
+  const { allowAutoSelectFirstStory = true } = options;
   const storiesContext = useStories();
   const [localStories, setLocalStories] = useState([]);
   const [currentStoryId, setCurrentStoryId] = useState(null);
@@ -129,11 +130,11 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
     }
   }, [currentStoryId, stories]);
 
-  // On initial load: auto-select first story when stories are available and nothing is selected
+  // On initial load: auto-select first story only when allowed (e.g. not when at root / for dashboard-first)
   useEffect(() => {
-    if (!stories || stories.length === 0 || currentStoryId != null) return;
+    if (!allowAutoSelectFirstStory || !stories || stories.length === 0 || currentStoryId != null) return;
     setCurrentStoryId(stories[0].id);
-  }, [stories, currentStoryId]);
+  }, [allowAutoSelectFirstStory, stories, currentStoryId]);
 
   // When a story is selected but no chapter: auto-select first chapter so the graph can load
   useEffect(() => {
