@@ -1,5 +1,6 @@
 from typing import List, Dict, Any, Optional, Tuple
 import logging
+import time
 from database import db
 from queries import (
     get_all_stories_query,
@@ -369,6 +370,7 @@ def get_graph_data(section_gid: Optional[str] = None, section_query: Optional[st
         else:
             query, params = get_graph_data_by_section_query(section_title=use_section_title)
 
+        t0 = time.perf_counter()
         results = db.execute_query(query, params)
         logger.debug(f"Retrieved graph data: {len(results)} result(s)")
 
@@ -384,20 +386,28 @@ def get_graph_data(section_gid: Optional[str] = None, section_query: Optional[st
                 query, params = run_legacy()
                 results = db.execute_query(query, params)
 
+        t_db = time.perf_counter() - t0
+
         if not results:
             return GraphData(nodes=[], links=[])
 
         graph_data = results[0].get("graphData", {})
+        raw_nodes = graph_data.get("nodes", [])
+        raw_links = graph_data.get("links", [])
 
+        t_format_start = time.perf_counter()
         nodes = []
-        for node_data in graph_data.get("nodes", []):
+        for node_data in raw_nodes:
             nodes.append(format_node(node_data))
 
         links = []
-        for link_data in graph_data.get("links", []):
+        for link_data in raw_links:
             links.append(format_link(link_data))
 
-        logger.debug(f"Formatted graph data: {len(nodes)} nodes, {len(links)} links")
+        t_format = time.perf_counter() - t_format_start
+        logger.info(
+            f"[perf] get_graph_data: db={t_db:.2f}s format={t_format:.2f}s nodes={len(nodes)} links={len(links)}"
+        )
         return GraphData(nodes=nodes, links=links)
     except ValueError as e:
         # Re-raise ValueError as-is (these are expected validation errors)
@@ -463,8 +473,12 @@ def get_gr_id_description(gr_id_value: str) -> Optional[str]:
         from neon_database import neon_db
         if not neon_db.is_configured():
             return None
+        t0 = time.perf_counter()
         key = gr_id_value.strip()
         results = neon_db.execute_query("SELECT description FROM gr_id WHERE id = %s LIMIT 1", (key,))
+        elapsed = time.perf_counter() - t0
+        if elapsed > 0.5:
+            logger.info(f"[perf] get_gr_id_description: {elapsed:.2f}s")
         if results and results[0]:
             desc = (results[0].get("description") or "").strip()
             return desc if desc else None

@@ -2,7 +2,7 @@ import { getCategoryColor, isLightColor } from '../../utils/colorUtils';
 import { FaArrowLeftLong, FaArrowRightLong } from 'react-icons/fa6';
 import { FaChevronUp, FaChevronDown, FaSearch } from 'react-icons/fa';
 import FilterSelect from '../story/FilterSelect';
-import { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 
 const LeftSidebar = ({
   stories = [],
@@ -614,4 +614,4 @@ const LeftSidebar = ({
   );
 };
 
-export default LeftSidebar;
+export default React.memo(LeftSidebar);

@@ -2,9 +2,12 @@
 import platform_fix
 
 from contextlib import asynccontextmanager
+from concurrent.futures import ThreadPoolExecutor
 from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 from typing import Optional, List
+import asyncio
 import time
 import logging
 import os
@@ -29,6 +32,18 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# Thread pool for running sync graph/description fetches in parallel (avoids blocking event loop)
+_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="graph")
+
+# In-memory cache for graph API responses (section id -> (expiry_time, response dict))
+# Reduces repeated 10s+ loads when switching back to the same section.
+_GRAPH_CACHE: dict = {}
+_GRAPH_CACHE_TTL_SECONDS = 300  # 5 minutes
+
+# In-memory cache for stories list (single key, short TTL to speed repeat loads)
+_STORIES_CACHE: dict = {}
+_STORIES_CACHE_TTL_SECONDS = 60  # 1 minute
 
 # Validate configuration
 try:
@@ -77,6 +92,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.add_middleware(GZipMiddleware, minimum_size=1000)  # compress large responses (e.g. graph JSON)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=Config.CORS_ORIGINS,
@@ -919,26 +935,82 @@ async def health_check():
     
     return health_status
 
+def _get_cached_stories():
+    """Return (list_of_dicts, True) if cache hit and valid, else (None, False)."""
+    entry = _STORIES_CACHE.get("stories")
+    if entry is None:
+        return None, False
+    expiry, out = entry
+    if time.perf_counter() > expiry:
+        del _STORIES_CACHE["stories"]
+        return None, False
+    return out, True
+
+
 @app.get("/api/stories", response_model=List[dict])
 async def get_stories():
     try:
+        cached, hit = _get_cached_stories()
+        if hit:
+            logger.info("[perf] get_stories: cache HIT")
+            return cached
+        t0 = time.perf_counter()
         stories = get_all_stories()
-        return [story.model_dump() for story in stories]
+        out = [story.model_dump() for story in stories]
+        t1 = time.perf_counter()
+        _STORIES_CACHE["stories"] = (time.perf_counter() + _STORIES_CACHE_TTL_SECONDS, out)
+        logger.info(f"[perf] get_stories: total={t1 - t0:.2f}s count={len(out)}")
+        return out
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching stories: {str(e)}")
+
+def _get_cached_graph(key: str):
+    """Return (response_dict, True) if cache hit and valid, else (None, False)."""
+    entry = _GRAPH_CACHE.get(key)
+    if entry is None:
+        return None, False
+    expiry, out = entry
+    if time.perf_counter() > expiry:
+        del _GRAPH_CACHE[key]
+        return None, False
+    return out, True
+
+
+def _set_cached_graph(key: str, out: dict):
+    expiry = time.perf_counter() + _GRAPH_CACHE_TTL_SECONDS
+    _GRAPH_CACHE[key] = (expiry, out)
+
 
 @app.get("/api/graph/{substory_id}", response_model=dict)
 async def get_graph_by_substory_id(substory_id: str):
     """Get graph data for a substory/section. Numeric substory_id is treated as section_gid, else as section_query."""
+    cache_key = f"graph:{substory_id}"
+    cached, hit = _get_cached_graph(cache_key)
+    if hit:
+        logger.info(f"[perf] get_graph_by_substory_id cache HIT key={substory_id}")
+        return cached
+
     try:
-        if substory_id.isdigit() or (substory_id.replace('.', '').isdigit()):
-            graph_data = get_graph_data(section_gid=substory_id)
-        else:
-            graph_data = get_graph_data(section_query=substory_id)
+        t0 = time.perf_counter()
+        loop = asyncio.get_event_loop()
+        use_gid = substory_id.isdigit() or (substory_id.replace(".", "").isdigit())
+        graph_coro = loop.run_in_executor(
+            _executor,
+            lambda: get_graph_data(section_gid=substory_id) if use_gid else get_graph_data(section_query=substory_id),
+        )
+        desc_coro = loop.run_in_executor(_executor, lambda: get_gr_id_description(substory_id))
+        graph_data, description = await asyncio.gather(graph_coro, desc_coro)
+        t1 = time.perf_counter()
+        n_nodes = len(graph_data.nodes)
+        n_links = len(graph_data.links)
+        logger.info(
+            f"[perf] get_graph_by_substory_id total={t1 - t0:.2f}s nodes={n_nodes} links={n_links} "
+            "(check get_graph_data db= vs format= in logs to see where time goes)"
+        )
         out = graph_data.model_dump()
-        description = get_gr_id_description(substory_id)
         if description is not None:
             out["description"] = description
+        _set_cached_graph(cache_key, out)
         return out
     except Exception as e:
         raise HTTPException(
@@ -952,12 +1024,19 @@ async def get_graph_by_path(graph_path: Optional[str] = None):
     if not graph_path:
         raise HTTPException(status_code=400, detail="graph_path parameter is required")
 
+    cache_key = f"graph:path:{graph_path}"
+    cached, hit = _get_cached_graph(cache_key)
+    if hit:
+        logger.info(f"[perf] get_graph_by_path cache HIT key={graph_path}")
+        return cached
+
     try:
         graph_data = get_graph_data(graph_path=graph_path)
         out = graph_data.model_dump()
         description = get_gr_id_description(graph_path)
         if description is not None:
             out["description"] = description
+        _set_cached_graph(cache_key, out)
         return out
     except Exception as e:
         raise HTTPException(

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { FaChevronRight, FaChevronLeft, FaChevronCircleUp, FaChevronCircleDown, FaBars } from 'react-icons/fa';
 import { useToast } from '../../contexts/ToastContext';
 import ToastContainer from '../common/ToastContainer';
@@ -88,13 +88,13 @@ const Layout = ({
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  const handleLeftSidebarCollapse = (collapsed) => {
+  const handleLeftSidebarCollapse = useCallback((collapsed) => {
     setLeftSidebarCollapsed(collapsed);
-  };
+  }, []);
 
-  const handleRightSidebarCollapse = (collapsed) => {
+  const handleRightSidebarCollapse = useCallback((collapsed) => {
     setRightSidebarCollapsed(collapsed);
-  };
+  }, []);
 
   const { toasts, removeToast } = useToast();
 
@@ -246,4 +246,4 @@ const Layout = ({
   );
 };
 
-export default Layout;
+export default React.memo(Layout);

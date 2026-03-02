@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, forwardRef, useImperativeHandle } from 'react';
+import React, { useEffect, useRef, useState, forwardRef, useImperativeHandle } from 'react';
 import * as d3 from 'd3';
 import * as topojson from 'topojson-client';
 import { getNodeTypeColor } from '../../utils/colorUtils';
@@ -53,6 +53,7 @@ const GraphViewByMap = forwardRef(({ mapView = 'flat', graphData = { nodes: [], 
   const isRotationPausedRef = useRef(false);
   const countryDataMap = useRef(new Map());
   const prevSubstoryIdRef = useRef(undefined);
+  const graphSimulationRef = useRef(null);
 
   // On substory/section change (Map view): clear map, show loading; new map appears when data is loaded
   useEffect(() => {
@@ -241,43 +242,43 @@ const GraphViewByMap = forwardRef(({ mapView = 'flat', graphData = { nodes: [], 
     return { nodes: subNodes, links: subLinks };
   };
 
-  // Update container dimensions and calculate map dimensions
+  // Update container dimensions and calculate map dimensions (throttled via rAF)
   useEffect(() => {
+    let rafId = null;
     const updateDimensions = () => {
-      if (containerRef.current) {
-        const rect = containerRef.current.getBoundingClientRect();
-        const containerWidth = rect.width;
-        const containerHeight = rect.height;
-        
-        setContainerDimensions({
-          width: containerWidth,
-          height: containerHeight
-        });
-        
-        // Calculate map dimensions: width = 2/1 of container width, height = 1/3 of container width
-        const mapWidth = (7 / 4) * containerWidth;
-        const mapHeight = (1 / 3) * containerWidth;
-        
-        setMapDimensions({
-          width: mapWidth,
-          height: mapHeight
-        });
-      }
+      if (!containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      setContainerDimensions({ width: rect.width, height: rect.height });
+      const mapWidth = (7 / 4) * rect.width;
+      const mapHeight = (1 / 3) * rect.width;
+      setMapDimensions({ width: mapWidth, height: mapHeight });
     };
-
+    const scheduleResize = () => {
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        updateDimensions();
+      });
+    };
     updateDimensions();
-    window.addEventListener('resize', updateDimensions);
-    return () => window.removeEventListener('resize', updateDimensions);
+    window.addEventListener('resize', scheduleResize);
+    return () => {
+      window.removeEventListener('resize', scheduleResize);
+      if (rafId !== null) cancelAnimationFrame(rafId);
+    };
   }, []);
 
-  // Render map
+  // Render map (DOM updates batched in rAF)
   useEffect(() => {
     if (!svgRef.current || !containerRef.current || mapDimensions.width === 0 || !worldData || !worldData.features) return;
 
-    const svg = d3.select(svgRef.current);
-    svg.selectAll('*').remove();
+    let cancelled = false;
+    const rafId = requestAnimationFrame(() => {
+      if (cancelled || !svgRef.current) return;
+      const svg = d3.select(svgRef.current);
+      svg.selectAll('*').remove();
 
-    const width = mapDimensions.width;
+      const width = mapDimensions.width;
     const height = mapDimensions.height;
     const centerX = width / 2;
     const centerY = height / 2;
@@ -599,23 +600,31 @@ const GraphViewByMap = forwardRef(({ mapView = 'flat', graphData = { nodes: [], 
       }
     }
 
+    });
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(rafId);
+    };
   }, [mapView, worldData, mapDimensions, highlightedCountries, selectedCountryId, graphData, currentSubstory, currentSubstoryId, containerDimensions]);
 
-  // Render graph in remaining space (excluding map) when country is selected
+  // Render graph in remaining space (excluding map) when country is selected (DOM updates batched in rAF)
   useEffect(() => {
     if (!graphSvgRef.current || !containerRef.current || containerDimensions.width === 0 || !countryGraphData || !countryGraphData.nodes || countryGraphData.nodes.length === 0) {
-      // Clear graph if no data
       if (graphSvgRef.current) {
-        const svg = d3.select(graphSvgRef.current);
-        svg.selectAll('*').remove();
+        d3.select(graphSvgRef.current).selectAll('*').remove();
       }
+      graphSimulationRef.current = null;
       return;
     }
 
-    const svg = d3.select(graphSvgRef.current);
-    svg.selectAll('*').remove();
+    let cancelled = false;
+    let simulation = null;
+    const rafId = requestAnimationFrame(() => {
+      if (cancelled || !graphSvgRef.current) return;
+      const svg = d3.select(graphSvgRef.current);
+      svg.selectAll('*').remove();
 
-    const width = containerDimensions.width;
+      const width = containerDimensions.width;
     const height = containerDimensions.height;
 
     // Only show country, action, entity (no relationship or other types)
@@ -935,12 +944,13 @@ const GraphViewByMap = forwardRef(({ mapView = 'flat', graphData = { nodes: [], 
       ? countryCenterYFinal - (matchingCountryNode.countryCardHalfHeight ?? 18)
       : countryCenterYFinal;
 
-    const simulation = d3.forceSimulation(displayNodes)
+    simulation = d3.forceSimulation(displayNodes)
       .force('link', null)
       .force('charge', null)
       .force('center', null)
       .alpha(0)
       .stop();
+    graphSimulationRef.current = simulation;
 
     const linkContainer = svg.append('g')
       .attr('class', 'graph-links')
@@ -1314,10 +1324,13 @@ const GraphViewByMap = forwardRef(({ mapView = 'flat', graphData = { nodes: [], 
       d.fy = d.y;
     }
 
-    // Cleanup
+    });
     return () => {
-      if (simulation) {
-        simulation.stop();
+      cancelled = true;
+      cancelAnimationFrame(rafId);
+      if (graphSimulationRef.current) {
+        graphSimulationRef.current.stop();
+        graphSimulationRef.current = null;
       }
     };
   }, [countryGraphData, containerDimensions, selectedCountryName, selectedCountryPosition, selectedCountryId, mapDimensions, worldData, mapView]);
@@ -1687,5 +1700,5 @@ const GraphViewByMap = forwardRef(({ mapView = 'flat', graphData = { nodes: [], 
 
 GraphViewByMap.displayName = 'GraphViewByMap';
 
-export default GraphViewByMap;
+export default React.memo(GraphViewByMap);
 

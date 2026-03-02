@@ -16,6 +16,8 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
   useEffect(() => {
     currentSubstoryIdRef.current = currentSubstoryId;
   }, [currentSubstoryId]);
+  const formattedGraphCacheRef = useRef(new Map()); // substoryId -> { data, description, highlights }, max 30
+  const FORMATTED_GRAPH_CACHE_MAX = 30;
   const [currentStory, setCurrentStory] = useState(null);
   const [currentChapter, setCurrentChapter] = useState(null);
   const [currentSubstory, setCurrentSubstory] = useState(null);
@@ -41,7 +43,8 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
         if (isMounted) setLocalStoriesLoading(true);
 
         const url = `${apiBaseUrl}/api/stories`;
-        
+        const t0 = typeof performance !== 'undefined' ? performance.now() : Date.now();
+
         const response = await fetch(url, {
           method: 'GET',
           headers: {
@@ -64,6 +67,10 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
         }
         
         const data = await response.json();
+        const t1 = typeof performance !== 'undefined' ? performance.now() : Date.now();
+        if (import.meta.env?.DEV) {
+          console.debug(`[perf] stories fetch: ${((t1 - t0) / 1000).toFixed(2)}s count=${Array.isArray(data) ? data.length : 0}`);
+        }
 
         if (isMounted) {
           setLocalStories(Array.isArray(data) ? data : []);
@@ -167,8 +174,7 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
         if (isMounted) {
           setGraphLoading(true);
           setGraphError(null);
-
-          setGraphData({ nodes: [], links: [] });
+          // Keep previous graph visible while loading (don't clear) for smoother perceived speed
         }
 
         const story = stories.find(s => s.id === currentStoryId);
@@ -240,7 +246,8 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
         }
 
         const graphUrl = `${apiBaseUrl}/api/graph/${encodeURIComponent(graphIdentifier)}`;
-        
+        const tFetchStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
+
         const apiResponse = await fetch(graphUrl, {
           method: 'GET',
           headers: {
@@ -248,7 +255,12 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
           },
           signal: abortController.signal,
         });
-        
+
+        const tFetchEnd = typeof performance !== 'undefined' ? performance.now() : Date.now();
+        if (import.meta.env?.DEV) {
+          console.debug(`[perf] graph fetch: ${((tFetchEnd - tFetchStart) / 1000).toFixed(2)}s`);
+        }
+
         if (!apiResponse.ok) {
           const errorText = await apiResponse.text();
           const isConnectionError = apiResponse.status === 0 || errorText.includes('Failed to fetch');
@@ -269,7 +281,9 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
           throw new Error(`Failed to load graph data: ${apiResponse.status} ${apiResponse.statusText}. ${errorText}`);
         }
         
+        const tParseStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
         const rawGraphData = await apiResponse.json();
+        const tParseEnd = typeof performance !== 'undefined' ? performance.now() : Date.now();
 
         // Ignore response if user has already switched to another section (avoid showing wrong graph)
         if (!isMounted || currentSubstoryIdRef.current !== requestedSubstoryId) {
@@ -277,11 +291,20 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
         }
 
         // Extract description from response
-        const description = rawGraphData.description || null;
+        const description = rawGraphData.description ?? null;
+        const rawNodesLen = rawGraphData?.nodes?.length ?? 0;
+        const rawLinksLen = rawGraphData?.links?.length ?? 0;
 
+        const cache = formattedGraphCacheRef.current;
+        const cached = cache.get(requestedSubstoryId);
+        const useCached = cached && cached.nodesLen === rawNodesLen && cached.linksLen === rawLinksLen;
         let formattedGraphData;
-
-        if (rawGraphData && rawGraphData.nodes && rawGraphData.nodes.length > 100) {
+        let highlights;
+        if (useCached) {
+          formattedGraphData = cached.data;
+          highlights = cached.highlights;
+          if (import.meta.env?.DEV) console.debug('[perf] graph: using cached formatted result for', requestedSubstoryId);
+        } else if (rawGraphData && rawGraphData.nodes && rawGraphData.nodes.length > 100) {
           const limitedNodes = rawGraphData.nodes.slice(0, 2000);
 
           const normId = (v) => (v != null && v !== '' ? String(v) : '');
@@ -297,16 +320,40 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
             return sourceId && targetId && nodeIds.has(sourceId) && nodeIds.has(targetId);
           }).slice(0, 5000);
 
+          const tFormatStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
           formattedGraphData = formatGraphData({
             nodes: limitedNodes,
             links: limitedLinks
           });
+          const tFormatEnd = typeof performance !== 'undefined' ? performance.now() : Date.now();
+          if (import.meta.env?.DEV) {
+            console.debug(
+              `[perf] graph: parse=${((tParseEnd - tParseStart) / 1000).toFixed(2)}s format=${((tFormatEnd - tFormatStart) / 1000).toFixed(2)}s nodes=${formattedGraphData?.nodes?.length ?? 0} links=${formattedGraphData?.links?.length ?? 0} (limited)`
+            );
+          }
         } else {
+          const tFormatStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
           formattedGraphData = formatGraphData(rawGraphData);
+          const tFormatEnd = typeof performance !== 'undefined' ? performance.now() : Date.now();
+          if (import.meta.env?.DEV) {
+            console.debug(
+              `[perf] graph: parse=${((tParseEnd - tParseStart) / 1000).toFixed(2)}s format=${((tFormatEnd - tFormatStart) / 1000).toFixed(2)}s nodes=${formattedGraphData?.nodes?.length ?? 0} links=${formattedGraphData?.links?.length ?? 0}`
+            );
+          }
         }
 
-        const allHighlights = extractEntityHighlights(formattedGraphData);
-        const highlights = allHighlights.slice(0, 20);
+        if (!useCached) {
+          const allHighlights = extractEntityHighlights(formattedGraphData);
+          highlights = allHighlights.slice(0, 20);
+        }
+
+        if (!useCached) {
+          if (cache.size >= FORMATTED_GRAPH_CACHE_MAX) {
+            const firstKey = cache.keys().next().value;
+            if (firstKey !== undefined) cache.delete(firstKey);
+          }
+          cache.set(requestedSubstoryId, { nodesLen: rawNodesLen, linksLen: rawLinksLen, data: formattedGraphData, description, highlights });
+        }
 
         if (isMounted && currentSubstoryIdRef.current === requestedSubstoryId) {
           setGraphData(formattedGraphData);

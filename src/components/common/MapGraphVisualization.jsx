@@ -5,6 +5,7 @@ import { getNodeTypeColor } from '../../utils/colorUtils';
 const MapGraphVisualization = ({ graphData = { nodes: [], links: [] }, position = { x: 0, y: 0 } }) => {
   const containerRef = useRef(null);
   const svgRef = useRef(null);
+  const simulationRef = useRef(null);
   const [dimensions, setDimensions] = useState({ width: 600, height: 400 });
 
   useEffect(() => {
@@ -12,13 +13,17 @@ const MapGraphVisualization = ({ graphData = { nodes: [], links: [] }, position 
       return;
     }
 
-    const svg = d3.select(svgRef.current);
-    svg.selectAll('*').remove();
+    let cancelled = false;
+    const rafId = requestAnimationFrame(() => {
+      if (cancelled || !svgRef.current) return;
 
-    const width = dimensions.width;
-    const height = dimensions.height;
+      const svg = d3.select(svgRef.current);
+      svg.selectAll('*').remove();
 
-    // Process links to ensure source and target are node objects
+      const width = dimensions.width;
+      const height = dimensions.height;
+
+      // Process links to ensure source and target are node objects
     const processedLinks = (graphData.links || []).map(link => {
       // Try multiple ways to find source and target nodes
       const sourceNode = graphData.nodes.find(n => 
@@ -67,7 +72,9 @@ const MapGraphVisualization = ({ graphData = { nodes: [], links: [] }, position 
     });
 
     // Create force simulation
-    const simulation = d3.forceSimulation(graphData.nodes)
+    const simulation = d3.forceSimulation(graphData.nodes);
+    simulationRef.current = simulation;
+    simulation
       .force('link', d3.forceLink(processedLinks).id(d => {
         const nodeId = d.id || d.gid || String(d);
         return nodeId;
@@ -167,10 +174,13 @@ const MapGraphVisualization = ({ graphData = { nodes: [], links: [] }, position 
       d.fy = null;
     }
 
-    // Cleanup
+    });
     return () => {
-      if (simulation) {
-        simulation.stop();
+      cancelled = true;
+      cancelAnimationFrame(rafId);
+      if (simulationRef.current) {
+        simulationRef.current.stop();
+        simulationRef.current = null;
       }
     };
   }, [graphData, dimensions]);

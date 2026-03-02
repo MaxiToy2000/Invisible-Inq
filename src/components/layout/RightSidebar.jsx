@@ -3,7 +3,7 @@ import GlobalActivity from '../common/GlobalActivity';
 import ConnectedData from '../common/ConnectedData';
 import NeighborsGraph from '../common/NeighborsGraph';
 import { isValidUrl, formatUrl } from '../../utils/urlUtils';
-import { useState, useEffect, useMemo, useRef, forwardRef, useImperativeHandle } from 'react';
+import React, { useState, useEffect, useMemo, useRef, forwardRef, useImperativeHandle } from 'react';
 import { FaChevronUp, FaChevronDown, FaChevronLeft, FaChevronRight, FaChevronCircleUp, FaChevronCircleDown, FaSquare, FaCube, FaCalendar, FaList, FaSitemap, FaGlobe, FaLink, FaArrowUp, FaArrowDown } from 'react-icons/fa';
 import StringConstants from '../StringConstants';
 
@@ -2032,4 +2032,4 @@ const RightSidebar = forwardRef(({
 
 RightSidebar.displayName = 'RightSidebar';
 
-export default RightSidebar;
+export default React.memo(RightSidebar);
