@@ -9,13 +9,17 @@ export const getNodeTypeColor = (nodeType) => {
   // Using normalized keys (lowercase with underscores)
   const colors = {
     // Primary entity types
-    'entity': '#4263EB',           // Blue
+    'entity': '#034C92',           // Blue
     'entity_gen': '#5C7CFA',       // Light blue
-    'relationship': '#F03E3E',     // Red
-    'action': '#FD7E14',           // Orange
+    'relationship': '#016876',     // Red
+    'action': '#6F6600',           // Orange
     'process': '#20A4F3',          // Cyan
     'result': '#F38181',           // Pink
     'event_attend': '#9775FA',     // Purple
+    'framework': '#4B7110', 
+    'milestone': '#B82F2F',       // Green
+    'incident': '#8C3C1E',         // Green
+    'data': '#A138CE',         // Yellow
     
     // Financial types
     'funding': '#40C057',          // Green
@@ -26,7 +30,7 @@ export const getNodeTypeColor = (nodeType) => {
     'agency': '#7950F2',           // Dark purple
     'recipient': '#4ECDC4',        // Teal
     'dba': '#FF922B',              // Amber
-    'organization': '#F03E3E',     // Red
+    'organization': '#6F6600',     // Red
     'department': '#E64980',       // Magenta
     'foundation': '#BE4BDB',       // Purple
     'committee': '#FA5252',        // Light red
@@ -34,7 +38,7 @@ export const getNodeTypeColor = (nodeType) => {
     
     // Location types
     'country': '#9775FA',          // Purple
-    'location': '#339AF0',         // Sky blue
+    'location': '#6538CE',         // Sky blue
     'place_of_performance': '#845EF7',  // Violet
     'region': '#95E1D3',           // Mint
     'usaid_program_region': '#74C0FC',  // Light blue
@@ -42,7 +46,7 @@ export const getNodeTypeColor = (nodeType) => {
     // Description/Document types
     'description': '#51CF66',      // Green
     'publication': '#FF922B',      // Amber
-    'article': '#FFA94D',          // Light orange
+    'article': '#FFA94D',          // Light orange                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             
     
     // People/Person types
     'person': '#4263EB',           // Blue
@@ -51,14 +55,14 @@ export const getNodeTypeColor = (nodeType) => {
     // Program/Event types
     'program': '#20A4F3',          // Cyan
     'event': '#7950F2',            // Purple
-    'concept': '#FD7E14',          // Orange
+    'concept': '#CE3880',          // Orange
     
     // University/Education
     'university': '#9775FA',       // Purple
     'institution': '#845EF7',      // Violet
     
     // Default fallback
-    'default': '#495057'           // Dark gray
+    'default': '#495057'
   };
 
   return colors[normalizedType] || colors.default;

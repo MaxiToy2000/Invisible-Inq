@@ -49,12 +49,13 @@ const getNodeIcon = (nodeType) => {
 const getNodeColor = (nodeType) => {
   const type = nodeType?.toLowerCase() || '';
 
-  if (type.includes('entity')) return '#4263EB';
-  if (type.includes('relationship')) return '#F03E3E';
+  if (type.includes('entity')) return '#034C92';
+  if (type.includes('relationship')) return '#016876';
   if (type.includes('funding')) return '#40C057';
   if (type.includes('amount')) return '#61d619';
+  if (type.includes('framework')) return '#4B7110';
   if (type.includes('agency')) return '#7950F2';
-  if (type.includes('action')) return '#FD7E14';
+  if (type.includes('action')) return '#6F6600';
   if (type.includes('country')) return '#9775FA';
   if (type.includes('dba')) return '#FF922B';
   if (type.includes('description')) return '#51CF66';
