@@ -11,10 +11,10 @@ const Header = ({
   stories = [],
   currentStoryId = null,
   currentChapterId = null,
-  currentSubstoryId = null,
+  currentSectionId = null,
   onStorySelect,
   onChapterSelect,
-  onSubstorySelect,
+  onSectionSelect,
   showStoryDropdown = false,
   usePlainLogo = false,
   onHomePageClick = null,
@@ -80,10 +80,10 @@ const Header = ({
               stories={stories}
               selectedStoryId={currentStoryId}
               selectedChapterId={currentChapterId}
-              selectedSubstoryId={currentSubstoryId}
+              selectedSectionId={currentSectionId}
               onStorySelect={onStorySelect}
               onChapterSelect={onChapterSelect}
-              onSubstorySelect={onSubstorySelect}
+              onSectionSelect={onSectionSelect}
               inHeader={false}
               isMobileFullWidth={true}
               placeholder="Select an Investigation"
@@ -449,10 +449,10 @@ const Header = ({
             stories={stories}
             selectedStoryId={currentStoryId}
             selectedChapterId={currentChapterId}
-            selectedSubstoryId={currentSubstoryId}
+            selectedSectionId={currentSectionId}
             onStorySelect={onStorySelect}
             onChapterSelect={onChapterSelect}
-            onSubstorySelect={onSubstorySelect}
+            onSectionSelect={onSectionSelect}
             inHeader={false}
             isMobileFullWidth={true}
             placeholder="Select an Investigation"

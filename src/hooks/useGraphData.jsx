@@ -11,16 +11,16 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
   const [localStories, setLocalStories] = useState([]);
   const [currentStoryId, setCurrentStoryId] = useState(null);
   const [currentChapterId, setCurrentChapterId] = useState(null);
-  const [currentSubstoryId, setCurrentSubstoryId] = useState(null);
-  const currentSubstoryIdRef = useRef(currentSubstoryId);
+  const [currentSectionId, setCurrentSectionId] = useState(null);
+  const currentSectionIdRef = useRef(currentSectionId);
   useEffect(() => {
-    currentSubstoryIdRef.current = currentSubstoryId;
-  }, [currentSubstoryId]);
-  const formattedGraphCacheRef = useRef(new Map()); // substoryId -> { data, description, highlights }, max 30
+    currentSectionIdRef.current = currentSectionId;
+  }, [currentSectionId]);
+  const formattedGraphCacheRef = useRef(new Map()); // sectionId -> { data, description, highlights }, max 30
   const FORMATTED_GRAPH_CACHE_MAX = 30;
   const [currentStory, setCurrentStory] = useState(null);
   const [currentChapter, setCurrentChapter] = useState(null);
-  const [currentSubstory, setCurrentSubstory] = useState(null);
+  const [currentSection, setCurrentSection] = useState(null);
   const [graphData, setGraphData] = useState({ nodes: [], links: [] });
   const [graphDescription, setGraphDescription] = useState(null);
   const [entityHighlights, setEntityHighlights] = useState([]);
@@ -115,9 +115,9 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
     if (!currentStoryId) {
       setCurrentStory(null);
       setCurrentChapter(null);
-      setCurrentSubstory(null);
+      setCurrentSection(null);
       setCurrentChapterId(null);
-      setCurrentSubstoryId(null);
+      setCurrentSectionId(null);
       return;
     }
 
@@ -143,15 +143,15 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
 
   // When a chapter is selected but no section: auto-select first section so the graph can load
   useEffect(() => {
-    if (!currentChapter || !currentChapter.substories || currentChapter.substories.length === 0 || currentSubstoryId != null) return;
-    setCurrentSubstoryId(currentChapter.substories[0].id);
-  }, [currentChapter, currentSubstoryId]);
+    if (!currentChapter || !currentChapter.sections || currentChapter.sections.length === 0 || currentSectionId != null) return;
+    setCurrentSectionId(currentChapter.sections[0].id);
+  }, [currentChapter, currentSectionId]);
 
   useEffect(() => {
     if (!currentStoryId || !currentChapterId) {
       setCurrentChapter(null);
-      setCurrentSubstory(null);
-      setCurrentSubstoryId(null);
+      setCurrentSection(null);
+      setCurrentSectionId(null);
       return;
     }
 
@@ -171,10 +171,10 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
     let hasLoggedError = false;
     const abortController = new AbortController();
 
-    const loadSubstoryData = async () => {
-        if (!currentStoryId || !currentChapterId || !currentSubstoryId) {
+    const loadSectionData = async () => {
+        if (!currentStoryId || !currentChapterId || !currentSectionId) {
           if (isMounted) {
-            setCurrentSubstory(null);
+            setCurrentSection(null);
             setGraphData({ nodes: [], links: [] });
             setGraphDescription(null);
             setEntityHighlights([]);
@@ -184,7 +184,7 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
         }
 
       // Capture which section this request is for so we can ignore stale responses
-      const requestedSubstoryId = currentSubstoryId;
+      const requestedSectionId = currentSectionId;
 
       try {
         if (isMounted) {
@@ -219,25 +219,25 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
           throw new Error(`Chapter with ID ${currentChapterId} not found`);
         }
 
-        const substory = chapter.substories.find(s => s.id === currentSubstoryId);
-        if (!substory) {
-          if (chapter.substories && chapter.substories.length > 0) {
-            const firstSubstory = chapter.substories[0];
+        const section = chapter.sections.find(s => s.id === currentSectionId);
+        if (!section) {
+          if (chapter.sections && chapter.sections.length > 0) {
+            const firstSection = chapter.sections[0];
             if (isMounted) {
-              setCurrentSubstoryId(firstSubstory.id);
+              setCurrentSectionId(firstSection.id);
             }
             return;
           }
 
           if (!hasLoggedError) {
-            console.warn(`Substory with ID ${currentSubstoryId} not found in chapter ${currentChapterId}`);
+            console.warn(`Section with ID ${currentSectionId} not found in chapter ${currentChapterId}`);
             hasLoggedError = true;
           }
-          throw new Error(`Substory with ID ${currentSubstoryId} not found`);
+          throw new Error(`Section with ID ${currentSectionId} not found`);
         }
 
         if (isMounted) {
-          setCurrentSubstory(substory);
+          setCurrentSection(section);
         }
 
         const sectionNameMapping = {
@@ -246,11 +246,11 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
 
         // Prefer section id (section_gid) so backend returns nodes for this section only.
         // Fall back to section_query/graphPath when id is not available.
-        let graphIdentifier = (substory.id != null && substory.id !== '')
-          ? String(substory.id)
-          : (currentSubstoryId != null ? String(currentSubstoryId) : null);
+        let graphIdentifier = (section.id != null && section.id !== '')
+          ? String(section.id)
+          : (currentSectionId != null ? String(currentSectionId) : null);
         if (!graphIdentifier) {
-          graphIdentifier = substory.section_query || substory.graphPath || null;
+          graphIdentifier = section.section_query || section.graphPath || null;
         }
 
         if (graphIdentifier && sectionNameMapping[graphIdentifier]) {
@@ -258,7 +258,7 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
         }
 
         if (!graphIdentifier) {
-          throw new Error('No graph identifier available for substory');
+          throw new Error('No graph identifier available for section');
         }
 
         const graphUrl = `${apiBaseUrl}/api/graph/${encodeURIComponent(graphIdentifier)}`;
@@ -302,7 +302,7 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
         const tParseEnd = typeof performance !== 'undefined' ? performance.now() : Date.now();
 
         // Ignore response if user has already switched to another section (avoid showing wrong graph)
-        if (!isMounted || currentSubstoryIdRef.current !== requestedSubstoryId) {
+        if (!isMounted || currentSectionIdRef.current !== requestedSectionId) {
           return;
         }
 
@@ -312,14 +312,14 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
         const rawLinksLen = rawGraphData?.links?.length ?? 0;
 
         const cache = formattedGraphCacheRef.current;
-        const cached = cache.get(requestedSubstoryId);
+        const cached = cache.get(requestedSectionId);
         const useCached = cached && cached.nodesLen === rawNodesLen && cached.linksLen === rawLinksLen;
         let formattedGraphData;
         let highlights;
         if (useCached) {
           formattedGraphData = cached.data;
           highlights = cached.highlights;
-          if (import.meta.env?.DEV) console.debug('[perf] graph: using cached formatted result for', requestedSubstoryId);
+          if (import.meta.env?.DEV) console.debug('[perf] graph: using cached formatted result for', requestedSectionId);
         } else if (rawGraphData && rawGraphData.nodes && rawGraphData.nodes.length > 100) {
           const limitedNodes = rawGraphData.nodes.slice(0, 2000);
 
@@ -368,10 +368,10 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
             const firstKey = cache.keys().next().value;
             if (firstKey !== undefined) cache.delete(firstKey);
           }
-          cache.set(requestedSubstoryId, { nodesLen: rawNodesLen, linksLen: rawLinksLen, data: formattedGraphData, description, highlights });
+          cache.set(requestedSectionId, { nodesLen: rawNodesLen, linksLen: rawLinksLen, data: formattedGraphData, description, highlights });
         }
 
-        if (isMounted && currentSubstoryIdRef.current === requestedSubstoryId) {
+        if (isMounted && currentSectionIdRef.current === requestedSectionId) {
           setGraphData(formattedGraphData);
           setGraphDescription(description);
           setEntityHighlights(highlights);
@@ -388,15 +388,15 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
 
         if (!hasLoggedError) {
           if (!isConnectionError) {
-            console.error('Error loading substory data:', err.message);
+            console.error('Error loading section data:', err.message);
           }
           hasLoggedError = true;
         }
 
-        if (isMounted && currentSubstoryIdRef.current === requestedSubstoryId) {
+        if (isMounted && currentSectionIdRef.current === requestedSectionId) {
           const errorMessage = isConnectionError
             ? `Backend server unavailable. Please ensure the backend is running at ${apiBaseUrl}`
-            : `Failed to load substory data: ${err.message}`;
+            : `Failed to load section data: ${err.message}`;
           setGraphError(errorMessage);
           setGraphLoading(false);
 
@@ -408,13 +408,13 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
     };
 
     // Run immediately so fetch starts before any effect re-run can clear it (avoids "no API call" when state corrects)
-    loadSubstoryData();
+    loadSectionData();
 
     return () => {
       abortController.abort();
       isMounted = false;
     };
-  }, [currentStoryId, currentChapterId, currentSubstoryId, stories, apiBaseUrl]);
+  }, [currentStoryId, currentChapterId, currentSectionId, stories, apiBaseUrl]);
 
   const selectStory = useCallback((storyId) => {
 
@@ -455,34 +455,34 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
     setCurrentChapterId(chapterId);
   }, [currentStoryId, stories]);
 
-  const selectSubstory = useCallback((substoryId) => {
+  const selectSection = useCallback((sectionId) => {
 
     setGraphError(null);
 
     setSelectedNode(null);
     setSelectedEdge(null);
 
-    if (currentStoryId && currentChapterId && substoryId) {
+    if (currentStoryId && currentChapterId && sectionId) {
       const story = stories.find(s => s.id === currentStoryId);
       if (story && story.chapters) {
         const chapter = story.chapters.find(c => c.id === currentChapterId);
-        if (chapter && chapter.substories) {
-          const substory = chapter.substories.find(s => s.id === substoryId);
-          if (!substory) {
-            console.warn(`Substory with ID ${substoryId} not found in chapter ${currentChapterId}`);
+        if (chapter && chapter.sections) {
+          const section = chapter.sections.find(s => s.id === sectionId);
+          if (!section) {
+            console.warn(`Section with ID ${sectionId} not found in chapter ${currentChapterId}`);
           }
         }
       }
     }
 
-    setCurrentSubstoryId(substoryId);
+    setCurrentSectionId(sectionId);
   }, [currentStoryId, currentChapterId, stories]);
 
-  const goToPreviousSubstory = useCallback(() => {
+  const goToPreviousSection = useCallback(() => {
 
     setGraphError(null);
 
-    if (!currentStoryId || !currentChapterId || !currentSubstoryId) return;
+    if (!currentStoryId || !currentChapterId || !currentSectionId) return;
 
     try {
       const story = stories.find(s => s.id === currentStoryId);
@@ -498,35 +498,35 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
         if (story.chapters && story.chapters.length > 0) {
           const firstChapter = story.chapters[0];
           selectChapter(firstChapter.id);
-          if (firstChapter.substories && firstChapter.substories.length > 0) {
-            selectSubstory(firstChapter.substories[0].id);
+          if (firstChapter.sections && firstChapter.sections.length > 0) {
+            selectSection(firstChapter.sections[0].id);
           }
         }
         return;
       }
 
       const chapter = story.chapters[chapterIndex];
-      if (!chapter.substories || chapter.substories.length === 0) {
-        console.warn(`Chapter with ID ${currentChapterId} has no substories`);
+      if (!chapter.sections || chapter.sections.length === 0) {
+        console.warn(`Chapter with ID ${currentChapterId} has no sections`);
         return;
       }
 
-      const currentIndex = chapter.substories.findIndex(s => s.id === currentSubstoryId);
+      const currentIndex = chapter.sections.findIndex(s => s.id === currentSectionId);
       if (currentIndex === -1) {
-        console.warn(`Substory with ID ${currentSubstoryId} not found in chapter ${currentChapterId}`);
+        console.warn(`Section with ID ${currentSectionId} not found in chapter ${currentChapterId}`);
 
-        selectSubstory(chapter.substories[0].id);
+        selectSection(chapter.sections[0].id);
         return;
       }
 
       if (currentIndex > 0) {
-        selectSubstory(chapter.substories[currentIndex - 1].id);
+        selectSection(chapter.sections[currentIndex - 1].id);
       } else {
         if (chapterIndex > 0) {
           const prevChapter = story.chapters[chapterIndex - 1];
-          if (prevChapter.substories && prevChapter.substories.length > 0) {
+          if (prevChapter.sections && prevChapter.sections.length > 0) {
             selectChapter(prevChapter.id);
-            selectSubstory(prevChapter.substories[prevChapter.substories.length - 1].id);
+            selectSection(prevChapter.sections[prevChapter.sections.length - 1].id);
           }
         } else {
           const currentStoryIndex = stories.findIndex(s => s.id === currentStoryId);
@@ -534,14 +534,14 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
             const prevStory = stories[currentStoryIndex - 1];
             if (prevStory.chapters && prevStory.chapters.length > 0) {
               const lastChapter = prevStory.chapters[prevStory.chapters.length - 1];
-              if (lastChapter.substories && lastChapter.substories.length > 0) {
+              if (lastChapter.sections && lastChapter.sections.length > 0) {
                 selectStory(prevStory.id);
 
                 setTimeout(() => {
                   selectChapter(lastChapter.id);
 
                   setTimeout(() => {
-                    selectSubstory(lastChapter.substories[lastChapter.substories.length - 1].id);
+                    selectSection(lastChapter.sections[lastChapter.sections.length - 1].id);
                   }, 50);
                 }, 50);
               }
@@ -551,14 +551,14 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
               const lastStory = stories[stories.length - 1];
               if (lastStory.chapters && lastStory.chapters.length > 0) {
                 const lastChapter = lastStory.chapters[lastStory.chapters.length - 1];
-                if (lastChapter.substories && lastChapter.substories.length > 0) {
+                if (lastChapter.sections && lastChapter.sections.length > 0) {
                   selectStory(lastStory.id);
 
                   setTimeout(() => {
                     selectChapter(lastChapter.id);
 
                     setTimeout(() => {
-                      selectSubstory(lastChapter.substories[lastChapter.substories.length - 1].id);
+                      selectSection(lastChapter.sections[lastChapter.sections.length - 1].id);
                     }, 50);
                   }, 50);
                 }
@@ -568,15 +568,15 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
         }
       }
     } catch (err) {
-      console.error('Error navigating to previous substory:', err);
+      console.error('Error navigating to previous section:', err);
     }
-  }, [stories, currentStoryId, currentChapterId, currentSubstoryId, selectStory, selectChapter, selectSubstory]);
+  }, [stories, currentStoryId, currentChapterId, currentSectionId, selectStory, selectChapter, selectSection]);
 
-  const goToNextSubstory = useCallback(() => {
+  const goToNextSection = useCallback(() => {
 
     setGraphError(null);
 
-    if (!currentStoryId || !currentChapterId || !currentSubstoryId) return;
+    if (!currentStoryId || !currentChapterId || !currentSectionId) return;
 
     try {
       const story = stories.find(s => s.id === currentStoryId);
@@ -592,35 +592,35 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
         if (story.chapters && story.chapters.length > 0) {
           const firstChapter = story.chapters[0];
           selectChapter(firstChapter.id);
-          if (firstChapter.substories && firstChapter.substories.length > 0) {
-            selectSubstory(firstChapter.substories[0].id);
+          if (firstChapter.sections && firstChapter.sections.length > 0) {
+            selectSection(firstChapter.sections[0].id);
           }
         }
         return;
       }
 
       const chapter = story.chapters[chapterIndex];
-      if (!chapter.substories || chapter.substories.length === 0) {
-        console.warn(`Chapter with ID ${currentChapterId} has no substories`);
+      if (!chapter.sections || chapter.sections.length === 0) {
+        console.warn(`Chapter with ID ${currentChapterId} has no sections`);
         return;
       }
 
-      const currentIndex = chapter.substories.findIndex(s => s.id === currentSubstoryId);
+      const currentIndex = chapter.sections.findIndex(s => s.id === currentSectionId);
       if (currentIndex === -1) {
-        console.warn(`Substory with ID ${currentSubstoryId} not found in chapter ${currentChapterId}`);
+        console.warn(`Section with ID ${currentSectionId} not found in chapter ${currentChapterId}`);
 
-        selectSubstory(chapter.substories[0].id);
+        selectSection(chapter.sections[0].id);
         return;
       }
 
-      if (currentIndex < chapter.substories.length - 1) {
-        selectSubstory(chapter.substories[currentIndex + 1].id);
+      if (currentIndex < chapter.sections.length - 1) {
+        selectSection(chapter.sections[currentIndex + 1].id);
       } else {
         if (chapterIndex < story.chapters.length - 1) {
           const nextChapter = story.chapters[chapterIndex + 1];
-          if (nextChapter.substories && nextChapter.substories.length > 0) {
+          if (nextChapter.sections && nextChapter.sections.length > 0) {
             selectChapter(nextChapter.id);
-            selectSubstory(nextChapter.substories[0].id);
+            selectSection(nextChapter.sections[0].id);
           }
         } else {
           const currentStoryIndex = stories.findIndex(s => s.id === currentStoryId);
@@ -628,14 +628,14 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
             const nextStory = stories[currentStoryIndex + 1];
             if (nextStory.chapters && nextStory.chapters.length > 0) {
               const firstChapter = nextStory.chapters[0];
-              if (firstChapter.substories && firstChapter.substories.length > 0) {
+              if (firstChapter.sections && firstChapter.sections.length > 0) {
                 selectStory(nextStory.id);
 
                 setTimeout(() => {
                   selectChapter(firstChapter.id);
 
                   setTimeout(() => {
-                    selectSubstory(firstChapter.substories[0].id);
+                    selectSection(firstChapter.sections[0].id);
                   }, 50);
                 }, 50);
               }
@@ -645,14 +645,14 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
               const firstStory = stories[0];
               if (firstStory.chapters && firstStory.chapters.length > 0) {
                 const firstChapter = firstStory.chapters[0];
-                if (firstChapter.substories && firstChapter.substories.length > 0) {
+                if (firstChapter.sections && firstChapter.sections.length > 0) {
                   selectStory(firstStory.id);
 
                   setTimeout(() => {
                     selectChapter(firstChapter.id);
 
                     setTimeout(() => {
-                      selectSubstory(firstChapter.substories[0].id);
+                      selectSection(firstChapter.sections[0].id);
                     }, 50);
                   }, 50);
                 }
@@ -662,9 +662,9 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
         }
       }
     } catch (err) {
-      console.error('Error navigating to next substory:', err);
+      console.error('Error navigating to next section:', err);
     }
-  }, [stories, currentStoryId, currentChapterId, currentSubstoryId, selectStory, selectChapter, selectSubstory]);
+  }, [stories, currentStoryId, currentChapterId, currentSectionId, selectStory, selectChapter, selectSection]);
 
   const selectNode = useCallback((node) => {
     setSelectedNode(node);
@@ -796,10 +796,10 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
     stories,
     currentStory,
     currentChapter,
-    currentSubstory,
+    currentSection,
     currentStoryId,
     currentChapterId,
-    currentSubstoryId,
+    currentSectionId,
     graphData,
     graphDescription,
     entityHighlights,
@@ -809,9 +809,9 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
     error,
     selectStory,
     selectChapter,
-    selectSubstory,
-    goToPreviousSubstory,
-    goToNextSubstory,
+    selectSection,
+    goToPreviousSection,
+    goToNextSection,
     selectNode,
     selectEdge,
     selectEntityById,

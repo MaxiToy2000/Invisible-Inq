@@ -31,8 +31,8 @@ const LandingPage = () => {
           <CombinedStoryDropdown
             stories={stories}
             onOptionSelect={(option) => {
-              if (option && option.storyId && option.chapterId && option.substoryId) {
-                navigate(`/graph?story=${option.storyId}&chapter=${option.chapterId}&substory=${option.substoryId}`);
+              if (option && option.storyId && option.chapterId && option.sectionId) {
+                navigate(`/graph?story=${option.storyId}&chapter=${option.chapterId}&section=${option.sectionId}`);
               }
             }}
             inHeader={false}

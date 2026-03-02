@@ -8,13 +8,13 @@ const LeftSidebar = ({
   stories = [],
   currentStory = null,
   currentChapter = null,
-  currentSubstory = null,
+  currentSection = null,
   currentStoryId = null,
   currentChapterId = null,
-  currentSubstoryId = null,
+  currentSectionId = null,
   onStorySelect,
   onChapterSelect,
-  onSubstorySelect,
+  onSectionSelect,
   onPrevious,
   onNext,
   onCollapseChange = () => {},
@@ -81,24 +81,24 @@ const LeftSidebar = ({
 
   const availableSections = useMemo(() => {
     if (!currentChapterId || !currentChapter) return [];
-    return (currentChapter.substories || []).map(substory => ({
-      id: substory.id,
-      value: substory.id,
-      label: substory.title,
-      ...substory
+    return (currentChapter.sections || []).map(section => ({
+      id: section.id,
+      value: section.id,
+      label: section.title,
+      ...section
     }));
   }, [currentChapterId, currentChapter]);
 
   const highlightedNodes = useMemo(() => {
-    if (!graphData || !graphData.nodes || !currentSubstoryId) {
+    if (!graphData || !graphData.nodes || !currentSectionId) {
       return [];
     }
 
     return graphData.nodes.filter(node => node.highlight === true);
-  }, [graphData, currentSubstoryId]);
+  }, [graphData, currentSectionId]);
 
   const importantEntities = useMemo(() => {
-    const brief = currentSubstory?.brief || '';
+    const brief = currentSection?.brief || '';
     if (!brief) return [];
     
     const stopWords = new Set([
@@ -248,7 +248,7 @@ const LeftSidebar = ({
     }
     
     return finalPick;
-  }, [currentSubstory, graphData]);
+  }, [currentSection, graphData]);
 
   const renderBriefWithBadges = (brief, terms) => {
     if (!brief) return null;
@@ -317,7 +317,7 @@ const LeftSidebar = ({
       {isCollapsed && (
         <div className="lg:hidden p-2 px-3 pb-8 flex-1 text-[#B4B4B4] flex flex-col">
           {}
-          {currentSubstoryId && (
+          {currentSectionId && (
             <div className="mb-1">
               <div className="flex justify-between items-center space-x-1">
                 <button
@@ -343,10 +343,10 @@ const LeftSidebar = ({
           )}
 
           {}
-          {currentSubstory?.headline && (
+          {currentSection?.headline && (
             <div className="text-center mb-1">
               <h3 className="text-base font-semibold text-[#B4B4B4] font-headline line-clamp-2">
-                {currentSubstory.headline}
+                {currentSection.headline}
               </h3>
             </div>
           )}
@@ -427,12 +427,12 @@ const LeftSidebar = ({
                 onStorySelect(storyId, option);
 
                 if (onChapterSelect) onChapterSelect(null, null);
-                if (onSubstorySelect) onSubstorySelect(null, null);
+                if (onSectionSelect) onSectionSelect(null, null);
               }
             }}
             placeholder="Select a Story"
             disabled={stories.length === 0}
-            hasChildSelected={!!currentChapterId || !!currentSubstoryId}
+            hasChildSelected={!!currentChapterId || !!currentSectionId}
             dropdownWidth={sidebarWidth}
           />
 
@@ -450,7 +450,7 @@ const LeftSidebar = ({
             }}
             placeholder="Select a Chapter"
             disabled={!currentStoryId || !currentStory || availableChapters.length === 0}
-            hasChildSelected={!!currentSubstoryId}
+            hasChildSelected={!!currentSectionId}
             dropdownWidth={sidebarWidth}
           />
 
@@ -458,11 +458,11 @@ const LeftSidebar = ({
           <FilterSelect
             label="Section"
             options={availableSections}
-            selectedValue={currentSubstoryId}
-            onSelect={(substoryId, option) => {
-              if (onSubstorySelect) {
-                // Pass both substoryId and option object (which contains title and full substory data)
-                onSubstorySelect(substoryId, option);
+            selectedValue={currentSectionId}
+            onSelect={(sectionId, option) => {
+              if (onSectionSelect) {
+                // Pass both sectionId and option object (which contains title and full section data)
+                onSectionSelect(sectionId, option);
               }
             }}
             placeholder="Select a Section"
@@ -471,15 +471,15 @@ const LeftSidebar = ({
           />
 
           {}
-          {currentSubstory && (
+          {currentSection && (
             <div className="pt-4">
               <div>
-                {(graphDescription ?? sectionDescription ?? currentSubstory?.brief) ? (
+                {(graphDescription ?? sectionDescription ?? currentSection?.brief) ? (
                   <>
                     <div
                       className="text-[#B4B4B4] mb-3 font-normal text-[14px] leading-[18px] tracking-[0px]"
                     >
-                      {renderBriefWithBadges(graphDescription ?? sectionDescription ?? currentSubstory?.brief ?? '', importantEntities)}
+                      {renderBriefWithBadges(graphDescription ?? sectionDescription ?? currentSection?.brief ?? '', importantEntities)}
                     </div>
                   </>
                 ) : null}
@@ -489,15 +489,15 @@ const LeftSidebar = ({
         </div>
 
         {}
-        {currentSubstory && (currentSubstory.title || currentSubstory.brief) && (
+        {currentSection && (currentSection.title || currentSection.brief) && (
           <div className="pb-4">
             <div>
               {}
-              {currentSubstory.brief && (
+              {currentSection.brief && (
                 <div
                   className="text-[#B4B4B4] mb-3 font-normal text-[14px] leading-[18px] tracking-[0px]"
                 >
-                  {renderBriefWithBadges(currentSubstory.brief, importantEntities)}
+                  {renderBriefWithBadges(currentSection.brief, importantEntities)}
                 </div>
               )}
             </div>
@@ -534,7 +534,7 @@ const LeftSidebar = ({
       {}
       <div className={`mt-auto pt-3 pb-3 px-3 hidden`}>
         {}
-        {currentSubstoryId && (
+        {currentSectionId && (
           <div className="mb-4">
             <div className="flex justify-between items-center">
               <button

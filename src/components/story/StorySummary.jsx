@@ -3,8 +3,8 @@ import PropTypes from 'prop-types';
 const StorySummary = ({
   storyHeadline = '',
   storyBrief = '',
-  substoryHeadline = '',
-  substoryBrief = '',
+  sectionHeadline = '',
+  sectionBrief = '',
   chapterHeadline = '',
   chapterBrief = '',
   importantEntities = []
@@ -56,13 +56,13 @@ const StorySummary = ({
       )}
 
       {}
-      {substoryBrief && (
+      {sectionBrief && (
         <div>
           <h3 className="text-base font-semibold mb-1 text-[#B4B4B4] font-headline">
-            {substoryHeadline || 'Substory Summary'}
+            {sectionHeadline || 'Section Summary'}
           </h3>
           <p className="text-xs text-[#B4B4B4]">
-            {substoryBrief}
+            {sectionBrief}
           </p>
         </div>
       )}
@@ -73,8 +73,8 @@ const StorySummary = ({
 StorySummary.propTypes = {
   storyHeadline: PropTypes.string,
   storyBrief: PropTypes.string,
-  substoryHeadline: PropTypes.string,
-  substoryBrief: PropTypes.string,
+  sectionHeadline: PropTypes.string,
+  sectionBrief: PropTypes.string,
   chapterHeadline: PropTypes.string,
   chapterBrief: PropTypes.string,
   importantEntities: PropTypes.arrayOf(PropTypes.string)

@@ -14,7 +14,7 @@ from queries import (
     get_calendar_data_by_section_query,
     get_cluster_data_query
 )
-from models import Story, Chapter, Substory, Node, Link, GraphData
+from models import Story, Chapter, Section, Node, Link, GraphData
 
 logger = logging.getLogger(__name__)
 
@@ -272,16 +272,16 @@ def get_all_stories() -> List[Story]:
                 else:
                     chapter_number = chapter_data.get("chapter_number", 0)
 
-                substories = []
+                sections = []
                 for section_data in chapter_data.get("sections", []):
                     section_id_val = (section_data or {}).get("id") or (section_data or {}).get("gid")
                     if not section_data or not section_id_val:
                         continue
 
-                    substory_id = str(section_id_val)
+                    section_id = str(section_id_val)
                     section_title = section_data.get("section_title", "")
                     # Replace with exact section_number from Postgres gr_id (match by id)
-                    pg_sec = order_map.get(substory_id, {}).get("section_number")
+                    pg_sec = order_map.get(section_id, {}).get("section_number")
                     if pg_sec is not None:
                         try:
                             section_number = int(pg_sec)
@@ -290,8 +290,8 @@ def get_all_stories() -> List[Story]:
                     else:
                         section_number = section_data.get("section_number") or section_data.get("section_num", 0)
 
-                    substories.append(Substory(
-                        id=substory_id,
+                    sections.append(Section(
+                        id=section_id,
                         title=section_title or f"Section {section_number}",
                         headline=section_title or f"Section {section_number}",
                         brief=section_data.get("brief") or "",
@@ -300,14 +300,14 @@ def get_all_stories() -> List[Story]:
                         section_number=section_number
                     ))
 
-                substories.sort(key=lambda s: (s.section_number if s.section_number is not None else 999999))
+                sections.sort(key=lambda s: (s.section_number if s.section_number is not None else 999999))
 
                 chapters.append(Chapter(
                     id=chapter_id,
                     title=chapter_title or f"Chapter {chapter_number}",
                     headline=chapter_title or f"Chapter {chapter_number}",
                     brief="",
-                    substories=substories,
+                    sections=sections,
                     total_nodes=int(chapter_total_nodes) if chapter_total_nodes else 0,
                     chapter_number=chapter_number
                 ))

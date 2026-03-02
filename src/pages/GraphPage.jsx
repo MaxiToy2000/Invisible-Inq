@@ -27,10 +27,10 @@ const GraphPage = () => {
     stories,
     currentStory,
     currentChapter,
-    currentSubstory,
+    currentSection,
     currentStoryId,
     currentChapterId,
-    currentSubstoryId,
+    currentSectionId,
     graphData,
     entityHighlights,
     selectedNode,
@@ -39,9 +39,9 @@ const GraphPage = () => {
     error,
     selectStory,
     selectChapter,
-    selectSubstory,
-    goToPreviousSubstory,
-    goToNextSubstory,
+    selectSection,
+    goToPreviousSection,
+    goToNextSection,
     selectNode,
     selectEdge,
     selectEntityById,
@@ -60,7 +60,7 @@ const GraphPage = () => {
     const searchParams = new URLSearchParams(location.search);
     const storyId = searchParams.get('story');
     const chapterId = searchParams.get('chapter');
-    const substoryId = searchParams.get('substory');
+    const sectionId = searchParams.get('section');
 
     if (storyId) {
       selectStory(storyId);
@@ -69,15 +69,15 @@ const GraphPage = () => {
         setTimeout(() => {
           selectChapter(chapterId);
 
-          if (substoryId) {
+          if (sectionId) {
             setTimeout(() => {
-              selectSubstory(substoryId);
+              selectSection(sectionId);
             }, 100);
           }
         }, 100);
       }
     }
-  }, [location.search, selectStory, selectChapter, selectSubstory]);
+  }, [location.search, selectStory, selectChapter, selectSection]);
 
   const [forceStrength, setForceStrength] = useState(50);
   const [nodeSize, setNodeSize] = useState(50);
@@ -113,7 +113,7 @@ const GraphPage = () => {
     }
   }, [aiSearchError, showError]);
 
-  // Load saved user session once when authenticated. Only restore once per login so changing chapter/substory is not overwritten.
+  // Load saved user session once when authenticated. Only restore once per login so changing chapter/section is not overwritten.
   useEffect(() => {
     if (!isAuthenticated) {
       setSavedGraphCameraPosition(null);
@@ -136,7 +136,7 @@ const GraphPage = () => {
         const s = row.session_data;
         if (s.currentStoryId) selectStory(s.currentStoryId);
         if (s.currentChapterId) setTimeout(() => selectChapter(s.currentChapterId), 50);
-        if (s.currentSubstoryId != null) setTimeout(() => selectSubstory(s.currentSubstoryId), 100);
+        if (s.currentSectionId != null) setTimeout(() => selectSection(s.currentSectionId), 100);
         if (s.viewMode != null) setViewMode(s.viewMode);
         if (s.showRightSidebar !== undefined) setShowRightSidebar(s.showRightSidebar);
         if (s.is3D !== undefined) setIs3D(s.is3D);
@@ -183,7 +183,7 @@ const GraphPage = () => {
       userEmail: user?.email ?? null,
       currentStoryId: currentStoryId ?? null,
       currentChapterId: currentChapterId ?? null,
-      currentSubstoryId: currentSubstoryId ?? null,
+      currentSectionId: currentSectionId ?? null,
       viewMode: viewMode ?? 'Graph',
       selectedNodeId: selectedNode?.id ?? null,
       selectedEdgeId: selectedEdge ? (selectedEdge.id ?? `${selectedEdge.source?.id ?? selectedEdge.source ?? selectedEdge.sourceId}-${selectedEdge.target?.id ?? selectedEdge.target ?? selectedEdge.targetId}`) : null,
@@ -210,7 +210,7 @@ const GraphPage = () => {
       body: JSON.stringify({ session_data: sessionData }),
     });
     if (!res.ok) throw new Error('Failed to save session');
-  }, [apiBaseUrl, user?.email, currentStoryId, currentChapterId, currentSubstoryId, viewMode, selectedNode, selectedEdge, showRightSidebar, is3D, forceStrength, nodeSize, labelSize, edgeLength, edgeThickness, rightSidebarActiveTab]);
+  }, [apiBaseUrl, user?.email, currentStoryId, currentChapterId, currentSectionId, viewMode, selectedNode, selectedEdge, showRightSidebar, is3D, forceStrength, nodeSize, labelSize, edgeLength, edgeThickness, rightSidebarActiveTab]);
 
   const handleSavePositionClick = useCallback(async () => {
     const state = graphRef.current?.getCurrentCameraState?.();
@@ -424,7 +424,7 @@ const GraphPage = () => {
     const url = URL.createObjectURL(dataBlob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `graph-data-${currentStoryId}-${currentChapterId}-${currentSubstoryId || 'all'}.json`;
+    link.download = `graph-data-${currentStoryId}-${currentChapterId}-${currentSectionId || 'all'}.json`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -437,15 +437,15 @@ const GraphPage = () => {
       stories={stories}
       currentStory={currentStory}
       currentChapter={currentChapter}
-      currentSubstory={currentSubstory}
+      currentSection={currentSection}
       currentStoryId={currentStoryId}
       currentChapterId={currentChapterId}
-      currentSubstoryId={currentSubstoryId}
+      currentSectionId={currentSectionId}
       onStorySelect={selectStory}
       onChapterSelect={selectChapter}
-      onSubstorySelect={selectSubstory}
-      onPrevious={goToPreviousSubstory}
-      onNext={goToNextSubstory}
+      onSectionSelect={selectSection}
+      onPrevious={goToPreviousSection}
+      onNext={goToNextSection}
       selectedNode={selectedNode}
       selectedEdge={selectedEdge}
       forceStrength={forceStrength}

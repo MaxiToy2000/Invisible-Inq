@@ -108,7 +108,7 @@ async def root():
         "version": "1.0.0",
         "endpoints": {
             "stories": "/api/stories",
-            "graph_data": "/api/graph/{substory_id} or /api/graph?graph_path=...",
+            "graph_data": "/api/graph/{section_id} or /api/graph?graph_path=...",
             "calendar": "/api/calendar?section_query=...",
             "ai_search": "/api/ai/search?query=...",
             "auth": {
@@ -981,30 +981,30 @@ def _set_cached_graph(key: str, out: dict):
     _GRAPH_CACHE[key] = (expiry, out)
 
 
-@app.get("/api/graph/{substory_id}", response_model=dict)
-async def get_graph_by_substory_id(substory_id: str):
-    """Get graph data for a substory/section. Numeric substory_id is treated as section_gid, else as section_query."""
-    cache_key = f"graph:{substory_id}"
+@app.get("/api/graph/{section_id}", response_model=dict)
+async def get_graph_by_section_id(section_id: str):
+    """Get graph data for a section/section. Numeric section_id is treated as section_gid, else as section_query."""
+    cache_key = f"graph:{section_id}"
     cached, hit = _get_cached_graph(cache_key)
     if hit:
-        logger.info(f"[perf] get_graph_by_substory_id cache HIT key={substory_id}")
+        logger.info(f"[perf] get_graph_by_section_id cache HIT key={section_id}")
         return cached
 
     try:
         t0 = time.perf_counter()
         loop = asyncio.get_event_loop()
-        use_gid = substory_id.isdigit() or (substory_id.replace(".", "").isdigit())
+        use_gid = section_id.isdigit() or (section_id.replace(".", "").isdigit())
         graph_coro = loop.run_in_executor(
             _executor,
-            lambda: get_graph_data(section_gid=substory_id) if use_gid else get_graph_data(section_query=substory_id),
+            lambda: get_graph_data(section_gid=section_id) if use_gid else get_graph_data(section_query=section_id),
         )
-        desc_coro = loop.run_in_executor(_executor, lambda: get_gr_id_description(substory_id))
+        desc_coro = loop.run_in_executor(_executor, lambda: get_gr_id_description(section_id))
         graph_data, description = await asyncio.gather(graph_coro, desc_coro)
         t1 = time.perf_counter()
         n_nodes = len(graph_data.nodes)
         n_links = len(graph_data.links)
         logger.info(
-            f"[perf] get_graph_by_substory_id total={t1 - t0:.2f}s nodes={n_nodes} links={n_links} "
+            f"[perf] get_graph_by_section_id total={t1 - t0:.2f}s nodes={n_nodes} links={n_links} "
             "(check get_graph_data db= vs format= in logs to see where time goes)"
         )
         out = graph_data.model_dump()
@@ -1015,7 +1015,7 @@ async def get_graph_by_substory_id(substory_id: str):
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Error fetching graph data for substory {substory_id}: {str(e)}"
+            detail=f"Error fetching graph data for section {section_id}: {str(e)}"
         )
 
 @app.get("/api/graph", response_model=dict)
@@ -1044,21 +1044,21 @@ async def get_graph_by_path(graph_path: Optional[str] = None):
             detail=f"Error fetching graph data for path {graph_path}: {str(e)}"
         )
 
-@app.get("/api/graph/{substory_id}/country/{country_name}", response_model=dict)
-async def get_graph_by_substory_and_country(substory_id: str, country_name: str):
+@app.get("/api/graph/{section_id}/country/{country_name}", response_model=dict)
+async def get_graph_by_section_and_country(section_id: str, country_name: str):
     """Get graph data for a section filtered by country"""
     try:
-        # First, get the section_query from the substory
-        # The substory_id might be a section_query or we need to look it up
-        # For now, treat substory_id as section_query (same as get_graph_by_substory_id)
-        section_query = substory_id
+        # First, get the section_query from the section
+        # The section_id might be a section_query or we need to look it up
+        # For now, treat section_id as section_query (same as get_graph_by_section_id)
+        section_query = section_id
         
         graph_data = get_graph_data_by_section_and_country(section_query, country_name)
         return graph_data.model_dump()
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Error fetching graph data for substory {substory_id} and country {country_name}: {str(e)}"
+            detail=f"Error fetching graph data for section {section_id} and country {country_name}: {str(e)}"
         )
 
 @app.get("/api/calendar", response_model=dict)

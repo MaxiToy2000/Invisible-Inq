@@ -398,11 +398,11 @@ Invisible-Inq/
 
 ### Stories
 
-- **GET** `/api/stories` - Get all stories with chapters and substories
+- **GET** `/api/stories` - Get all stories with chapters and sections
 
 ### Graph Data
 
-- **GET** `/api/graph/{substory_id}` - Get graph data for a specific substory
+- **GET** `/api/graph/{section_id}` - Get graph data for a specific section
 - **GET** `/api/graph?graph_path=...` - Get graph data by path
 - **GET** `/api/graph/section?section_query=...&country=...` - Get graph data filtered by section and country
 

@@ -59,10 +59,10 @@ def test_connection():
             count = chapter_count[0].get('count', 0)
             print(f"  Chapter nodes: {count}")
 
-        substory_count = db.execute_query("MATCH (n:Substory) RETURN count(n) as count")
-        if substory_count:
-            count = substory_count[0].get('count', 0)
-            print(f"  Substory nodes: {count}")
+        section_count = db.execute_query("MATCH (n:Section) RETURN count(n) as count")
+        if section_count:
+            count = section_count[0].get('count', 0)
+            print(f"  Section nodes: {count}")
 
         db.close()
         print("\n" + "=" * 60)

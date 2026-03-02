@@ -24,7 +24,7 @@ const StoryCard = ({ story, onClick, onChapterSelect, onMouseEnter, totalNodes =
   
   // Calculate total sections across all chapters
   const totalSections = story?.chapters?.reduce((sum, chapter) => {
-    return sum + (chapter?.substories?.length || 0);
+    return sum + (chapter?.sections?.length || 0);
   }, 0) || 0;
 
   // Format date if provided
@@ -200,7 +200,7 @@ StoryCard.propTypes = {
     chapters: PropTypes.arrayOf(PropTypes.shape({
       id: PropTypes.string,
       title: PropTypes.string,
-      substories: PropTypes.array
+      sections: PropTypes.array
     }))
   }),
   onClick: PropTypes.func,

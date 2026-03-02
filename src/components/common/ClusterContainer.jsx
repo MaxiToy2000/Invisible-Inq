@@ -6,7 +6,7 @@ const ClusterContainer = ({
   selectedCluster,
   clusterMethod = '',
   clusterProperty = '',
-  currentSubstory = null
+  currentSection = null
 }) => {
   const { showError } = useToast();
   const width = 800;
@@ -52,7 +52,7 @@ const ClusterContainer = ({
           node_limit: '10',
         });
 
-        const sectionQuery = currentSubstory?.section_query || null;
+        const sectionQuery = currentSection?.section_query || null;
         if (sectionQuery) {
           params.set('section_query', sectionQuery);
         }
@@ -81,7 +81,7 @@ const ClusterContainer = ({
     };
 
     fetchClusterData();
-  }, [clusterMethod, clusterProperty, currentSubstory?.section_query]);
+  }, [clusterMethod, clusterProperty, currentSection?.section_query]);
 
   const clusters = useMemo(() => {
     const raw = clusterData?.clusters || clusterData?.clusterData?.clusters || [];

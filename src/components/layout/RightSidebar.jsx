@@ -33,7 +33,7 @@ const RightSidebar = forwardRef(({
   onClusterConfigChange = () => { },
   clusterMethod = '',
   clusterProperty = '',
-  currentSubstory = null,
+  currentSection = null,
   onSectionClick = () => { },
   graphData = { nodes: [], links: [] },
   filteredGraphData = null,
@@ -1370,14 +1370,14 @@ const RightSidebar = forwardRef(({
         {activeTab === 'data-visualization' && (
           <div className="w-full h-full flex flex-col overflow-y-auto overflow-x-hidden">
             <div className="w-full">
-              <GlobalActivity graphData={graphData} currentSubstory={currentSubstory} />
+              <GlobalActivity graphData={graphData} currentSection={currentSection} />
             </div>
             <div className="w-full flex-shrink-0 mt-0 mb-1 aspect-square min-h-full">
               <ConnectedData
                 onSectionClick={onSectionClick}
                 graphData={graphData}
                 filteredGraphData={filteredGraphData}
-                currentSubstory={currentSubstory}
+                currentSection={currentSection}
               />
             </div>
           </div>

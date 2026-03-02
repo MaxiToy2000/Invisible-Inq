@@ -34,10 +34,10 @@ function getStoryFromFolders(storyDir, storyId) {
       const chapterPath = path.join(storyDir, chapterName);
       const chapterMeta = readJsonSafe(path.join(chapterPath, 'chapter_content.json')) || {};
       const chapterTitle = chapterMeta.title || chapterName;
-      const substories = [];
+      const sections = [];
       const seenIds = new Set();
       getFiles(chapterPath)
-        .filter(f => f.endsWith('_content.json') && f.startsWith('substory'))
+        .filter(f => f.endsWith('_content.json') && f.startsWith('section'))
         .forEach(subFile => {
           const subMeta = readJsonSafe(path.join(chapterPath, subFile)) || {};
           let baseId = subMeta.id || subFile.replace('_content.json', '');
@@ -50,7 +50,7 @@ function getStoryFromFolders(storyDir, storyId) {
 
           const subPrefix = subFile.split('_content')[0];
           const graphFile = getFiles(chapterPath).find(f => f.startsWith(subPrefix + '_graph') && f.endsWith('.json'));
-          substories.push({
+          sections.push({
             id: uniqueId,
             title: subMeta.title || subFile.replace('_content.json', ''),
             graphPath: graphFile ? path.relative(DATA_DIR, path.join(chapterPath, graphFile)).replace(/\\/g, '/') : null
@@ -60,7 +60,7 @@ function getStoryFromFolders(storyDir, storyId) {
         id: chapterMeta.id || chapterName,
         title: chapterTitle,
         path: path.relative(DATA_DIR, chapterPath).replace(/\\/g, '/'),
-        substories
+        sections
       };
     })
   };

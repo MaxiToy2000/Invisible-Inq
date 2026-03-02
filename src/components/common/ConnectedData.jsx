@@ -53,7 +53,7 @@ const truncateEntityText = (text) => {
 const ConnectedData = ({
   onSectionClick,
   graphData = { nodes: [], links: [] },
-  currentSubstory = null,
+  currentSection = null,
   filteredGraphData = null,
 }) => {
   const svgRef = useRef(null);
@@ -244,7 +244,7 @@ const ConnectedData = ({
     }
 
     // Fallback to mockup data if no relationships found and no section selected
-    if (relationships.length === 0 && (!currentSubstory || !currentSubstory.section_query)) {
+    if (relationships.length === 0 && (!currentSection || !currentSection.section_query)) {
       // Process mockup data
       // Process funding items
       mockupData.funding.forEach((item) => {
@@ -687,7 +687,7 @@ const ConnectedData = ({
 
     // Render the graph
     renderGraph(nodes, links, viewBoxWidth, calculatedViewBox, leftX);
-  }, [graphData, currentSubstory, filteredGraphData, apiGraphData]);
+  }, [graphData, currentSection, filteredGraphData, apiGraphData]);
 
   const renderGraph = (nodes, links, width, viewBoxStr, leftX) => {
     if (!svgRef.current) return;
