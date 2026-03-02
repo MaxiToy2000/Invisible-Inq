@@ -127,7 +127,10 @@ const HomePage = () => {
     selectEntityById,
     performAISearch,
     executeCypherQuery
-  } = useGraphData();
+  } = useGraphData(undefined, {
+    // Only auto-select first story when not at root with no story (dashboard-first at /)
+    allowAutoSelectFirstStory: location.pathname !== '/' || !!new URLSearchParams(location.search).get('story'),
+  });
 
   // Initialize activity tracking
   useActivityTracking();
@@ -170,12 +173,15 @@ const HomePage = () => {
         if (cancelled || !row?.session_data) return;
         hasRestoredSessionRef.current = true; // mark restored so we don't re-apply when deps change
         const s = row.session_data;
-        if (s.currentStoryId) {
+        // Only restore story/chapter/section (saved XYZ) when we have a full saved position; otherwise show dashboard
+        const hasSavedPosition = s.currentStoryId && s.currentChapterId != null && (s.currentSectionId != null || s.currentSubstoryId != null);
+        if (hasSavedPosition) {
           selectStory(s.currentStoryId);
           weRestoredStoryFromSessionRef.current = true; // so URL effect does not overwrite with URL params
+          if (s.currentChapterId) setTimeout(() => selectChapter(s.currentChapterId), 50);
+          const sectionId = s.currentSectionId != null ? s.currentSectionId : s.currentSubstoryId;
+          if (sectionId != null) setTimeout(() => selectSection(sectionId), 100);
         }
-        if (s.currentChapterId) setTimeout(() => selectChapter(s.currentChapterId), 50);
-        if (s.currentSectionId != null) setTimeout(() => selectSection(s.currentSectionId), 100);
         if (s.viewMode != null) setViewMode(s.viewMode);
         if (s.showRightSidebar !== undefined) setShowRightSidebar(s.showRightSidebar);
         if (s.is3D !== undefined) setIs3D(s.is3D);
@@ -191,8 +197,11 @@ const HomePage = () => {
         if (s.isFullscreen !== undefined) setIsFullscreen(s.isFullscreen);
         rightSidebarRef.current?.restoreSession?.(s);
         graphViewByMapRef.current?.restoreSession?.(s);
-        if (s.savedGraphCameraPosition) setSavedGraphCameraPosition(s.savedGraphCameraPosition);
-        if (s.selectedNodeId != null || s.selectedEdgeId != null) {
+        if (hasSavedPosition && s.savedGraphCameraPosition) setSavedGraphCameraPosition(s.savedGraphCameraPosition);
+        if (!hasSavedPosition) {
+          setSavedGraphCameraPosition(null);
+          pendingSessionRestoreRef.current = null;
+        } else if (s.selectedNodeId != null || s.selectedEdgeId != null) {
           pendingSessionRestoreRef.current = { selectedNodeId: s.selectedNodeId ?? null, selectedEdgeId: s.selectedEdgeId ?? null };
         }
       })
@@ -629,7 +638,11 @@ const HomePage = () => {
   // Stable callbacks for Layout to avoid unnecessary re-renders of sidebars
   const handleToggleRightSidebar = useCallback(() => setShowRightSidebar((prev) => !prev), []);
   const handle3DToggle = useCallback((nextIs3D) => setIs3D(nextIs3D), []);
-  const handleHomePageClick = useCallback(() => setShowGraphView(false), []);
+  const handleHomePageClick = useCallback(() => {
+    setShowGraphView(false);
+    selectStory(null); // clear selection so dashboard shows cards (no story selected)
+    navigate('/', { replace: true });
+  }, [navigate, selectStory]);
 
   // Handle selection mode changes (must be after useGraphData to access selectNode/selectEdge)
   const handleSelectionModeChange = useCallback((newMode) => {
@@ -1214,6 +1227,19 @@ const HomePage = () => {
       setShowGraphView(false);
     }
   }, [currentStoryId, graphData]);
+
+  // When user navigates to / (e.g. clicks Home or types localhost:3000), show dashboard and clear selection.
+  // Saved XYZ is only applied on first render; after that, going to / always shows dashboard.
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search);
+    const storyParam = searchParams.get('story');
+    if (location.pathname !== '/' || storyParam != null) return;
+    if (!sessionRestoreAttemptedRef.current) return; // wait for first session restore
+    if (currentStoryId == null) return; // already on dashboard
+    if (weRestoredStoryFromSessionRef.current) return; // keep restored graph on first load
+    selectStory(null);
+    setShowGraphView(false);
+  }, [location.pathname, location.search, currentStoryId, selectStory]);
 
   // Fetch statistics for all stories (deferred so first paint is not blocked)
   useEffect(() => {

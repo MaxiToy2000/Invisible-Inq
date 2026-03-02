@@ -515,7 +515,9 @@ const ThreeGraphVisualization = React.memo(forwardRef(({
   const lastEdgeLengthRef = useRef(edgeLength); // Track last applied edge length
   const lastCameraDistanceRef = useRef(null); // Track last camera-target distance for mode switches
   const isMountedRef = useRef(true); // Track if component is mounted to prevent state updates after unmount
-  
+  const is3DRef = useRef(is3D); // So main setup effect can apply 2D/3D after graph create without is3D in deps
+  is3DRef.current = is3D;
+
   // Box selection state
   const [boxSelection, setBoxSelection] = useState({
     isSelecting: false,
@@ -533,6 +535,7 @@ const ThreeGraphVisualization = React.memo(forwardRef(({
   
   const [selectedNodes, setSelectedNodes] = useState(new Set());
   const [selectedEdges, setSelectedEdges] = useState(new Set());
+  const [is3DRetry, setIs3DRetry] = useState(0); // Increment to retry applying 2D/3D when graph wasn't ready
   const previousSelectedNodesRef = useRef(new Set()); // Track previous selected nodes
   const previousSelectedEdgesRef = useRef(new Set()); // Track previous selected edges
   const searchMatchesRef = useRef(new Set()); // Track which nodes match the current search
@@ -1871,11 +1874,46 @@ const ThreeGraphVisualization = React.memo(forwardRef(({
       }, 1000);
     }
 
+    // After graph is created/updated, re-apply current 2D/3D mode so it doesn't revert to 3D when data/hiddenCategories change
+    let rafId = null;
+    rafId = requestAnimationFrame(() => {
+      if (!graphRef.current || !data?.nodes?.length) return;
+      const graph = graphRef.current;
+      const graphData = graph.graphData();
+      const camera = graph.camera();
+      const controls = graph.controls();
+      if (!graphData || !camera || !controls) return;
+      if (!is3DRef.current) {
+        const currentTarget = controls.target ? controls.target.clone() : new THREE.Vector3(0, 0, 0);
+        const currentDistance = camera.position.distanceTo(currentTarget);
+        lastCameraDistanceRef.current = currentDistance;
+        graphData.nodes.forEach(node => {
+          node.z = 0;
+          node.fz = 0;
+          node.vz = 0;
+          node.fx = node.fx;
+          node.fy = node.fy;
+          node.fz = 0;
+        });
+        const zForce = graph.d3Force && graph.d3Force('z');
+        if (zForce && typeof zForce.strength === 'function') zForce.strength(0);
+        controls.enableRotate = false;
+        controls.minPolarAngle = Math.PI / 2;
+        controls.maxPolarAngle = Math.PI / 2;
+        const zDistance = currentDistance || calculateOptimalCameraDistance(graphData.nodes.length);
+        camera.position.set(currentTarget.x, currentTarget.y, currentTarget.z + zDistance);
+        controls.target.copy(currentTarget);
+        controls.update();
+        graph.refresh();
+      }
+    });
+
     // Store current data as previous for next incremental update
     previousDataRef.current = { nodes: [...data.nodes], links: [...data.links] };
 
     // Cleanup function
     return () => {
+      if (rafId != null) cancelAnimationFrame(rafId);
       window.removeEventListener('resize', handleResize);
 
       // Disconnect the ResizeObserver
@@ -2980,7 +3018,11 @@ const ThreeGraphVisualization = React.memo(forwardRef(({
     const camera = graphRef.current.camera();
     const controls = graphRef.current.controls();
 
-    if (!graphData || !camera || !controls) return;
+    if (!graphData || !camera || !controls) {
+      // Graph may not be ready yet (e.g. just recreated after data change); retry next tick
+      requestAnimationFrame(() => setIs3DRetry((r) => r + 1));
+      return;
+    }
 
     if (!is3D) {
       // Preserve current camera-target distance to avoid apparent shrink
@@ -3064,7 +3106,7 @@ const ThreeGraphVisualization = React.memo(forwardRef(({
     graphRef.current.refresh();
 
     // Update axis arrow positions if a node is selected
-  }, [is3D, data, normalizedAxisForce]);
+  }, [is3D, data, normalizedAxisForce, is3DRetry]);
 
   // Track previous hierarchyTreeAxis to detect actual changes
   const prevHierarchyTreeAxisRef = useRef(hierarchyTreeAxis);
