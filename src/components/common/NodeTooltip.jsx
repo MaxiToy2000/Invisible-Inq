@@ -24,7 +24,6 @@ const NodeTooltip = ({ node, position }) => {
         left: `${position.x}px`,
         top: `${position.y}px`,
       }}
-      className="-translate-x-1/2 -translate-y-[120%]"
     >
       <div className="bg-[#1E1E1E] border-l-4 border-[#5C9EFF] rounded-lg shadow-2xl overflow-hidden max-w-[400px] min-w-[300px]">
         <div className="flex">

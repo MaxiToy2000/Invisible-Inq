@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { 
-  FaUser, FaBuilding, FaMapMarkerAlt, FaDollarSign, 
-  FaHandshake, FaFlag, FaBullseye, FaCog, 
+import {
+  FaUser, FaBuilding, FaMapMarkerAlt, FaDollarSign,
+  FaHandshake, FaFlag, FaBullseye, FaCog,
   FaFileAlt, FaGlobe, FaLink, FaLayerGroup,
   FaPlus, FaTimes, FaShareAlt,
   FaBriefcase, FaGraduationCap, FaAward, FaExternalLinkAlt
@@ -29,7 +29,7 @@ import Loader from './Loader';
 // Icon mapping for different node types
 const getNodeIcon = (nodeType) => {
   const type = nodeType?.toLowerCase() || '';
-  
+
   if (type.includes('entity') || type.includes('person')) return FaUser;
   if (type.includes('agency') || type.includes('organization')) return FaBuilding;
   if (type.includes('country')) return FaFlag;
@@ -41,14 +41,14 @@ const getNodeIcon = (nodeType) => {
   if (type.includes('description')) return FaFileAlt;
   if (type.includes('region')) return FaGlobe;
   if (type.includes('process')) return FaLayerGroup;
-  
+
   return FaLink; // Default icon
 };
 
 // Color scheme for different node types - matched to colorUtils.js
 const getNodeColor = (nodeType) => {
   const type = nodeType?.toLowerCase() || '';
-  
+
   if (type.includes('entity')) return '#4263EB';
   if (type.includes('relationship')) return '#F03E3E';
   if (type.includes('funding')) return '#40C057';
@@ -64,7 +64,7 @@ const getNodeColor = (nodeType) => {
   if (type.includes('recipient')) return '#4ECDC4';
   if (type.includes('region')) return '#95E1D3';
   if (type.includes('result')) return '#F38181';
-  
+
   return '#495057'; // Default
 };
 
@@ -76,7 +76,7 @@ const BaseTooltipLayout = ({ node, color, graphData }) => {
   const typeDisplay = subtype ? `${nodeType} / ${subtype}` : nodeType;
   const dateVal = node.date || node.Date || node['Relationship Date'] || node['Action Date'] || node['Process Date'] || node['Disb Date'] || '';
   const description = node.text || node.description || node.desc || node.summary || node['Relationship Summary'] || node.properties?.description || node.properties?.text || '';
-  
+
   let relatedCount = 0;
   if (graphData?.links && graphData?.nodes) {
     const nodeId = node.id;
@@ -94,9 +94,9 @@ const BaseTooltipLayout = ({ node, color, graphData }) => {
   }
 
   return (
-    <div 
+    <div
       className="flex flex-row rounded-[10px] relative"
-      style={{ 
+      style={{
         width: '520px',
         minHeight: '140px',
         padding: '12px 15px',
@@ -105,7 +105,7 @@ const BaseTooltipLayout = ({ node, color, graphData }) => {
         backdropFilter: 'blur(10px)'
       }}
     >
-      <div 
+      <div
         className="absolute left-3 top-3 bottom-3 w-1.5 rounded-full"
         style={{ backgroundColor: color }}
       />
@@ -184,7 +184,8 @@ const fetchDirectImageUrl = async (url) => {
 const WIKIDATA_ENTITY_TYPES = ['entity', 'person', 'concept', 'data', 'entity_gen'];
 
 // Entity-specific layout - fetches wikidata by node id (same as Node Properties) for image_url/logo_url
-const EntityTooltipLayout = ({ node, color }) => {
+// If there is no avatar and no detailed description, fall back to the base tooltip style
+const EntityTooltipLayout = ({ node, color, graphData }) => {
   const [imageError, setImageError] = useState(false);
   const [wikidataImageUrl, setWikidataImageUrl] = useState(null);
   const [wikidataInfo, setWikidataInfo] = useState(null);
@@ -269,12 +270,19 @@ const EntityTooltipLayout = ({ node, color }) => {
   const nodeImageUrl = (typeof rawNodeImageUrl === 'string' && rawNodeImageUrl.trim()) ? rawNodeImageUrl.trim() : null;
   const imageUrl = wikidataImageUrl || nodeImageUrl;
 
+  // If this entity has neither an avatar nor a meaningful description,
+  // use the same compact layout as other node types.
+  const hasAvatarOrDescription = !!imageUrl || !!description;
+
+  if (!hasAvatarOrDescription) {
+    return <BaseTooltipLayout node={node} color={color} graphData={graphData} />;
+  }
+
   return (
-    <div 
+    <div
       className="flex flex-row rounded-[15px] relative overflow-hidden"
-      style={{ 
+      style={{
         width: '580px',
-        minHeight: '180px',
         padding: '12px 15px',
         background: '#1a1a1a',
         border: '2px solid #1F1F22',
@@ -283,42 +291,37 @@ const EntityTooltipLayout = ({ node, color }) => {
     >
       {/* Left Side - Accent Bar + Image */}
       <div className="flex flex-row flex-shrink-0 self-stretch">
-        {/* Left Accent Line */}
-        <div 
-          className="w-1.5 rounded-lg flex-shrink-0 self-stretch"
-          style={{ backgroundColor: '#358EE2' }}
-        />
-        
-        {/* Image Container */}
-        <div 
-          className="rounded-r-lg overflow-hidden self-stretch"
-          style={{ 
-            width: '140px',
-            minHeight: '140px',
-            background: '#9CA3AF',
-          }}
-        >
-          {imageUrl && !imageError ? (
-            <img 
-              src={imageUrl} 
-              alt={displayName}
-              className="w-full h-full object-cover block"
-              loading="lazy"
-              onLoad={() => {}}
-              onError={() => setImageError(true)}
-            />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-400 to-gray-500">
-              <FaUser className="text-white opacity-50" size={48} />
-            </div>
-          )}
-        </div>
+       <div
+            className="w-1.5 rounded-lg flex-shrink-0 self-stretch"
+            style={{ backgroundColor: '#358EE2' }}
+          />
+        {imageUrl && !imageError ? (<>
+          {/* Image Container */}
+          <div
+            className="rounded-r-lg overflow-hidden self-stretch"
+            style={{
+              width: '140px',
+              background: '#9CA3AF',
+            }}
+          >
+            <img
+                src={imageUrl}
+                alt={displayName}
+                className="w-full h-full object-cover block"
+                loading="lazy"
+                onLoad={() => { }}
+                onError={() => setImageError(true)}
+              />
+          </div>
+        </>) : (
+          <></>
+        )}
       </div>
 
       {/* Middle - Content: name & type from entity, wikipedia_url / url / alias from entity_wikidata */}
       <div className="flex-1 ml-5 min-w-0 flex flex-col">
         {/* Name (from entity / wikidata) */}
-        <h3 
+        <h3
           className="text-2xl font-bold mb-1 leading-tight"
           style={{ color: '#ffffff' }}
         >
@@ -396,25 +399,25 @@ const LocationTooltipLayout = ({ node, color, graphData }) => {
 const AmountTooltipLayout = ({ node, color, graphData }) => {
   // Extract transaction/amount specific data
   const amount = node.Amount || node.amount || node.value || node.properties?.amount || node.name || '0';
-  
+
   // Find connected source and target from graph links
   let sourceEntity = 'Entity Source';
   let targetEntity = 'Entity Target';
-  
+
   if (graphData?.links && graphData?.nodes) {
     const nodeId = node.id;
-    
+
     // Find links connected to this amount node
     const incomingLinks = graphData.links.filter(link => {
       const targetId = link.target?.id || link.targetId || link.target;
       return targetId === nodeId;
     });
-    
+
     const outgoingLinks = graphData.links.filter(link => {
       const sourceId = link.source?.id || link.sourceId || link.source;
       return sourceId === nodeId;
     });
-    
+
     // Get source node (node that links TO this amount)
     if (incomingLinks.length > 0) {
       const sourceLink = incomingLinks[0];
@@ -424,7 +427,7 @@ const AmountTooltipLayout = ({ node, color, graphData }) => {
         sourceEntity = sourceNode.name || sourceNode.id || 'Entity Source';
       }
     }
-    
+
     // Get target node (node that this amount links TO)
     if (outgoingLinks.length > 0) {
       const targetLink = outgoingLinks[0];
@@ -435,54 +438,54 @@ const AmountTooltipLayout = ({ node, color, graphData }) => {
       }
     }
   }
-  
+
   // Fallback to node properties if graph data didn't provide values
   if (sourceEntity === 'Entity Source') {
-    sourceEntity = node['Distributor Full Name'] || 
-                   node.source_entity || 
-                   node.source_name ||
-                   node.from_name ||
-                   node.from_entity ||
-                   node.from ||
-                   node.sourceName ||
-                   node.properties?.source || 
-                   node.properties?.source_name ||
-                   node.properties?.from ||
-                   'Entity Source';
+    sourceEntity = node['Distributor Full Name'] ||
+      node.source_entity ||
+      node.source_name ||
+      node.from_name ||
+      node.from_entity ||
+      node.from ||
+      node.sourceName ||
+      node.properties?.source ||
+      node.properties?.source_name ||
+      node.properties?.from ||
+      'Entity Source';
   }
-  
+
   if (targetEntity === 'Entity Target') {
-    targetEntity = node['Receiver Name'] || 
-                   node.target_entity || 
-                   node.target_name ||
-                   node.to_name ||
-                   node.to_entity ||
-                   node.to ||
-                   node.targetName ||
-                   node.properties?.target || 
-                   node.properties?.target_name ||
-                   node.properties?.to ||
-                   'Entity Target';
+    targetEntity = node['Receiver Name'] ||
+      node.target_entity ||
+      node.target_name ||
+      node.to_name ||
+      node.to_entity ||
+      node.to ||
+      node.targetName ||
+      node.properties?.target ||
+      node.properties?.target_name ||
+      node.properties?.to ||
+      'Entity Target';
   }
-  
+
   // NOTE: `node.section` is section membership (Section Name key), not the node's type.
   const entityType = node.entity_type || node.subtype || node.node_type || node.type || node.properties?.type || 'Type';
   const relatedCount = node.degree || node.related_count || node.count || node.properties?.related_count || null;
 
   // Format amount with currency
-  const formattedAmount = typeof amount === 'number' 
-    ? `$${amount.toLocaleString()}` 
-    : amount.toString().startsWith('$') 
-      ? amount 
+  const formattedAmount = typeof amount === 'number'
+    ? `$${amount.toLocaleString()}`
+    : amount.toString().startsWith('$')
+      ? amount
       : `$${amount}`;
 
   // Description text
   const description = node.description || node.desc || node.summary || node.properties?.description || '';
 
   return (
-    <div 
+    <div
       className="flex flex-row rounded-[10px] relative"
-      style={{ 
+      style={{
         width: '520px',
         minHeight: '140px',
         padding: '12px 15px',
@@ -492,7 +495,7 @@ const AmountTooltipLayout = ({ node, color, graphData }) => {
       }}
     >
       {/* Vertical Accent Bar - Color based on node type */}
-      <div 
+      <div
         className="absolute left-3 top-3 bottom-3 w-1.5 rounded-full"
         style={{ backgroundColor: color }}
       />
@@ -508,7 +511,7 @@ const AmountTooltipLayout = ({ node, color, graphData }) => {
 
           {/* Arrow */}
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="text-[#EF4444] flex-shrink-0">
-            <path d="M5 12H19M19 12L12 5M19 12L12 19" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M5 12H19M19 12L12 5M19 12L12 19" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
 
           {/* Amount (highlighted in node color) */}
@@ -518,7 +521,7 @@ const AmountTooltipLayout = ({ node, color, graphData }) => {
 
           {/* Arrow */}
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="text-[#EF4444] flex-shrink-0">
-            <path d="M5 12H19M19 12L12 5M19 12L12 19" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M5 12H19M19 12L12 5M19 12L12 19" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
 
           {/* Target Entity */}
@@ -644,36 +647,36 @@ const ExchangeTooltipLayout = ({ node, color, graphData }) => {
 const _ActionTooltipLayoutLegacy = ({ node, color, graphData }) => {
   // Process/Action name (the node's actual action value/name)
   const processName = node.name ||
-                      node.action_text || 
-                      node.action_name || 
-                      node.label || 
-                      node.title ||
-                      node.action ||
-                      node.properties?.name ||
-                      node.properties?.action_text ||
-                      node.properties?.action_name ||
-                      node.properties?.label ||
-                      node.category || 
-                      'Action';
-  
+    node.action_text ||
+    node.action_name ||
+    node.label ||
+    node.title ||
+    node.action ||
+    node.properties?.name ||
+    node.properties?.action_text ||
+    node.properties?.action_name ||
+    node.properties?.label ||
+    node.category ||
+    'Action';
+
   // Find connected source and target from graph links
   let sourceEntity = 'Entity Source';
   let targetEntity = 'Entity Target';
-  
+
   if (graphData?.links && graphData?.nodes) {
     const nodeId = node.id;
-    
+
     // Find links connected to this action node
     const incomingLinks = graphData.links.filter(link => {
       const targetId = link.target?.id || link.targetId || link.target;
       return targetId === nodeId;
     });
-    
+
     const outgoingLinks = graphData.links.filter(link => {
       const sourceId = link.source?.id || link.sourceId || link.source;
       return sourceId === nodeId;
     });
-    
+
     // Get source node (node that links TO this action)
     if (incomingLinks.length > 0) {
       const sourceLink = incomingLinks[0];
@@ -683,7 +686,7 @@ const _ActionTooltipLayoutLegacy = ({ node, color, graphData }) => {
         sourceEntity = sourceNode.name || sourceNode.id || 'Entity Source';
       }
     }
-    
+
     // Get target node (node that this action links TO)
     if (outgoingLinks.length > 0) {
       const targetLink = outgoingLinks[0];
@@ -694,53 +697,53 @@ const _ActionTooltipLayoutLegacy = ({ node, color, graphData }) => {
       }
     }
   }
-  
+
   // Fallback to node properties if graph data didn't provide values
   if (sourceEntity === 'Entity Source') {
-    sourceEntity = node.source_entity || 
-                   node.source_name ||
-                   node.from_name ||
-                   node.from_entity ||
-                   node.from ||
-                   node.sourceName ||
-                   node.actor ||
-                   node.properties?.source || 
-                   node.properties?.source_name ||
-                   node.properties?.from ||
-                   node.properties?.actor ||
-                   'Entity Source';
+    sourceEntity = node.source_entity ||
+      node.source_name ||
+      node.from_name ||
+      node.from_entity ||
+      node.from ||
+      node.sourceName ||
+      node.actor ||
+      node.properties?.source ||
+      node.properties?.source_name ||
+      node.properties?.from ||
+      node.properties?.actor ||
+      'Entity Source';
   }
-  
+
   if (targetEntity === 'Entity Target') {
-    targetEntity = node.target_entity || 
-                   node.target_name ||
-                   node.to_name ||
-                   node.to_entity ||
-                   node.to ||
-                   node.targetName ||
-                   node.subject ||
-                   node.object ||
-                   node.properties?.target || 
-                   node.properties?.target_name ||
-                   node.properties?.to ||
-                   node.properties?.subject ||
-                   'Entity Target';
+    targetEntity = node.target_entity ||
+      node.target_name ||
+      node.to_name ||
+      node.to_entity ||
+      node.to ||
+      node.targetName ||
+      node.subject ||
+      node.object ||
+      node.properties?.target ||
+      node.properties?.target_name ||
+      node.properties?.to ||
+      node.properties?.subject ||
+      'Entity Target';
   }
 
   // NOTE: `node.section` is section membership (Section Name key), not the node's type.
   const entityType = node.action_type || node.subtype || node.node_type || node.type || node.properties?.type || 'Type';
-  
+
   // Calculate actual number of connected nodes from graph data
   let relatedCount = 0;
   if (graphData?.links && graphData?.nodes) {
     const nodeId = node.id;
     const connectedNodeIds = new Set();
-    
+
     // Find all links connected to this node
     graphData.links.forEach(link => {
       const sourceId = link.source?.id || link.sourceId || link.source;
       const targetId = link.target?.id || link.targetId || link.target;
-      
+
       // If this node is the source, add the target
       if (sourceId === nodeId) {
         connectedNodeIds.add(targetId);
@@ -750,10 +753,10 @@ const _ActionTooltipLayoutLegacy = ({ node, color, graphData }) => {
         connectedNodeIds.add(sourceId);
       }
     });
-    
+
     relatedCount = connectedNodeIds.size;
   }
-  
+
   // Fallback to node properties if graph data not available
   if (relatedCount === 0) {
     relatedCount = node.degree || node.related_count || node.count || node.properties?.related_count || 0;
@@ -763,9 +766,9 @@ const _ActionTooltipLayoutLegacy = ({ node, color, graphData }) => {
   const description = node.text || node.description || node.desc || node.summary || node.properties?.description || '';
 
   return (
-    <div 
+    <div
       className="flex flex-row rounded-[10px] relative"
-      style={{ 
+      style={{
         width: '520px',
         minHeight: '140px',
         padding: '12px 15px',
@@ -775,7 +778,7 @@ const _ActionTooltipLayoutLegacy = ({ node, color, graphData }) => {
       }}
     >
       {/* Vertical Accent Bar - Orange for Action */}
-      <div 
+      <div
         className="absolute left-3 top-3 bottom-3 w-1.5 rounded-full"
         style={{ backgroundColor: color }}
       />
@@ -791,7 +794,7 @@ const _ActionTooltipLayoutLegacy = ({ node, color, graphData }) => {
 
           {/* Arrow */}
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="text-[#EF4444] flex-shrink-0">
-            <path d="M5 12H19M19 12L12 5M19 12L12 19" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M5 12H19M19 12L12 5M19 12L12 19" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
 
           {/* Process Name (highlighted in orange) */}
@@ -801,7 +804,7 @@ const _ActionTooltipLayoutLegacy = ({ node, color, graphData }) => {
 
           {/* Arrow */}
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="text-[#EF4444] flex-shrink-0">
-            <path d="M5 12H19M19 12L12 5M19 12L12 19" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M5 12H19M19 12L12 5M19 12L12 19" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
 
           {/* Target Entity */}
@@ -823,7 +826,7 @@ const _ActionTooltipLayoutLegacy = ({ node, color, graphData }) => {
             {node.text}
           </p>
         )}
-      </div> 
+      </div>
     </div>
   );
 };
@@ -844,7 +847,7 @@ const WIKIDATA_LAYOUT_TYPES = ['entity', 'person', 'concept', 'data', 'entity_ge
 // Get the appropriate layout component based on node type
 const getTooltipLayout = (nodeType) => {
   const type = nodeType?.toLowerCase() || '';
-  
+
   if (WIKIDATA_LAYOUT_TYPES.some(t => type.includes(t))) return EntityTooltipLayout;
   if (type.includes('agency') || type.includes('organization')) return AgencyTooltipLayout;
   if (type.includes('country')) return CountryTooltipLayout;
