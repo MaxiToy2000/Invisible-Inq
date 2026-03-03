@@ -50,6 +50,76 @@ const truncateEntityText = (text) => {
   return text.substring(0, 13) + '...';
 };
 
+const normalizeNodeType = (raw) => {
+  if (!raw) return '';
+  return String(raw).trim().toLowerCase().replace(/[\s-]+/g, '_');
+};
+
+const getNodeDisplayName = (node) =>
+  node?.name ?? node?.entity_name ?? node?.title ?? node?.label ?? node?.country_name ?? node?.['Country Name'] ?? node?.action_text ?? '';
+
+const getNodeTypeLabel = (node) => {
+  const t = node?.node_type ?? node?.type ?? node?.category ?? (Array.isArray(node?.labels) ? node?.labels[0] : undefined);
+  return t != null ? String(t) : '';
+};
+
+// Get related article URL for a node from incident links (same as Node Properties tab for action/connector nodes)
+const getLinkedArticleUrl = (nodeId, links) => {
+  if (!nodeId || !Array.isArray(links) || links.length === 0) return null;
+  const id = String(nodeId);
+  for (const link of links) {
+    const src = link.sourceId ?? link.source?.id ?? link.source;
+    const tgt = link.targetId ?? link.target?.id ?? link.target;
+    if (String(src) === id || String(tgt) === id) {
+      const url = link.article_url ?? link.url ?? link._originalData?.article_url ?? link._originalData?.url ?? link['Article URL'];
+      if (url != null && String(url).trim() !== '') return String(url).trim();
+    }
+  }
+  return null;
+};
+
+// Build tooltip payload by node type (country/entity_gen: name, type; action: name, type, description, URL; entity: name, type, URL from wikidata)
+const getTooltipDataFromApiNode = (apiNode, links = []) => {
+  if (!apiNode || typeof apiNode !== 'object') return null;
+  const nodeType = normalizeNodeType(apiNode.node_type ?? apiNode.type ?? apiNode.category ?? (Array.isArray(apiNode?.labels) ? apiNode.labels[0] : undefined));
+  const name = getNodeDisplayName(apiNode);
+  const typeLabel = getNodeTypeLabel(apiNode);
+
+  const row = (label, value, isLink = false) => {
+    if (value == null || String(value).trim() === '') return null;
+    return { label, value: String(value).trim(), isLink };
+  };
+
+  const rows = [];
+
+  if (nodeType === 'country' || nodeType === 'entity_gen') {
+    if (name) rows.push({ label: 'Name', value: name, isLink: false });
+    if (typeLabel) rows.push({ label: 'Type', value: typeLabel, isLink: false });
+    return rows.length > 0 ? { rows } : null;
+  }
+
+  if (nodeType === 'action') {
+    if (name) rows.push({ label: 'Name', value: name, isLink: false });
+    if (typeLabel) rows.push({ label: 'Type', value: typeLabel, isLink: false });
+    const desc = apiNode.description ?? apiNode.summary ?? apiNode.Summary ?? apiNode.text ?? apiNode.desc ?? '';
+    if (desc) rows.push({ label: 'Description', value: desc, isLink: false });
+    const articleUrl = getLinkedArticleUrl(apiNode.id ?? apiNode.gid, links);
+    if (articleUrl) rows.push({ label: 'URL', value: articleUrl, isLink: true });
+    return rows.length > 0 ? { rows } : null;
+  }
+
+  if (nodeType === 'entity' || nodeType === 'concept' || nodeType === 'data' || nodeType === 'entity_gen' || nodeType === 'framework') {
+    if (name) rows.push({ label: 'Name', value: name, isLink: false });
+    if (typeLabel) rows.push({ label: 'Type', value: typeLabel, isLink: false });
+    const nodeId = apiNode.id ?? apiNode.gid ?? '';
+    if (!nodeId) return rows.length > 0 ? { rows } : null;
+    const rawNodeType = apiNode.node_type ?? apiNode.type ?? apiNode.category ?? 'entity';
+    return { rows, needWikidata: true, nodeType, nodeId, rawNodeType };
+  }
+
+  return null;
+};
+
 const ConnectedData = ({
   onSectionClick,
   graphData = { nodes: [], links: [] },
@@ -59,6 +129,67 @@ const ConnectedData = ({
   const svgRef = useRef(null);
   const containerRef = useRef(null);
   const [viewBox, setViewBox] = useState('0 0 100 100');
+  const [tooltip, setTooltip] = useState(null);
+  const tooltipHideTimeoutRef = useRef(null);
+
+  const TOOLTIP_HIDE_DELAY_MS = 250;
+
+  const cancelHideTooltip = () => {
+    if (tooltipHideTimeoutRef.current) {
+      clearTimeout(tooltipHideTimeoutRef.current);
+      tooltipHideTimeoutRef.current = null;
+    }
+  };
+
+  const scheduleHideTooltip = () => {
+    cancelHideTooltip();
+    tooltipHideTimeoutRef.current = setTimeout(() => {
+      setTooltip(null);
+      tooltipHideTimeoutRef.current = null;
+    }, TOOLTIP_HIDE_DELAY_MS);
+  };
+
+  const hideTooltipImmediately = () => {
+    cancelHideTooltip();
+    setTooltip(null);
+  };
+
+  useEffect(() => {
+    return () => cancelHideTooltip();
+  }, []);
+
+  // For entity nodes: fetch wikidata (same API as Node Properties / RightSidebar) and add Wikipedia URL / URL rows
+  useEffect(() => {
+    if (!tooltip?.needWikidata || !tooltip?.nodeId || !tooltip?.rawNodeType) return;
+    const nodeId = String(tooltip.nodeId).trim();
+    const rawNodeType = String(tooltip.rawNodeType ?? 'entity').trim();
+    let cancelled = false;
+    const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+    const nodeTypeLower = rawNodeType.toLowerCase();
+    const finalEntityId = nodeTypeLower === 'concept' ? (nodeId.startsWith('co') ? nodeId : 'co' + nodeId) : nodeId;
+    const url = `${apiBaseUrl}/api/wikidata/${encodeURIComponent(rawNodeType)}/${encodeURIComponent(finalEntityId)}`;
+    fetch(url, { method: 'GET', headers: { 'Content-Type': 'application/json' } })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((result) => {
+        if (cancelled) return;
+        const data = result?.data;
+        const wikipediaUrl = data?.wikipedia_url != null && String(data.wikipedia_url).trim() !== '' ? String(data.wikipedia_url).trim() : null;
+        const urlVal = data?.url != null && String(data.url).trim() !== '' ? String(data.url).trim() : null;
+        setTooltip((prev) => {
+          if (!prev || prev.nodeId !== nodeId) return prev;
+          const nextRows = [...(prev.rows || [])];
+          if (wikipediaUrl) nextRows.push({ label: 'Wikipedia URL', value: wikipediaUrl, isLink: true });
+          if (urlVal) nextRows.push({ label: 'URL', value: urlVal, isLink: true });
+          return { ...prev, rows: nextRows, needWikidata: false };
+        });
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setTooltip((prev) => (prev && prev.nodeId === nodeId ? { ...prev, needWikidata: false } : prev));
+        }
+      });
+    return () => { cancelled = true; };
+  }, [tooltip?.needWikidata, tooltip?.nodeId, tooltip?.rawNodeType]);
 
   // Use current section's graphData from useGraphData (single source; no duplicate fetch)
   const apiGraphData = graphData?.nodes?.length > 0 ? graphData : null;
@@ -189,19 +320,20 @@ const ConnectedData = ({
           if (finalTargetNode && isEntity(finalTargetNode)) {
             const middleLabel = getMiddleLabel(targetNode);
             const relationshipType = isFundingMiddle(targetNode) ? 'funding' : 'action';
-            
             relationships.push({
               source: getDisplayName(sourceNode),
               middle: middleLabel,
               target: getDisplayName(finalTargetNode),
-              type: relationshipType
+              type: relationshipType,
+              sourceApiNode: sourceNode,
+              middleApiNode: targetNode,
+              targetApiNode: finalTargetNode
             });
           }
         });
-      } 
+      }
       // Pattern 2: Amount/Action (middle) -> Entity
       else if (sourceIsMiddle && targetIsEntity) {
-        // Find source Entity connected to this middle node
         const sourceToMiddleLinks = data.links.filter(l => {
           const linkTargetId = l.targetId || l.target;
           return linkTargetId === sourceId;
@@ -210,16 +342,18 @@ const ConnectedData = ({
         sourceToMiddleLinks.forEach(sourceLink => {
           const sourceEntityId = sourceLink.sourceId || sourceLink.source;
           const sourceEntityNode = nodeMap.get(sourceEntityId);
-          
+
           if (sourceEntityNode && isEntity(sourceEntityNode)) {
             const middleLabel = getMiddleLabel(sourceNode);
             const relationshipType = isFundingMiddle(sourceNode) ? 'funding' : 'action';
-            
             relationships.push({
               source: getDisplayName(sourceEntityNode),
               middle: middleLabel,
               target: getDisplayName(targetNode),
-              type: relationshipType
+              type: relationshipType,
+              sourceApiNode: sourceEntityNode,
+              middleApiNode: sourceNode,
+              targetApiNode: targetNode
             });
           }
         });
@@ -307,12 +441,12 @@ const ConnectedData = ({
       // This ensures all relationships from the same source entity use the same visual node
       const sourceKey = `${rel.source}-${section}`;
       
-      // Only create new source node if this key hasn't appeared yet
       if (!sourceMeta.has(sourceKey)) {
-        sourceMeta.set(sourceKey, { 
-          section, 
-          index: sourceCounters[section], 
-          originalName: rel.source
+        sourceMeta.set(sourceKey, {
+          section,
+          index: sourceCounters[section],
+          originalName: rel.source,
+          apiNode: rel.sourceApiNode ?? null
         });
         sourceCounters[section] += 1;
       }
@@ -321,13 +455,13 @@ const ConnectedData = ({
         middleMeta.set(rel.middle, {
           section,
           index: middleCounters[section],
-          nodeType: rel.type === 'funding' ? 'monetary' : 'action'
+          nodeType: rel.type === 'funding' ? 'monetary' : 'action',
+          apiNode: rel.middleApiNode ?? null
         });
         middleCounters[section] += 1;
       }
     });
 
-    // Second pass: unique targets only (same label => one node; multiple curves converge on it)
     orderedRelationships.forEach((rel) => {
       const section = rel.type === 'funding' ? 'funding' : 'action';
       const targetKey = `${rel.target}-${section}`;
@@ -335,7 +469,8 @@ const ConnectedData = ({
         targetMeta.set(targetKey, {
           section,
           index: targetCounters[section],
-          originalName: rel.target
+          originalName: rel.target,
+          apiNode: rel.targetApiNode ?? null
         });
         targetCounters[section] += 1;
       }
@@ -429,21 +564,21 @@ const ConnectedData = ({
     // Create source nodes (left-aligned)
     sourceMeta.forEach((meta, sourceKey) => {
       const originalLabel = meta.originalName || sourceKey.split('-')[0] || 'Entity';
-      const label = truncateEntityText(originalLabel); // Truncate to 13 characters
+      const label = truncateEntityText(originalLabel);
       const y = meta.section === 'funding'
         ? sourcePositionsFunding.get(sourceKey)
         : sourcePositionsAction.get(sourceKey);
-      // Calculate dynamic width based on text content (use truncated label for width calculation)
       const textWidth = calculateTextWidth(label, 16, 'Archivo');
       const dynamicWidth = Math.max(minNodeWidth, Math.min(maxNodeWidth, textWidth + padding * 2));
       const node = {
         id: `source-${sourceKey}`,
         type: 'entity',
-        label: label,
-        x: leftX, // Left-aligned: x position is the left edge
-        y: y,
+        label,
+        x: leftX,
+        y,
         width: dynamicWidth,
-        height: fixedNodeHeight
+        height: fixedNodeHeight,
+        tooltipData: getTooltipDataFromApiNode(meta.apiNode, dataToUse?.links)
       };
       nodes.push(node);
       nodeMap.set(node.id, node);
@@ -480,10 +615,11 @@ const ConnectedData = ({
         id: `middle-${middleLabel}`,
         type: meta.nodeType,
         label: truncatedLabel,
-        x: nodeX, // Center-aligned: x position centers the node
-        y: y,
+        x: nodeX,
+        y,
         width: dynamicWidth,
-        height: fixedNodeHeight
+        height: fixedNodeHeight,
+        tooltipData: getTooltipDataFromApiNode(meta.apiNode, dataToUse?.links)
       };
       nodes.push(node);
       nodeMap.set(node.id, node);
@@ -517,7 +653,8 @@ const ConnectedData = ({
         x: nodeX,
         y,
         width: dynamicWidth,
-        height: fixedNodeHeight
+        height: fixedNodeHeight,
+        tooltipData: getTooltipDataFromApiNode(meta.apiNode, dataToUse?.links)
       };
       nodes.push(node);
       nodeMap.set(node.id, node);
@@ -605,10 +742,18 @@ const ConnectedData = ({
 
     setViewBox(calculatedViewBox);
 
-    renderGraph(nodes, links, viewBoxWidth, calculatedViewBox, leftX);
+    const onNodeHover = (tooltipData, event) => {
+      if (tooltipData && event?.target) {
+        cancelHideTooltip();
+        setTooltip({ ...tooltipData, rect: event.target.getBoundingClientRect() });
+      } else {
+        scheduleHideTooltip();
+      }
+    };
+    renderGraph(nodes, links, viewBoxWidth, calculatedViewBox, leftX, onNodeHover);
   }, [graphData, currentSection, filteredGraphData, apiGraphData]);
 
-  const renderGraph = (nodes, links, width, viewBoxStr, leftX) => {
+  const renderGraph = (nodes, links, width, viewBoxStr, leftX, onNodeHover) => {
     if (!svgRef.current) return;
 
     const svg = d3.select(svgRef.current);
@@ -656,6 +801,14 @@ const ConnectedData = ({
         .style('position', 'relative')
         .style('overflow', 'hidden')
         .style('pointer-events', 'auto');
+
+      if (onNodeHover) {
+        nodeDiv.on('mouseenter', function(ev) {
+          if (node.tooltipData) onNodeHover(node.tooltipData, ev);
+          else onNodeHover(null);
+        });
+        nodeDiv.on('mouseleave', () => onNodeHover(null));
+      }
 
       // Add click handler for section nodes (monetary/action middle nodes)
       if (node.type === 'monetary' || node.type === 'action') {
@@ -847,7 +1000,7 @@ const ConnectedData = ({
             <span className="text-white text-[14px] font-medium">{StringConstants.HOMEPAGE.CONNECTED_DATA}</span>
           </div>
         </div>
-        <div className="w-full overflow-x-auto overflow-y-hidden">
+        <div className="w-full overflow-x-auto overflow-y-hidden relative">
           <svg
             ref={svgRef}
             width="100%"
@@ -858,6 +1011,44 @@ const ConnectedData = ({
             xmlns="http://www.w3.org/2000/svg"
             className="bg-transparent block pointer-events-auto"
           />
+          {tooltip && tooltip.rect && tooltip.rows?.length > 0 && (
+            <div
+              className="fixed z-[9999] min-w-[150px] max-w-[400px] max-h-[70vh] overflow-y-auto rounded-[5px] border border-[#404040]/30 bg-[#193D33]/50 p-2 shadow-md pointer-events-auto backdrop-blur-sm"
+              style={{
+                left: tooltip.rect.left + tooltip.rect.width / 2,
+                top: tooltip.rect.bottom + 2,
+                transform: 'translateX(-50%)'
+              }}
+              onMouseEnter={cancelHideTooltip}
+              onMouseLeave={hideTooltipImmediately}
+            >
+              <div className="space-y-1 text-left text-[12px] font-normal text-white">
+                {tooltip.rows.map((row, i) => (
+                  <div key={i}>
+                    <span className="text-[#8B949E]">{row.label}: </span>
+                    {row.isLink ? (
+                      <a
+                        href={row.value}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[#8cc5ff] hover:underline hover:text-[#b3ddff]"
+                      >
+                        {row.value}
+                      </a>
+                    ) : (
+                      <span className="text-[#eeeeee]">{row.value}</span>
+                    )}
+                  </div>
+                ))}
+                {tooltip.needWikidata && (
+                  <div>
+                    <span className="text-[#8B949E]">Wikipedia URL: </span>
+                    <span className="text-[#8B949E]">Loading…</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
