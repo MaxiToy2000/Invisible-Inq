@@ -22,7 +22,7 @@ from activity_service import create_activity, get_activities, get_activity_stati
 from submission_service import create_submission, process_submission, get_submission, get_user_submissions, get_all_submissions
 from subscription_service import get_user_subscription, update_user_subscription, get_subscription_plan, SUBSCRIPTION_PLANS
 from graph_camera_service import save_camera_position, get_camera_position
-from user_session_service import save_user_session, get_latest_user_session
+from user_session_service import save_user_session, get_latest_user_session, delete_user_session
 from rate_limit_service import check_rate_limit, record_request
 from datetime import timedelta, datetime
 
@@ -789,6 +789,26 @@ async def get_user_session_endpoint(
         raise
     except Exception as e:
         logger.exception("Error getting user session: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/user-session")
+async def delete_user_session_endpoint(
+    current_user: dict = Depends(get_current_user),
+):
+    """Delete the user_session row for the authenticated user (e.g. when resetting camera)."""
+    try:
+        email = current_user.get("email")
+        if not email:
+            raise HTTPException(status_code=400, detail="User email not found")
+        ok = delete_user_session(user_email=email)
+        if not ok:
+            raise HTTPException(status_code=500, detail="Failed to delete session")
+        return {"message": "Session deleted"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Error deleting user session: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 

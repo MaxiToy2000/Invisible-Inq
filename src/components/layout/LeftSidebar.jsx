@@ -27,6 +27,7 @@ const LeftSidebar = ({
   showSavePositionButton = false,
   onSavePositionClick = null,
   savePositionStatus = null,
+  resetPositionStatus = null,
   onResetPositionClick = null,
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -250,64 +251,183 @@ const LeftSidebar = ({
     return finalPick;
   }, [currentSection, graphData]);
 
-  const renderBriefWithBadges = (brief, terms) => {
-    if (!brief) return null;
-    if (!terms || terms.length === 0) return brief;
-    
-    // Sort terms by length (longest first) to match full names before individual words
+  const colors = ['#9B5629', '#2C649D', '#2E7302'];
+  const highlightColors = {
+    timing: '#6B4C9A',
+    event: '#0D7377',
+    performer: '#B8860B',
+    money: '#C45B2C',
+  };
+
+  const badgePillClass = 'inline-flex items-center py-0 px-1.5 mx-[1px] text-[14px] leading-[14px] rounded-[10px] text-white border shadow-sm';
+
+  // Find timing, event, and performer spans in a segment (non-overlapping, first match wins).
+  const getTimingEventPerformerSpans = (segment) => {
+    const spans = [];
+    const MONTHS = 'January|February|March|April|May|June|July|August|September|October|November|December';
+    const timingPatterns = [
+      new RegExp(`\\b((${MONTHS})\\s+\\d{1,2},?\\s+\\d{4})\\b`, 'g'),
+      new RegExp(`\\b((${MONTHS})\\s+\\d{4})\\b`, 'g'),
+      new RegExp('\\b((?:19|20)\\d{2})\\b', 'g'),
+      new RegExp('\\b(\\d{1,4}[-/]\\d{1,2}[-/]\\d{1,4})\\b', 'g'),
+      new RegExp(`\\b(in\\s+(?:early|late|mid)?\\s*(?:${MONTHS}|(?:19|20)\\d{2}))\\b`, 'gi'),
+      new RegExp('\\b(during\\s+(?:the\\s+)?(?:19|20)\\d{2})\\b', 'gi'),
+      new RegExp(`\\b(by\\s+(?:${MONTHS}|(?:19|20)\\d{2}))\\b`, 'gi'),
+    ];
+    timingPatterns.forEach((re) => {
+      let m;
+      re.lastIndex = 0;
+      while ((m = re.exec(segment)) !== null) {
+        const text = m[1] || m[0];
+        spans.push({ start: m.index, end: m.index + text.length, type: 'timing', text });
+      }
+    });
+    const eventPhrases = ['COVID-19 pandemic', 'COVID-19 outbreak', 'the outbreak of', 'global pandemic', 'the outbreak', 'the pandemic', 'the epidemic', 'the crisis', 'the incident', 'the event'];
+    const eventRe = new RegExp(`\\b(${eventPhrases.map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})\\b`, 'gi');
+    let em;
+    eventRe.lastIndex = 0;
+    while ((em = eventRe.exec(segment)) !== null) {
+      spans.push({ start: em.index, end: em.index + em[0].length, type: 'event', text: em[0] });
+    }
+    const performerRe = /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+(?:said|reported|announced|confirmed|stated|noted|found|discovered)\b/g;
+    let pm;
+    performerRe.lastIndex = 0;
+    while ((pm = performerRe.exec(segment)) !== null) {
+      spans.push({ start: pm.index, end: pm.index + pm[1].length, type: 'performer', text: pm[1] });
+    }
+    // Money / funding amounts: $1.5M, €2 million, £1,000,000, 500 thousand dollars, etc.
+    const moneyPatterns = [
+      new RegExp('([$€£]\\s*\\d{1,3}(?:,\\d{3})*(?:\\.\\d+)?)', 'g'),
+      new RegExp('([$€£]\\s*\\d+(?:\\.\\d+)?\\s*(?:million|billion|thousand|trillion|M|B|K|k)\\b)', 'gi'),
+      new RegExp('(\\b\\d+(?:\\.\\d+)?\\s*(?:million|billion|thousand|trillion)\\s*(?:dollars?|USD|euros?|EUR|pounds?|GBP)?)\\b', 'gi'),
+      new RegExp('(\\b\\d{1,3}(?:,\\d{3})+(?:\\.\\d+)?\\s*(?:dollars?|USD|euros?|EUR|pounds?|GBP)?)\\b', 'gi'),
+      new RegExp('(\\b\\d+(?:\\.\\d+)?\\s*(?:dollars?|USD|euros?|EUR|pounds?|GBP)\\b)', 'gi'),
+    ];
+    moneyPatterns.forEach((re) => {
+      let mm;
+      re.lastIndex = 0;
+      while ((mm = re.exec(segment)) !== null) {
+        const text = mm[1] || mm[0];
+        spans.push({ start: mm.index, end: mm.index + text.length, type: 'money', text });
+      }
+    });
+    spans.sort((a, b) => a.start - b.start);
+    const merged = [];
+    for (const s of spans) {
+      if (merged.length > 0 && s.start < merged[merged.length - 1].end) continue;
+      merged.push(s);
+    }
+    return merged;
+  };
+
+  // Split segment into parts: plain text vs timing/event/performer highlights.
+  const splitSegmentByHighlights = (segment) => {
+    const spans = getTimingEventPerformerSpans(segment);
+    if (spans.length === 0) return [{ type: 'plain', text: segment }];
+    const parts = [];
+    let last = 0;
+    for (const s of spans) {
+      if (s.start > last) parts.push({ type: 'plain', text: segment.slice(last, s.start) });
+      parts.push({ type: s.type, text: s.text });
+      last = s.end;
+    }
+    if (last < segment.length) parts.push({ type: 'plain', text: segment.slice(last) });
+    return parts;
+  };
+
+  // Renders a segment with entity terms as clickable badges; used for plain (non-highlight) parts.
+  const renderSegmentWithEntityBadges = (segment, terms, keyPrefix) => {
+    if (!segment) return [];
+    if (!terms || terms.length === 0) return [<span key={`${keyPrefix}-plain`}>{segment}</span>];
+
     const sortedTerms = [...terms].sort((a, b) => b.length - a.length);
-    
     const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    
-    // Build regex pattern with word boundaries for accurate matching
-    // For multi-word terms (full names), we need to handle spaces
     const pattern = new RegExp(
-      `(${sortedTerms.map(t => {
-        // If term contains spaces (full name), match the exact phrase
-        if (t.includes(' ')) {
-          return escapeRegExp(t);
-        }
-        // For single words, use word boundaries
-        return `\\b${escapeRegExp(t)}\\b`;
-      }).join('|')})`, 
+      `(${sortedTerms.map(t => (t.includes(' ') ? escapeRegExp(t) : `\\b${escapeRegExp(t)}\\b`)).join('|')})`,
       'gi'
     );
-    
     const used = new Set();
-    const parts = brief.split(pattern);
-    const colors = ['#9B5629', '#2C649D', '#2E7302'];
-    
+    const parts = segment.split(pattern);
+
     return parts.map((part, idx) => {
-      if (!part) return null; // Skip empty parts
-      
-      // Check if this part matches any of our terms (case-insensitive)
+      if (!part) return null;
       const matched = sortedTerms.find(t => t.toLowerCase() === part.toLowerCase());
-      
       if (matched && !used.has(matched.toLowerCase())) {
         used.add(matched.toLowerCase());
         const colorIndex = Array.from(used).length - 1;
         const badgeColor = colors[colorIndex % colors.length];
-        
         return (
           <button
-            key={`badge-${idx}-${part}`}
-            className="inline-flex items-center py-0 px-1.5 mx-[1px] text-[14px] leading-[14px] rounded-[10px] text-white border shadow-sm hover:opacity-80 transition-opacity cursor-pointer"
+            key={`${keyPrefix}-badge-${idx}-${part}`}
+            type="button"
+            className={`${badgePillClass} hover:opacity-80 transition-opacity cursor-pointer`}
             style={{ background: badgeColor, borderColor: badgeColor }}
-            onClick={() => {
-              // Optional: trigger entity highlight when clicked
-              if (onEntityHighlight) {
-                onEntityHighlight(part);
-              }
-            }}
+            onClick={() => onEntityHighlight?.(part)}
             title={`Highlight ${part} in graph`}
           >
             {part}
           </button>
         );
       }
-      
-      return <span key={`text-${idx}`}>{part}</span>;
-    }).filter(Boolean); // Remove null elements
+      return <span key={`${keyPrefix}-text-${idx}`}>{part}</span>;
+    }).filter(Boolean);
+  };
+
+  // Renders one non-quoted segment: timing/event/performer as colored pills, then plain parts with entity badges.
+  const renderSegment = (segment, terms, keyPrefix) => {
+    if (!segment) return [];
+    const parts = splitSegmentByHighlights(segment);
+    const out = [];
+    parts.forEach((p, idx) => {
+      if (p.type === 'plain') {
+        out.push(...renderSegmentWithEntityBadges(p.text, terms, `${keyPrefix}-${idx}`));
+      } else {
+        const color = highlightColors[p.type] || colors[0];
+        out.push(
+          <span
+            key={`${keyPrefix}-${p.type}-${idx}-${p.text}`}
+            className={badgePillClass}
+            style={{ background: color, borderColor: color }}
+          >
+            {p.text}
+          </span>
+        );
+      }
+    });
+    return out;
+  };
+
+  const renderBriefWithBadges = (brief, terms) => {
+    if (!brief) return null;
+
+    // Split by double-quoted strings; odd indices are the content inside quotes (without the quotes)
+    const parts = brief.split(/"([^"]*)"/g);
+    const result = [];
+    let quoteColorIndex = 0;
+
+    for (let i = 0; i < parts.length; i++) {
+      if (i % 2 === 1) {
+        // Content that was inside quotes: render colorful, no quote characters
+        if (parts[i]) {
+          const color = colors[quoteColorIndex % colors.length];
+          quoteColorIndex += 1;
+          result.push(
+            <span
+              key={`quote-${i}-${parts[i]}`}
+              className={badgePillClass}
+              style={{ background: color, borderColor: color }}
+            >
+              {parts[i]}
+            </span>
+          );
+        }
+      } else {
+        // Outside quotes: timing/event/performer pills + entity badges in plain parts
+        result.push(...renderSegment(parts[i], terms, `seg-${i}`));
+      }
+    }
+
+    return result.length === 0 ? null : result;
   };
 
   
@@ -470,39 +590,16 @@ const LeftSidebar = ({
             dropdownWidth={sidebarWidth}
           />
 
-          {}
-          {currentSection && (
-            <div className="pt-4">
-              <div>
-                {(graphDescription ?? sectionDescription ?? currentSection?.brief) ? (
-                  <>
-                    <div
-                      className="text-[#B4B4B4] mb-3 font-normal text-[14px] leading-[18px] tracking-[0px]"
-                    >
-                      {renderBriefWithBadges(graphDescription ?? sectionDescription ?? currentSection?.brief ?? '', importantEntities)}
-                    </div>
-                  </>
-                ) : null}
+          {currentSection && (graphDescription ?? sectionDescription ?? currentSection?.brief) && (
+            <div className="pb-4">
+              <div
+                className="text-[#B4B4B4] mb-3 mt-4 font-normal text-[14px] leading-[18px] tracking-[0px]"
+              >
+                {renderBriefWithBadges(graphDescription ?? sectionDescription ?? currentSection?.brief ?? '', importantEntities)}
               </div>
             </div>
           )}
         </div>
-
-        {}
-        {currentSection && (currentSection.title || currentSection.brief) && (
-          <div className="pb-4">
-            <div>
-              {}
-              {currentSection.brief && (
-                <div
-                  className="text-[#B4B4B4] mb-3 font-normal text-[14px] leading-[18px] tracking-[0px]"
-                >
-                  {renderBriefWithBadges(currentSection.brief, importantEntities)}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
       </div>
 
         {/* Save / Reset XYZ position - when graph is shown (showSavePositionButton) and at least one handler provided */}
@@ -523,10 +620,11 @@ const LeftSidebar = ({
               <button
                 type="button"
                 onClick={onResetPositionClick}
-                className="w-full px-3 py-2 rounded-[5px] text-sm font-medium border border-[#666666] bg-[#131315] text-[#EFEFF0] hover:bg-[#1a1a1a] hover:border-[#71717A] transition-colors"
+                disabled={resetPositionStatus === 'resetting'}
+                className="w-full px-3 py-2 rounded-[5px] text-sm font-medium border border-[#666666] bg-[#131315] text-[#EFEFF0] hover:bg-[#1a1a1a] hover:border-[#71717A] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 title="Reset camera to initial view"
               >
-                Reset XYZ position
+                {resetPositionStatus === 'resetting' ? 'Resetting…' : resetPositionStatus === 'reset' ? 'Reset' : 'Reset XYZ position'}
               </button>
             )}
           </div>

@@ -88,6 +88,7 @@ const HomePage = () => {
   const [sectionDescription, setSectionDescription] = useState(null);
   const [savedGraphCameraPosition, setSavedGraphCameraPosition] = useState(null); // { position: {x,y,z}, target: {x,y,z} } for restore
   const [savePositionStatus, setSavePositionStatus] = useState(null); // 'saving' | 'saved' | 'error' | null (for LeftSidebar button)
+  const [resetPositionStatus, setResetPositionStatus] = useState(null); // 'resetting' | 'reset' | null (for LeftSidebar button)
   const graphRef = useRef(null);
   const rightSidebarRef = useRef(null);
   const graphViewByMapRef = useRef(null);
@@ -294,21 +295,27 @@ const HomePage = () => {
     }
   }, [isAuthenticated, handleSaveUserSession]);
 
-  // Reset camera to initial view, then save the actual camera position after reset to DB
+  // Reset camera to initial view and delete user_session row for this user (by email)
   const handleResetPositionClick = useCallback(async () => {
+    setResetPositionStatus('resetting');
     graphRef.current?.resetCameraToInitial?.();
-    if (!isAuthenticated()) return;
-    const resetTransitionMs = 500;
-    await new Promise((r) => setTimeout(r, resetTransitionMs + 100));
-    const state = graphRef.current?.getCurrentCameraState?.();
-    if (!state) return;
-    try {
-      await handleSaveUserSession(state);
-      setSavedGraphCameraPosition(state);
-    } catch {
-      // camera was still reset visually
+    if (isAuthenticated()) {
+      const token = localStorage.getItem('token');
+      if (token) {
+        try {
+          const res = await fetch(`${apiBaseUrl}/api/user-session`, {
+            method: 'DELETE',
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (res.ok) setSavedGraphCameraPosition(null);
+        } catch {
+          // camera was still reset visually
+        }
+      }
     }
-  }, [isAuthenticated, handleSaveUserSession]);
+    setResetPositionStatus('reset');
+    setTimeout(() => setResetPositionStatus(null), 2000);
+  }, [isAuthenticated, apiBaseUrl]);
 
   // Close user menu when clicking outside
   useEffect(() => {
@@ -2391,6 +2398,7 @@ const HomePage = () => {
       showSavePositionButton={viewMode === 'Graph' && !selectedSceneContainer}
       onSavePositionClick={isAuthenticated ? handleSavePositionClick : undefined}
       savePositionStatus={savePositionStatus}
+      resetPositionStatus={resetPositionStatus}
       onResetPositionClick={handleResetPositionClick}
       rightSidebarRef={rightSidebarRef}
       graphViewByMapRef={graphViewByMapRef}
