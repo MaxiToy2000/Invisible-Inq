@@ -229,17 +229,20 @@ const GraphPage = () => {
   const handleResetPositionClick = useCallback(async () => {
     graphRef.current?.resetCameraToInitial?.();
     if (!isAuthenticated) return;
-    const resetTransitionMs = 500;
-    await new Promise((r) => setTimeout(r, resetTransitionMs + 100));
-    const state = graphRef.current?.getCurrentCameraState?.();
-    if (!state) return;
+    const token = localStorage.getItem('token');
+    if (!token) return;
     try {
-      await handleSaveUserSession(state);
-      setSavedGraphCameraPosition(state);
+      const res = await fetch(`${apiBaseUrl}/api/user-session`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        setSavedGraphCameraPosition(null);
+      }
     } catch {
       // camera was still reset visually
     }
-  }, [isAuthenticated, handleSaveUserSession]);
+  }, [isAuthenticated, apiBaseUrl]);
 
   const handleAISearch = async (searchQuery) => {
     try {

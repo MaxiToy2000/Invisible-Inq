@@ -32,6 +32,19 @@ def save_user_session(user_email: str, session_data: Dict[str, Any]) -> bool:
         return False
 
 
+def delete_user_session(user_email: str) -> bool:
+    """
+    Delete the user_session row for this user. Returns True on success.
+    """
+    try:
+        query = "DELETE FROM user_session WHERE user_email = %s"
+        neon_db.execute_write_query(query, (user_email,))
+        return True
+    except Exception as e:
+        logger.exception("Error deleting user session: %s", e)
+        return False
+
+
 def get_latest_user_session(user_email: str) -> Optional[Dict[str, Any]]:
     """
     Get the saved user session for this user (one row per user after upsert).
