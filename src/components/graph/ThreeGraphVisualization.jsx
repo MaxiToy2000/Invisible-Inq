@@ -1381,20 +1381,29 @@ const ThreeGraphVisualization = React.memo(forwardRef(({
         // The issue occurs because node clicks can consume mouse events, preventing
         // OrbitControls from receiving proper mouseup events, leaving it in a "dragging" state
         if (selectionMode === 'individual' && graphRef.current?.controls) {
+          const is3DNow = is3DRef.current;
           // Use a small delay to ensure the click event has fully processed
           setTimeout(() => {
             const controls = graphRef.current?.controls();
             if (controls) {
-              // Force reset controls state to ensure rotation works immediately after node click
+              // Force reset controls state; in 2D mode never re-enable rotation
               controls.enabled = true;
-              controls.enableRotate = true;
+              controls.enableRotate = is3DNow;
               controls.enablePan = true;
               controls.enableZoom = true;
-              controls.mouseButtons = {
+              controls.mouseButtons = is3DNow ? {
                 LEFT: THREE.MOUSE.ROTATE,
                 MIDDLE: THREE.MOUSE.DOLLY,
                 RIGHT: THREE.MOUSE.PAN
+              } : {
+                LEFT: null,
+                MIDDLE: THREE.MOUSE.DOLLY,
+                RIGHT: THREE.MOUSE.PAN
               };
+              if (!is3DNow) {
+                controls.minPolarAngle = Math.PI / 2;
+                controls.maxPolarAngle = Math.PI / 2;
+              }
               
               // Reset internal dragging state if it exists
               // OrbitControls tracks mouse state internally, so we need to ensure it's cleared
@@ -1417,11 +1426,21 @@ const ThreeGraphVisualization = React.memo(forwardRef(({
         // Track the currently hovered node for drag detection
         hoveredNodeRef.current = node;
         
-        // Rotation only when dragging empty space; over a node / in box or lasso = no rotate
+        // Rotation only when dragging empty space (3D only); over a node / in box or lasso = no rotate
         if (graphRef.current?.controls) {
           const controls = graphRef.current.controls();
           if (controls) {
-            if (selectionMode === 'individual') {
+            if (!is3DRef.current) {
+              // 2D mode: no rotation ever
+              controls.enableRotate = false;
+              controls.minPolarAngle = Math.PI / 2;
+              controls.maxPolarAngle = Math.PI / 2;
+              controls.mouseButtons = {
+                LEFT: null,
+                MIDDLE: THREE.MOUSE.DOLLY,
+                RIGHT: THREE.MOUSE.PAN
+              };
+            } else if (selectionMode === 'individual') {
               controls.mouseButtons = {
                 LEFT: node ? null : THREE.MOUSE.ROTATE,
                 MIDDLE: THREE.MOUSE.DOLLY,
@@ -1764,9 +1783,21 @@ const ThreeGraphVisualization = React.memo(forwardRef(({
       controls.enableZoom = true;
       controls.autoRotate = false;  
       
-      // Set controls based on selection mode
-      if (selectionMode === 'individual') {
-        // Enable rotation and pan for individual selection mode
+      // Set controls based on selection mode and 2D/3D: in 2D mode never allow rotation
+      if (!is3DRef.current) {
+        controls.enabled = true;
+        controls.enableRotate = false;
+        controls.enablePan = true;
+        controls.enableZoom = true;
+        controls.minPolarAngle = Math.PI / 2;
+        controls.maxPolarAngle = Math.PI / 2;
+        controls.mouseButtons = {
+          LEFT: null,                 // No rotate in 2D
+          MIDDLE: THREE.MOUSE.DOLLY,
+          RIGHT: THREE.MOUSE.PAN
+        };
+      } else if (selectionMode === 'individual') {
+        // Enable rotation and pan for individual selection mode (3D only)
         controls.enabled = true;
         controls.enableRotate = true;
         controls.enablePan = true;
@@ -3772,12 +3803,28 @@ const ThreeGraphVisualization = React.memo(forwardRef(({
     
     const controls = graphRef.current.controls();
     
-    if (selectionMode === 'individual') {
-      // Enable all controls in individual selection mode
+    if (!is3D) {
+      // 2D mode: no rotation, fixed top-down view
+      controls.enabled = true;
+      controls.enableRotate = false;
+      controls.enablePan = true;
+      controls.enableZoom = true;
+      controls.minPolarAngle = Math.PI / 2;
+      controls.maxPolarAngle = Math.PI / 2;
+      controls.mouseButtons = {
+        LEFT: null,
+        MIDDLE: THREE.MOUSE.DOLLY,
+        RIGHT: THREE.MOUSE.PAN
+      };
+      controls.update();
+    } else if (selectionMode === 'individual') {
+      // Enable all controls in individual selection mode (3D)
       controls.enabled = true;
       controls.enableRotate = true;
       controls.enablePan = true;
       controls.enableZoom = true;
+      controls.minPolarAngle = 0;
+      controls.maxPolarAngle = Math.PI;
       // Restore normal mouse button configuration
       controls.mouseButtons = {
         LEFT: THREE.MOUSE.ROTATE,   // Left mouse button for rotation
@@ -3816,7 +3863,7 @@ const ThreeGraphVisualization = React.memo(forwardRef(({
     }
     
     return () => {
-      // Cleanup: ensure controls are re-enabled when component unmounts
+      // Cleanup: ensure controls are re-enabled when component unmounts (3D defaults)
       if (graphRef.current && graphRef.current.controls) {
         const controls = graphRef.current.controls();
         controls.enabled = true;
@@ -3826,7 +3873,7 @@ const ThreeGraphVisualization = React.memo(forwardRef(({
         controls.update();
       }
     };
-  }, [selectionMode]);
+  }, [selectionMode, is3D]);
 
   // Box selection mouse handlers
   useEffect(() => {
