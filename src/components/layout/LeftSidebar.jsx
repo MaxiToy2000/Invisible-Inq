@@ -27,6 +27,7 @@ const LeftSidebar = ({
   showSavePositionButton = false,
   onSavePositionClick = null,
   savePositionStatus = null,
+  resetPositionStatus = null,
   onResetPositionClick = null,
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -619,10 +620,11 @@ const LeftSidebar = ({
               <button
                 type="button"
                 onClick={onResetPositionClick}
-                className="w-full px-3 py-2 rounded-[5px] text-sm font-medium border border-[#666666] bg-[#131315] text-[#EFEFF0] hover:bg-[#1a1a1a] hover:border-[#71717A] transition-colors"
+                disabled={resetPositionStatus === 'resetting'}
+                className="w-full px-3 py-2 rounded-[5px] text-sm font-medium border border-[#666666] bg-[#131315] text-[#EFEFF0] hover:bg-[#1a1a1a] hover:border-[#71717A] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 title="Reset camera to initial view"
               >
-                Reset XYZ position
+                {resetPositionStatus === 'resetting' ? 'Resetting…' : resetPositionStatus === 'reset' ? 'Reset' : 'Reset XYZ position'}
               </button>
             )}
           </div>

@@ -67,6 +67,7 @@ const Layout = ({
   showSavePositionButton = false,
   onSavePositionClick = null,
   savePositionStatus = null,
+  resetPositionStatus = null,
   onResetPositionClick = null,
   rightSidebarRef = null,
   graphViewByMapRef = null,
@@ -132,6 +133,7 @@ const Layout = ({
           showSavePositionButton={showSavePositionButton}
           onSavePositionClick={onSavePositionClick}
           savePositionStatus={savePositionStatus}
+          resetPositionStatus={resetPositionStatus}
           onResetPositionClick={onResetPositionClick}
         />
       </div>

@@ -88,6 +88,7 @@ const HomePage = () => {
   const [sectionDescription, setSectionDescription] = useState(null);
   const [savedGraphCameraPosition, setSavedGraphCameraPosition] = useState(null); // { position: {x,y,z}, target: {x,y,z} } for restore
   const [savePositionStatus, setSavePositionStatus] = useState(null); // 'saving' | 'saved' | 'error' | null (for LeftSidebar button)
+  const [resetPositionStatus, setResetPositionStatus] = useState(null); // 'resetting' | 'reset' | null (for LeftSidebar button)
   const graphRef = useRef(null);
   const rightSidebarRef = useRef(null);
   const graphViewByMapRef = useRef(null);
@@ -296,21 +297,24 @@ const HomePage = () => {
 
   // Reset camera to initial view and delete user_session row for this user (by email)
   const handleResetPositionClick = useCallback(async () => {
+    setResetPositionStatus('resetting');
     graphRef.current?.resetCameraToInitial?.();
-    if (!isAuthenticated()) return;
-    const token = localStorage.getItem('token');
-    if (!token) return;
-    try {
-      const res = await fetch(`${apiBaseUrl}/api/user-session`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        setSavedGraphCameraPosition(null);
+    if (isAuthenticated()) {
+      const token = localStorage.getItem('token');
+      if (token) {
+        try {
+          const res = await fetch(`${apiBaseUrl}/api/user-session`, {
+            method: 'DELETE',
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (res.ok) setSavedGraphCameraPosition(null);
+        } catch {
+          // camera was still reset visually
+        }
       }
-    } catch {
-      // camera was still reset visually
     }
+    setResetPositionStatus('reset');
+    setTimeout(() => setResetPositionStatus(null), 2000);
   }, [isAuthenticated, apiBaseUrl]);
 
   // Close user menu when clicking outside
@@ -2394,6 +2398,7 @@ const HomePage = () => {
       showSavePositionButton={viewMode === 'Graph' && !selectedSceneContainer}
       onSavePositionClick={isAuthenticated ? handleSavePositionClick : undefined}
       savePositionStatus={savePositionStatus}
+      resetPositionStatus={resetPositionStatus}
       onResetPositionClick={handleResetPositionClick}
       rightSidebarRef={rightSidebarRef}
       graphViewByMapRef={graphViewByMapRef}

@@ -20,6 +20,7 @@ const GraphPage = () => {
   const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
   const [savedGraphCameraPosition, setSavedGraphCameraPosition] = useState(null);
   const [savePositionStatus, setSavePositionStatus] = useState(null); // 'saving' | 'saved' | 'error' | null
+  const [resetPositionStatus, setResetPositionStatus] = useState(null); // 'resetting' | 'reset' | null
   const pendingSessionRestoreRef = useRef(null);
   const hasRestoredSessionRef = useRef(false);
 
@@ -227,21 +228,24 @@ const GraphPage = () => {
   }, [isAuthenticated, handleSaveUserSession]);
 
   const handleResetPositionClick = useCallback(async () => {
+    setResetPositionStatus('resetting');
     graphRef.current?.resetCameraToInitial?.();
-    if (!isAuthenticated) return;
-    const token = localStorage.getItem('token');
-    if (!token) return;
-    try {
-      const res = await fetch(`${apiBaseUrl}/api/user-session`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        setSavedGraphCameraPosition(null);
+    if (isAuthenticated) {
+      const token = localStorage.getItem('token');
+      if (token) {
+        try {
+          const res = await fetch(`${apiBaseUrl}/api/user-session`, {
+            method: 'DELETE',
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (res.ok) setSavedGraphCameraPosition(null);
+        } catch {
+          // camera was still reset visually
+        }
       }
-    } catch {
-      // camera was still reset visually
     }
+    setResetPositionStatus('reset');
+    setTimeout(() => setResetPositionStatus(null), 2000);
   }, [isAuthenticated, apiBaseUrl]);
 
   const handleAISearch = async (searchQuery) => {
@@ -475,6 +479,7 @@ const GraphPage = () => {
       showSavePositionButton={viewMode === 'Graph'}
       onSavePositionClick={isAuthenticated ? handleSavePositionClick : undefined}
       savePositionStatus={savePositionStatus}
+      resetPositionStatus={resetPositionStatus}
       onResetPositionClick={handleResetPositionClick}
       rightSidebarRef={rightSidebarRef}
     >
