@@ -58,9 +58,7 @@ const ConnectedData = ({
 }) => {
   const svgRef = useRef(null);
   const containerRef = useRef(null);
-  const [svgWidth, setSvgWidth] = useState(383);
-  const [svgHeight, setSvgHeight] = useState(400);
-  const [viewBox, setViewBox] = useState('0 0 500 400');
+  const [viewBox, setViewBox] = useState('0 0 100 100');
 
   // Use current section's graphData from useGraphData (single source; no duplicate fetch)
   const apiGraphData = graphData?.nodes?.length > 0 ? graphData : null;
@@ -291,17 +289,14 @@ const ConnectedData = ({
     // Determine if we have many interconnections (threshold: 3+ connections)
     const hasManyInterconnections = Array.from(nodeConnectionCounts.values()).some(count => count >= 3);
 
-    // Track node metadata per section
-    // For targets, we need to handle splits - same label but different positions
+    // Track node metadata per section; targets are deduplicated by label so one node per unique target
     const sourceMeta = new Map();
-    const targetMeta = new Map();
     const middleMeta = new Map();
-    // Track target nodes with their relationship context to handle splits
-    const targetNodesByRelationship = new Map();
+    const targetMeta = new Map();
 
     const sourceCounters = { funding: 0, action: 0 };
-    const targetCounters = { funding: 0, action: 0 };
     const middleCounters = { funding: 0, action: 0 };
+    const targetCounters = { funding: 0, action: 0 };
 
     // First pass: identify unique sources and middles
     // Use source label + section as key to ensure same entities share the same position
@@ -332,26 +327,13 @@ const ConnectedData = ({
       }
     });
 
-    // Second pass: handle targets
-    // Use target label + section as key to ensure same entities share the same position
-    orderedRelationships.forEach((rel, relIndex) => {
+    // Second pass: unique targets only (same label => one node; multiple curves converge on it)
+    orderedRelationships.forEach((rel) => {
       const section = rel.type === 'funding' ? 'funding' : 'action';
-      
-      // Create target key based on label and section only
-      // This ensures all relationships to the same target entity use the same visual node
       const targetKey = `${rel.target}-${section}`;
-      
-      if (!targetNodesByRelationship.has(targetKey)) {
-        targetNodesByRelationship.set(targetKey, {
-          label: rel.target,
+      if (!targetMeta.has(targetKey)) {
+        targetMeta.set(targetKey, {
           section,
-          index: targetCounters[section],
-          relationshipIndex: relIndex
-        });
-        
-        // Also update targetMeta for positioning
-        targetMeta.set(targetKey, { 
-          section, 
           index: targetCounters[section],
           originalName: rel.target
         });
@@ -369,9 +351,8 @@ const ConnectedData = ({
     const sectionGap = 36;
     const startY = 20;
     
-    // Increase spacing for nodes with many interconnections
-    const adjustedTargetNodeGap = hasManyInterconnections ? targetNodeGap * 1.5 : targetNodeGap; // 1.5x spacing for right column
-    const adjustedActionNodeGap = hasManyInterconnections ? nodeGap * 1.5 : nodeGap; // For action section (lower) nodes
+    const adjustedTargetNodeGap = hasManyInterconnections ? targetNodeGap * 1.5 : targetNodeGap;
+    const adjustedActionNodeGap = hasManyInterconnections ? nodeGap * 1.5 : nodeGap;
     
     // Middle and right X positions will be calculated after nodes are created
     let middleX = 210;
@@ -442,51 +423,8 @@ const ConnectedData = ({
     const sourcePositionsAction = calculateNodePositions(sourceMeta, 'action', adjustedActionNodeGap); // Use adjusted gap for action section
     const middlePositionsFunding = calculateNodePositions(middleMeta, 'funding');
     const middlePositionsAction = calculateNodePositions(middleMeta, 'action');
-    // Use larger gap for target nodes (right column) - increase if many interconnections
     const targetPositionsFunding = calculateNodePositions(targetMeta, 'funding', adjustedTargetNodeGap);
     const targetPositionsAction = calculateNodePositions(targetMeta, 'action', adjustedTargetNodeGap);
-    
-    // Calculate positions for target nodes considering splits
-    const targetPositionsByRelationship = new Map();
-    const targetGroupsBySourceMiddle = new Map();
-    
-    // Group targets by source-middle pairs to handle splits
-    targetNodesByRelationship.forEach((data, key) => {
-      const parts = key.split('-');
-      const sourceMiddleKey = `${parts[0]}-${parts[1]}`;
-      
-      if (!targetGroupsBySourceMiddle.has(sourceMiddleKey)) {
-        targetGroupsBySourceMiddle.set(sourceMiddleKey, []);
-      }
-      targetGroupsBySourceMiddle.get(sourceMiddleKey).push({ key, data });
-    });
-    
-    // Calculate positions for each target node, handling splits
-    targetGroupsBySourceMiddle.forEach((nodes, sourceMiddleKey) => {
-      const section = nodes[0].data.section;
-      
-      // Get the base position for the first target with this label
-      const basePosition = section === 'funding' 
-        ? (targetPositionsFunding.get(nodes[0].data.label) || getBaseY(section))
-        : (targetPositionsAction.get(nodes[0].data.label) || getBaseY(section));
-      
-      // For splits, offset additional nodes vertically
-      // If single node, use base position; if multiple, spread them
-      if (nodes.length === 1) {
-        targetPositionsByRelationship.set(nodes[0].key, basePosition);
-      } else {
-        // Multiple nodes (split) - spread them around the base position
-        // Use larger gap for split nodes in target column - increase if many interconnections
-        const baseSplitGap = 100; // Base increased gap for split nodes
-        const splitGap = hasManyInterconnections ? baseSplitGap * 1.5 : baseSplitGap; // Increase spacing for many interconnections
-        const totalHeight = (nodes.length - 1) * (fixedNodeHeight + splitGap);
-        const startOffset = -totalHeight / 2;
-        nodes.forEach((nodeData, splitIndex) => {
-          const y = basePosition + startOffset + splitIndex * (fixedNodeHeight + splitGap);
-          targetPositionsByRelationship.set(nodeData.key, y);
-        });
-      }
-    });
 
     // Create source nodes (left-aligned)
     sourceMeta.forEach((meta, sourceKey) => {
@@ -551,35 +489,33 @@ const ConnectedData = ({
       nodeMap.set(node.id, node);
     });
 
-    // Calculate right column: find max width and center nodes
+    // Right column: one node per unique target; multiple curves can converge on the same node
     const targetNodeWidths = [];
-    targetNodesByRelationship.forEach((data, key) => {
-      const originalLabel = data.label || 'Entity';
-      const label = truncateEntityText(originalLabel); // Truncate to 13 characters
+    targetMeta.forEach((meta, targetKey) => {
+      const originalLabel = meta.originalName || targetKey.replace(/-funding|-action$/, '') || 'Entity';
+      const label = truncateEntityText(originalLabel);
       const textWidth = calculateTextWidth(label, 16, 'Archivo');
-      const dynamicWidth = Math.max(minNodeWidth, Math.min(maxNodeWidth, textWidth + padding * 2));
-      targetNodeWidths.push(dynamicWidth);
+      targetNodeWidths.push(Math.max(minNodeWidth, Math.min(maxNodeWidth, textWidth + padding * 2)));
     });
     const maxTargetWidth = targetNodeWidths.length > 0 ? Math.max(...targetNodeWidths) : minNodeWidth;
     const rightColumnCenterX = middleX + maxMiddleWidth + columnGap + (maxTargetWidth / 2);
-    rightX = middleX + maxMiddleWidth + columnGap; // Column start position
+    rightX = middleX + maxMiddleWidth + columnGap;
 
-    // Create target nodes (center-aligned within column)
-    targetNodesByRelationship.forEach((data, key) => {
-      const originalLabel = data.label || 'Entity';
-      const label = truncateEntityText(originalLabel); // Truncate to 13 characters
-      const y = targetPositionsByRelationship.get(key);
-      // Calculate dynamic width based on text content (use truncated label for width calculation)
+    targetMeta.forEach((meta, targetKey) => {
+      const originalLabel = meta.originalName || targetKey.replace(/-funding|-action$/, '') || 'Entity';
+      const label = truncateEntityText(originalLabel);
+      const y = meta.section === 'funding'
+        ? targetPositionsFunding.get(targetKey)
+        : targetPositionsAction.get(targetKey);
       const textWidth = calculateTextWidth(label, 16, 'Archivo');
       const dynamicWidth = Math.max(minNodeWidth, Math.min(maxNodeWidth, textWidth + padding * 2));
-      // Center the node within the column: x = columnCenter - (nodeWidth / 2)
       const nodeX = rightColumnCenterX - (dynamicWidth / 2);
       const node = {
-        id: `target-${key}`,
+        id: `target-${targetKey}`,
         type: 'entity',
-        label: label,
-        x: nodeX, // Center-aligned: x position centers the node
-        y: y,
+        label,
+        x: nodeX,
+        y,
         width: dynamicWidth,
         height: fixedNodeHeight
       };
@@ -590,24 +526,20 @@ const ConnectedData = ({
     // Create links
     const links = [];
 
-    orderedRelationships.forEach((rel, relIndex) => {
+    orderedRelationships.forEach((rel) => {
       const section = rel.type === 'funding' ? 'funding' : 'action';
-      
-      // Use simplified keys to find nodes
       const sourceKey = `${rel.source}-${section}`;
       const targetKey = `${rel.target}-${section}`;
-      
+
       const sourceNode = nodeMap.get(`source-${sourceKey}`);
       const middleNode = nodeMap.get(`middle-${rel.middle}`);
       const targetNode = nodeMap.get(`target-${targetKey}`);
 
       if (sourceNode && middleNode && targetNode) {
-        // Source -> Middle link (only create once per source-middle pair)
-        const existingLink = links.find(l => 
+        const existingSourceMiddle = links.find(l =>
           l.source === sourceNode.id && l.target === middleNode.id
         );
-        
-        if (!existingLink) {
+        if (!existingSourceMiddle) {
           links.push({
             source: sourceNode.id,
             target: middleNode.id,
@@ -615,20 +547,13 @@ const ConnectedData = ({
             path: ''
           });
         }
-
-        // Middle -> Target link (only create once per middle-target pair to avoid duplicate lines)
-        const existingMiddleTargetLink = links.find(l =>
-          l.source === middleNode.id && l.target === targetNode.id
-        );
-        
-        if (!existingMiddleTargetLink) {
-          links.push({
-            source: middleNode.id,
-            target: targetNode.id,
-            gradientType: rel.type === 'funding' ? 'green-blue' : 'orange-blue',
-            path: ''
-          });
-        }
+        // One link per relationship: multiple curves can go to the same target node
+        links.push({
+          source: middleNode.id,
+          target: targetNode.id,
+          gradientType: rel.type === 'funding' ? 'green-blue' : 'orange-blue',
+          path: ''
+        });
       }
     });
 
@@ -662,30 +587,24 @@ const ConnectedData = ({
       }
     });
 
-    // Calculate viewBox
-    const minX = nodes.length > 0 ? Math.min(...nodes.map(node => node.x)) : 100;
-    const maxRightEdge = nodes.length > 0 ? Math.max(...nodes.map(node => node.x + node.width)) : 600;
+    // ViewBox: tight around content with equal padding so graph scales to full container width
+    // and height is content-based (no extra space); SVG width=100% + height=auto does the rest
+    const pad = 8;
+    const minX = nodes.length > 0 ? Math.min(...nodes.map(node => node.x)) : 0;
+    const maxRightEdge = nodes.length > 0 ? Math.max(...nodes.map(node => node.x + node.width)) : 100;
     const contentWidth = maxRightEdge - minX;
-
-    const minY = nodes.length > 0 ? Math.min(...nodes.map(node => node.y)) : 20;
-    const maxBottomEdge = nodes.length > 0 ? Math.max(...nodes.map(node => node.y + node.height)) : 400;
+    const minY = nodes.length > 0 ? Math.min(...nodes.map(node => node.y)) : 0;
+    const maxBottomEdge = nodes.length > 0 ? Math.max(...nodes.map(node => node.y + node.height)) : 100;
     const contentHeight = maxBottomEdge - minY;
 
-    const viewBoxWidth = 500;
-    const viewBoxPadding = 20;
-    const contentHeightWithPadding = contentHeight + viewBoxPadding * 2;
-    const viewBoxHeight = contentHeightWithPadding;
-    
-    const actualPadding = (viewBoxHeight - contentHeight) / 2;
-    const viewBoxX = Math.max(0, minX - (viewBoxWidth - contentWidth) / 2 - 30);
-    const viewBoxY = Math.max(0, minY - actualPadding);
+    const viewBoxX = minX - pad;
+    const viewBoxY = minY - pad;
+    const viewBoxWidth = Math.max(1, contentWidth + pad * 2);
+    const viewBoxHeight = Math.max(1, contentHeight + pad * 2);
     const calculatedViewBox = `${viewBoxX} ${viewBoxY} ${viewBoxWidth} ${viewBoxHeight}`;
 
-    setSvgWidth(viewBoxWidth);
-    setSvgHeight(viewBoxHeight);
     setViewBox(calculatedViewBox);
 
-    // Render the graph
     renderGraph(nodes, links, viewBoxWidth, calculatedViewBox, leftX);
   }, [graphData, currentSection, filteredGraphData, apiGraphData]);
 
@@ -932,8 +851,9 @@ const ConnectedData = ({
           <svg
             ref={svgRef}
             width="100%"
-            height={svgHeight}
+            height="auto"
             viewBox={viewBox}
+            preserveAspectRatio="xMidYMid meet"
             fill="none"
             xmlns="http://www.w3.org/2000/svg"
             className="bg-transparent block pointer-events-auto"
