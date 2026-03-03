@@ -67,7 +67,12 @@ const HomePage = () => {
   const [aiSummaryQuery, setAiSummaryQuery] = useState('');
   const [showAddNodeModal, setShowAddNodeModal] = useState(false);
   const [rightSidebarActiveTab, setRightSidebarActiveTab] = useState('node-properties');
-  const [hiddenCategories, setHiddenCategories] = useState(new Set());
+  // Default: hide Article, Country, Purpose in the graph; show other nodes normally
+  const [hiddenCategories, setHiddenCategories] = useState(() => {
+    const defaultHidden = new Set();
+    ['Article', 'article', 'Country', 'country', 'Purpose', 'purpose'].forEach((t) => defaultHidden.add(t));
+    return defaultHidden;
+  });
   const [mapView, setMapView] = useState(null); // null, 'flat', 'spherical'
   const [selectedClusterType, setSelectedClusterType] = useState('');
   const [clusterMethod, setClusterMethod] = useState(''); // Clustering method/category
