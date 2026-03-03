@@ -12,7 +12,7 @@ export const getNodeTypeColor = (nodeType) => {
     'entity': '#193A5D',           // Blue
     'entity_gen': '#1E2C4C',       // Light blue
     'relationship': '#016876',     // Red
-    'action': '#6F6600',           // Orange
+    'action': '#87200B',           // Orange
     'process': '#20A4F3',          // Cyan
     'result': '#F38181',           // Pink
     'event_attend': '#46215C',     // Purple
