@@ -9,17 +9,18 @@ export const getNodeTypeColor = (nodeType) => {
   // Using normalized keys (lowercase with underscores)
   const colors = {
     // Primary entity types
-    'entity': '#034C92',           // Blue
-    'entity_gen': '#5C7CFA',       // Light blue
+    'entity': '#193A5D',           // Blue
+    'entity_gen': '#1E2C4C',       // Light blue
     'relationship': '#016876',     // Red
-    'action': '#6F6600',           // Orange
+    'action': '#87200B',           // Orange
     'process': '#20A4F3',          // Cyan
     'result': '#F38181',           // Pink
-    'event_attend': '#9775FA',     // Purple
-    'framework': '#4B7110', 
+    'event_attend': '#46215C',     // Purple
+    'framework': '#51341D', 
     'milestone': '#B82F2F',       // Green
     'incident': '#8C3C1E',         // Green
-    'data': '#A138CE',         // Yellow
+    'data': '#444815',         // Yellow
+    'purpose': '#2B4140',       // Orange
     
     // Financial types
     'funding': '#40C057',          // Green
@@ -37,7 +38,7 @@ export const getNodeTypeColor = (nodeType) => {
     'council': '#FF6B6B',          // Coral
     
     // Location types
-    'country': '#9775FA',          // Purple
+    'country': '#3E4645',          // Purple
     'location': '#6538CE',         // Sky blue
     'place_of_performance': '#845EF7',  // Violet
     'region': '#95E1D3',           // Mint
@@ -46,7 +47,7 @@ export const getNodeTypeColor = (nodeType) => {
     // Description/Document types
     'description': '#51CF66',      // Green
     'publication': '#FF922B',      // Amber
-    'article': '#FFA94D',          // Light orange                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             
+    'article': '#4B4338',          // Light orange                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             
     
     // People/Person types
     'person': '#4263EB',           // Blue
@@ -54,8 +55,8 @@ export const getNodeTypeColor = (nodeType) => {
     
     // Program/Event types
     'program': '#20A4F3',          // Cyan
-    'event': '#7950F2',            // Purple
-    'concept': '#CE3880',          // Orange
+    'event': '#521D2E',            // Purple
+    'concept': '#193D33',          // Orange
     
     // University/Education
     'university': '#9775FA',       // Purple
@@ -78,13 +79,13 @@ export const getCategoryColor = (category) => {
   // Category color mappings (aligned with node type colors)
   const colors = {
     // Primary categories
-    'entity': '#4263EB',           // Blue
-    'entity_gen': '#5C7CFA',       // Light blue
-    'relationship': '#F03E3E',     // Red
-    'action': '#FD7E14',           // Orange
+    'entity': '#193A5D',           // Blue
+    'entity_gen': '#1E2C4C',       // Light blue
+    'relationship': '#075876',     // Red
+    'action': '#87200B',           // Orange
     'process': '#20A4F3',          // Cyan
     'result': '#F38181',           // Pink
-    'event_attend': '#9775FA',     // Purple
+    'event_attend': '#46215C',     // Purple
     
     // People
     'person': '#4263EB',           // Blue
@@ -102,7 +103,7 @@ export const getCategoryColor = (category) => {
     
     // Locations
     'location': '#339AF0',         // Sky blue
-    'country': '#9775FA',          // Purple
+    'country': '#3E4645',          // Purple
     'region': '#95E1D3',           // Mint
     'place': '#845EF7',            // Violet
     
@@ -119,7 +120,7 @@ export const getCategoryColor = (category) => {
     
     // Documents/Publications
     'publication': '#FF922B',      // Amber
-    'article': '#FFA94D',          // Light orange
+    'article': '#4B4338',          // Light orange
     'document': '#FFD43B',         // Yellow
     
     // Default fallback

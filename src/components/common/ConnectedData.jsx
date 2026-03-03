@@ -50,6 +50,76 @@ const truncateEntityText = (text) => {
   return text.substring(0, 13) + '...';
 };
 
+const normalizeNodeType = (raw) => {
+  if (!raw) return '';
+  return String(raw).trim().toLowerCase().replace(/[\s-]+/g, '_');
+};
+
+const getNodeDisplayName = (node) =>
+  node?.name ?? node?.entity_name ?? node?.title ?? node?.label ?? node?.country_name ?? node?.['Country Name'] ?? node?.action_text ?? '';
+
+const getNodeTypeLabel = (node) => {
+  const t = node?.node_type ?? node?.type ?? node?.category ?? (Array.isArray(node?.labels) ? node?.labels[0] : undefined);
+  return t != null ? String(t) : '';
+};
+
+// Get related article URL for a node from incident links (same as Node Properties tab for action/connector nodes)
+const getLinkedArticleUrl = (nodeId, links) => {
+  if (!nodeId || !Array.isArray(links) || links.length === 0) return null;
+  const id = String(nodeId);
+  for (const link of links) {
+    const src = link.sourceId ?? link.source?.id ?? link.source;
+    const tgt = link.targetId ?? link.target?.id ?? link.target;
+    if (String(src) === id || String(tgt) === id) {
+      const url = link.article_url ?? link.url ?? link._originalData?.article_url ?? link._originalData?.url ?? link['Article URL'];
+      if (url != null && String(url).trim() !== '') return String(url).trim();
+    }
+  }
+  return null;
+};
+
+// Build tooltip payload by node type (country/entity_gen: name, type; action: name, type, description, URL; entity: name, type, URL from wikidata)
+const getTooltipDataFromApiNode = (apiNode, links = []) => {
+  if (!apiNode || typeof apiNode !== 'object') return null;
+  const nodeType = normalizeNodeType(apiNode.node_type ?? apiNode.type ?? apiNode.category ?? (Array.isArray(apiNode?.labels) ? apiNode.labels[0] : undefined));
+  const name = getNodeDisplayName(apiNode);
+  const typeLabel = getNodeTypeLabel(apiNode);
+
+  const row = (label, value, isLink = false) => {
+    if (value == null || String(value).trim() === '') return null;
+    return { label, value: String(value).trim(), isLink };
+  };
+
+  const rows = [];
+
+  if (nodeType === 'country' || nodeType === 'entity_gen') {
+    if (name) rows.push({ label: 'Name', value: name, isLink: false });
+    if (typeLabel) rows.push({ label: 'Type', value: typeLabel, isLink: false });
+    return rows.length > 0 ? { rows } : null;
+  }
+
+  if (nodeType === 'action') {
+    if (name) rows.push({ label: 'Name', value: name, isLink: false });
+    if (typeLabel) rows.push({ label: 'Type', value: typeLabel, isLink: false });
+    const desc = apiNode.description ?? apiNode.summary ?? apiNode.Summary ?? apiNode.text ?? apiNode.desc ?? '';
+    if (desc) rows.push({ label: 'Description', value: desc, isLink: false });
+    const articleUrl = getLinkedArticleUrl(apiNode.id ?? apiNode.gid, links);
+    if (articleUrl) rows.push({ label: 'URL', value: articleUrl, isLink: true });
+    return rows.length > 0 ? { rows } : null;
+  }
+
+  if (nodeType === 'entity' || nodeType === 'concept' || nodeType === 'data' || nodeType === 'entity_gen' || nodeType === 'framework') {
+    if (name) rows.push({ label: 'Name', value: name, isLink: false });
+    if (typeLabel) rows.push({ label: 'Type', value: typeLabel, isLink: false });
+    const nodeId = apiNode.id ?? apiNode.gid ?? '';
+    if (!nodeId) return rows.length > 0 ? { rows } : null;
+    const rawNodeType = apiNode.node_type ?? apiNode.type ?? apiNode.category ?? 'entity';
+    return { rows, needWikidata: true, nodeType, nodeId, rawNodeType };
+  }
+
+  return null;
+};
+
 const ConnectedData = ({
   onSectionClick,
   graphData = { nodes: [], links: [] },
@@ -58,9 +128,68 @@ const ConnectedData = ({
 }) => {
   const svgRef = useRef(null);
   const containerRef = useRef(null);
-  const [svgWidth, setSvgWidth] = useState(383);
-  const [svgHeight, setSvgHeight] = useState(400);
-  const [viewBox, setViewBox] = useState('0 0 500 400');
+  const [viewBox, setViewBox] = useState('0 0 100 100');
+  const [tooltip, setTooltip] = useState(null);
+  const tooltipHideTimeoutRef = useRef(null);
+
+  const TOOLTIP_HIDE_DELAY_MS = 250;
+
+  const cancelHideTooltip = () => {
+    if (tooltipHideTimeoutRef.current) {
+      clearTimeout(tooltipHideTimeoutRef.current);
+      tooltipHideTimeoutRef.current = null;
+    }
+  };
+
+  const scheduleHideTooltip = () => {
+    cancelHideTooltip();
+    tooltipHideTimeoutRef.current = setTimeout(() => {
+      setTooltip(null);
+      tooltipHideTimeoutRef.current = null;
+    }, TOOLTIP_HIDE_DELAY_MS);
+  };
+
+  const hideTooltipImmediately = () => {
+    cancelHideTooltip();
+    setTooltip(null);
+  };
+
+  useEffect(() => {
+    return () => cancelHideTooltip();
+  }, []);
+
+  // For entity nodes: fetch wikidata (same API as Node Properties / RightSidebar) and add Wikipedia URL / URL rows
+  useEffect(() => {
+    if (!tooltip?.needWikidata || !tooltip?.nodeId || !tooltip?.rawNodeType) return;
+    const nodeId = String(tooltip.nodeId).trim();
+    const rawNodeType = String(tooltip.rawNodeType ?? 'entity').trim();
+    let cancelled = false;
+    const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+    const nodeTypeLower = rawNodeType.toLowerCase();
+    const finalEntityId = nodeTypeLower === 'concept' ? (nodeId.startsWith('co') ? nodeId : 'co' + nodeId) : nodeId;
+    const url = `${apiBaseUrl}/api/wikidata/${encodeURIComponent(rawNodeType)}/${encodeURIComponent(finalEntityId)}`;
+    fetch(url, { method: 'GET', headers: { 'Content-Type': 'application/json' } })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((result) => {
+        if (cancelled) return;
+        const data = result?.data;
+        const wikipediaUrl = data?.wikipedia_url != null && String(data.wikipedia_url).trim() !== '' ? String(data.wikipedia_url).trim() : null;
+        const urlVal = data?.url != null && String(data.url).trim() !== '' ? String(data.url).trim() : null;
+        setTooltip((prev) => {
+          if (!prev || prev.nodeId !== nodeId) return prev;
+          const nextRows = [...(prev.rows || [])];
+          if (wikipediaUrl) nextRows.push({ label: 'Wikipedia URL', value: wikipediaUrl, isLink: true });
+          if (urlVal) nextRows.push({ label: 'URL', value: urlVal, isLink: true });
+          return { ...prev, rows: nextRows, needWikidata: false };
+        });
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setTooltip((prev) => (prev && prev.nodeId === nodeId ? { ...prev, needWikidata: false } : prev));
+        }
+      });
+    return () => { cancelled = true; };
+  }, [tooltip?.needWikidata, tooltip?.nodeId, tooltip?.rawNodeType]);
 
   // Use current section's graphData from useGraphData (single source; no duplicate fetch)
   const apiGraphData = graphData?.nodes?.length > 0 ? graphData : null;
@@ -191,19 +320,20 @@ const ConnectedData = ({
           if (finalTargetNode && isEntity(finalTargetNode)) {
             const middleLabel = getMiddleLabel(targetNode);
             const relationshipType = isFundingMiddle(targetNode) ? 'funding' : 'action';
-            
             relationships.push({
               source: getDisplayName(sourceNode),
               middle: middleLabel,
               target: getDisplayName(finalTargetNode),
-              type: relationshipType
+              type: relationshipType,
+              sourceApiNode: sourceNode,
+              middleApiNode: targetNode,
+              targetApiNode: finalTargetNode
             });
           }
         });
-      } 
+      }
       // Pattern 2: Amount/Action (middle) -> Entity
       else if (sourceIsMiddle && targetIsEntity) {
-        // Find source Entity connected to this middle node
         const sourceToMiddleLinks = data.links.filter(l => {
           const linkTargetId = l.targetId || l.target;
           return linkTargetId === sourceId;
@@ -212,16 +342,18 @@ const ConnectedData = ({
         sourceToMiddleLinks.forEach(sourceLink => {
           const sourceEntityId = sourceLink.sourceId || sourceLink.source;
           const sourceEntityNode = nodeMap.get(sourceEntityId);
-          
+
           if (sourceEntityNode && isEntity(sourceEntityNode)) {
             const middleLabel = getMiddleLabel(sourceNode);
             const relationshipType = isFundingMiddle(sourceNode) ? 'funding' : 'action';
-            
             relationships.push({
               source: getDisplayName(sourceEntityNode),
               middle: middleLabel,
               target: getDisplayName(targetNode),
-              type: relationshipType
+              type: relationshipType,
+              sourceApiNode: sourceEntityNode,
+              middleApiNode: sourceNode,
+              targetApiNode: targetNode
             });
           }
         });
@@ -291,17 +423,14 @@ const ConnectedData = ({
     // Determine if we have many interconnections (threshold: 3+ connections)
     const hasManyInterconnections = Array.from(nodeConnectionCounts.values()).some(count => count >= 3);
 
-    // Track node metadata per section
-    // For targets, we need to handle splits - same label but different positions
+    // Track node metadata per section; targets are deduplicated by label so one node per unique target
     const sourceMeta = new Map();
-    const targetMeta = new Map();
     const middleMeta = new Map();
-    // Track target nodes with their relationship context to handle splits
-    const targetNodesByRelationship = new Map();
+    const targetMeta = new Map();
 
     const sourceCounters = { funding: 0, action: 0 };
-    const targetCounters = { funding: 0, action: 0 };
     const middleCounters = { funding: 0, action: 0 };
+    const targetCounters = { funding: 0, action: 0 };
 
     // First pass: identify unique sources and middles
     // Use source label + section as key to ensure same entities share the same position
@@ -312,12 +441,12 @@ const ConnectedData = ({
       // This ensures all relationships from the same source entity use the same visual node
       const sourceKey = `${rel.source}-${section}`;
       
-      // Only create new source node if this key hasn't appeared yet
       if (!sourceMeta.has(sourceKey)) {
-        sourceMeta.set(sourceKey, { 
-          section, 
-          index: sourceCounters[section], 
-          originalName: rel.source
+        sourceMeta.set(sourceKey, {
+          section,
+          index: sourceCounters[section],
+          originalName: rel.source,
+          apiNode: rel.sourceApiNode ?? null
         });
         sourceCounters[section] += 1;
       }
@@ -326,34 +455,22 @@ const ConnectedData = ({
         middleMeta.set(rel.middle, {
           section,
           index: middleCounters[section],
-          nodeType: rel.type === 'funding' ? 'monetary' : 'action'
+          nodeType: rel.type === 'funding' ? 'monetary' : 'action',
+          apiNode: rel.middleApiNode ?? null
         });
         middleCounters[section] += 1;
       }
     });
 
-    // Second pass: handle targets
-    // Use target label + section as key to ensure same entities share the same position
-    orderedRelationships.forEach((rel, relIndex) => {
+    orderedRelationships.forEach((rel) => {
       const section = rel.type === 'funding' ? 'funding' : 'action';
-      
-      // Create target key based on label and section only
-      // This ensures all relationships to the same target entity use the same visual node
       const targetKey = `${rel.target}-${section}`;
-      
-      if (!targetNodesByRelationship.has(targetKey)) {
-        targetNodesByRelationship.set(targetKey, {
-          label: rel.target,
+      if (!targetMeta.has(targetKey)) {
+        targetMeta.set(targetKey, {
           section,
           index: targetCounters[section],
-          relationshipIndex: relIndex
-        });
-        
-        // Also update targetMeta for positioning
-        targetMeta.set(targetKey, { 
-          section, 
-          index: targetCounters[section],
-          originalName: rel.target
+          originalName: rel.target,
+          apiNode: rel.targetApiNode ?? null
         });
         targetCounters[section] += 1;
       }
@@ -369,9 +486,8 @@ const ConnectedData = ({
     const sectionGap = 36;
     const startY = 20;
     
-    // Increase spacing for nodes with many interconnections
-    const adjustedTargetNodeGap = hasManyInterconnections ? targetNodeGap * 1.5 : targetNodeGap; // 1.5x spacing for right column
-    const adjustedActionNodeGap = hasManyInterconnections ? nodeGap * 1.5 : nodeGap; // For action section (lower) nodes
+    const adjustedTargetNodeGap = hasManyInterconnections ? targetNodeGap * 1.5 : targetNodeGap;
+    const adjustedActionNodeGap = hasManyInterconnections ? nodeGap * 1.5 : nodeGap;
     
     // Middle and right X positions will be calculated after nodes are created
     let middleX = 210;
@@ -442,70 +558,27 @@ const ConnectedData = ({
     const sourcePositionsAction = calculateNodePositions(sourceMeta, 'action', adjustedActionNodeGap); // Use adjusted gap for action section
     const middlePositionsFunding = calculateNodePositions(middleMeta, 'funding');
     const middlePositionsAction = calculateNodePositions(middleMeta, 'action');
-    // Use larger gap for target nodes (right column) - increase if many interconnections
     const targetPositionsFunding = calculateNodePositions(targetMeta, 'funding', adjustedTargetNodeGap);
     const targetPositionsAction = calculateNodePositions(targetMeta, 'action', adjustedTargetNodeGap);
-    
-    // Calculate positions for target nodes considering splits
-    const targetPositionsByRelationship = new Map();
-    const targetGroupsBySourceMiddle = new Map();
-    
-    // Group targets by source-middle pairs to handle splits
-    targetNodesByRelationship.forEach((data, key) => {
-      const parts = key.split('-');
-      const sourceMiddleKey = `${parts[0]}-${parts[1]}`;
-      
-      if (!targetGroupsBySourceMiddle.has(sourceMiddleKey)) {
-        targetGroupsBySourceMiddle.set(sourceMiddleKey, []);
-      }
-      targetGroupsBySourceMiddle.get(sourceMiddleKey).push({ key, data });
-    });
-    
-    // Calculate positions for each target node, handling splits
-    targetGroupsBySourceMiddle.forEach((nodes, sourceMiddleKey) => {
-      const section = nodes[0].data.section;
-      
-      // Get the base position for the first target with this label
-      const basePosition = section === 'funding' 
-        ? (targetPositionsFunding.get(nodes[0].data.label) || getBaseY(section))
-        : (targetPositionsAction.get(nodes[0].data.label) || getBaseY(section));
-      
-      // For splits, offset additional nodes vertically
-      // If single node, use base position; if multiple, spread them
-      if (nodes.length === 1) {
-        targetPositionsByRelationship.set(nodes[0].key, basePosition);
-      } else {
-        // Multiple nodes (split) - spread them around the base position
-        // Use larger gap for split nodes in target column - increase if many interconnections
-        const baseSplitGap = 100; // Base increased gap for split nodes
-        const splitGap = hasManyInterconnections ? baseSplitGap * 1.5 : baseSplitGap; // Increase spacing for many interconnections
-        const totalHeight = (nodes.length - 1) * (fixedNodeHeight + splitGap);
-        const startOffset = -totalHeight / 2;
-        nodes.forEach((nodeData, splitIndex) => {
-          const y = basePosition + startOffset + splitIndex * (fixedNodeHeight + splitGap);
-          targetPositionsByRelationship.set(nodeData.key, y);
-        });
-      }
-    });
 
     // Create source nodes (left-aligned)
     sourceMeta.forEach((meta, sourceKey) => {
       const originalLabel = meta.originalName || sourceKey.split('-')[0] || 'Entity';
-      const label = truncateEntityText(originalLabel); // Truncate to 13 characters
+      const label = truncateEntityText(originalLabel);
       const y = meta.section === 'funding'
         ? sourcePositionsFunding.get(sourceKey)
         : sourcePositionsAction.get(sourceKey);
-      // Calculate dynamic width based on text content (use truncated label for width calculation)
       const textWidth = calculateTextWidth(label, 16, 'Archivo');
       const dynamicWidth = Math.max(minNodeWidth, Math.min(maxNodeWidth, textWidth + padding * 2));
       const node = {
         id: `source-${sourceKey}`,
         type: 'entity',
-        label: label,
-        x: leftX, // Left-aligned: x position is the left edge
-        y: y,
+        label,
+        x: leftX,
+        y,
         width: dynamicWidth,
-        height: fixedNodeHeight
+        height: fixedNodeHeight,
+        tooltipData: getTooltipDataFromApiNode(meta.apiNode, dataToUse?.links)
       };
       nodes.push(node);
       nodeMap.set(node.id, node);
@@ -542,46 +615,46 @@ const ConnectedData = ({
         id: `middle-${middleLabel}`,
         type: meta.nodeType,
         label: truncatedLabel,
-        x: nodeX, // Center-aligned: x position centers the node
-        y: y,
+        x: nodeX,
+        y,
         width: dynamicWidth,
-        height: fixedNodeHeight
+        height: fixedNodeHeight,
+        tooltipData: getTooltipDataFromApiNode(meta.apiNode, dataToUse?.links)
       };
       nodes.push(node);
       nodeMap.set(node.id, node);
     });
 
-    // Calculate right column: find max width and center nodes
+    // Right column: one node per unique target; multiple curves can converge on the same node
     const targetNodeWidths = [];
-    targetNodesByRelationship.forEach((data, key) => {
-      const originalLabel = data.label || 'Entity';
-      const label = truncateEntityText(originalLabel); // Truncate to 13 characters
+    targetMeta.forEach((meta, targetKey) => {
+      const originalLabel = meta.originalName || targetKey.replace(/-funding|-action$/, '') || 'Entity';
+      const label = truncateEntityText(originalLabel);
       const textWidth = calculateTextWidth(label, 16, 'Archivo');
-      const dynamicWidth = Math.max(minNodeWidth, Math.min(maxNodeWidth, textWidth + padding * 2));
-      targetNodeWidths.push(dynamicWidth);
+      targetNodeWidths.push(Math.max(minNodeWidth, Math.min(maxNodeWidth, textWidth + padding * 2)));
     });
     const maxTargetWidth = targetNodeWidths.length > 0 ? Math.max(...targetNodeWidths) : minNodeWidth;
     const rightColumnCenterX = middleX + maxMiddleWidth + columnGap + (maxTargetWidth / 2);
-    rightX = middleX + maxMiddleWidth + columnGap; // Column start position
+    rightX = middleX + maxMiddleWidth + columnGap;
 
-    // Create target nodes (center-aligned within column)
-    targetNodesByRelationship.forEach((data, key) => {
-      const originalLabel = data.label || 'Entity';
-      const label = truncateEntityText(originalLabel); // Truncate to 13 characters
-      const y = targetPositionsByRelationship.get(key);
-      // Calculate dynamic width based on text content (use truncated label for width calculation)
+    targetMeta.forEach((meta, targetKey) => {
+      const originalLabel = meta.originalName || targetKey.replace(/-funding|-action$/, '') || 'Entity';
+      const label = truncateEntityText(originalLabel);
+      const y = meta.section === 'funding'
+        ? targetPositionsFunding.get(targetKey)
+        : targetPositionsAction.get(targetKey);
       const textWidth = calculateTextWidth(label, 16, 'Archivo');
       const dynamicWidth = Math.max(minNodeWidth, Math.min(maxNodeWidth, textWidth + padding * 2));
-      // Center the node within the column: x = columnCenter - (nodeWidth / 2)
       const nodeX = rightColumnCenterX - (dynamicWidth / 2);
       const node = {
-        id: `target-${key}`,
+        id: `target-${targetKey}`,
         type: 'entity',
-        label: label,
-        x: nodeX, // Center-aligned: x position centers the node
-        y: y,
+        label,
+        x: nodeX,
+        y,
         width: dynamicWidth,
-        height: fixedNodeHeight
+        height: fixedNodeHeight,
+        tooltipData: getTooltipDataFromApiNode(meta.apiNode, dataToUse?.links)
       };
       nodes.push(node);
       nodeMap.set(node.id, node);
@@ -590,24 +663,20 @@ const ConnectedData = ({
     // Create links
     const links = [];
 
-    orderedRelationships.forEach((rel, relIndex) => {
+    orderedRelationships.forEach((rel) => {
       const section = rel.type === 'funding' ? 'funding' : 'action';
-      
-      // Use simplified keys to find nodes
       const sourceKey = `${rel.source}-${section}`;
       const targetKey = `${rel.target}-${section}`;
-      
+
       const sourceNode = nodeMap.get(`source-${sourceKey}`);
       const middleNode = nodeMap.get(`middle-${rel.middle}`);
       const targetNode = nodeMap.get(`target-${targetKey}`);
 
       if (sourceNode && middleNode && targetNode) {
-        // Source -> Middle link (only create once per source-middle pair)
-        const existingLink = links.find(l => 
+        const existingSourceMiddle = links.find(l =>
           l.source === sourceNode.id && l.target === middleNode.id
         );
-        
-        if (!existingLink) {
+        if (!existingSourceMiddle) {
           links.push({
             source: sourceNode.id,
             target: middleNode.id,
@@ -615,20 +684,13 @@ const ConnectedData = ({
             path: ''
           });
         }
-
-        // Middle -> Target link (only create once per middle-target pair to avoid duplicate lines)
-        const existingMiddleTargetLink = links.find(l =>
-          l.source === middleNode.id && l.target === targetNode.id
-        );
-        
-        if (!existingMiddleTargetLink) {
-          links.push({
-            source: middleNode.id,
-            target: targetNode.id,
-            gradientType: rel.type === 'funding' ? 'green-blue' : 'orange-blue',
-            path: ''
-          });
-        }
+        // One link per relationship: multiple curves can go to the same target node
+        links.push({
+          source: middleNode.id,
+          target: targetNode.id,
+          gradientType: rel.type === 'funding' ? 'green-blue' : 'orange-blue',
+          path: ''
+        });
       }
     });
 
@@ -662,34 +724,36 @@ const ConnectedData = ({
       }
     });
 
-    // Calculate viewBox
-    const minX = nodes.length > 0 ? Math.min(...nodes.map(node => node.x)) : 100;
-    const maxRightEdge = nodes.length > 0 ? Math.max(...nodes.map(node => node.x + node.width)) : 600;
+    // ViewBox: tight around content with equal padding so graph scales to full container width
+    // and height is content-based (no extra space); SVG width=100% + height=auto does the rest
+    const pad = 8;
+    const minX = nodes.length > 0 ? Math.min(...nodes.map(node => node.x)) : 0;
+    const maxRightEdge = nodes.length > 0 ? Math.max(...nodes.map(node => node.x + node.width)) : 100;
     const contentWidth = maxRightEdge - minX;
-
-    const minY = nodes.length > 0 ? Math.min(...nodes.map(node => node.y)) : 20;
-    const maxBottomEdge = nodes.length > 0 ? Math.max(...nodes.map(node => node.y + node.height)) : 400;
+    const minY = nodes.length > 0 ? Math.min(...nodes.map(node => node.y)) : 0;
+    const maxBottomEdge = nodes.length > 0 ? Math.max(...nodes.map(node => node.y + node.height)) : 100;
     const contentHeight = maxBottomEdge - minY;
 
-    const viewBoxWidth = 500;
-    const viewBoxPadding = 20;
-    const contentHeightWithPadding = contentHeight + viewBoxPadding * 2;
-    const viewBoxHeight = contentHeightWithPadding;
-    
-    const actualPadding = (viewBoxHeight - contentHeight) / 2;
-    const viewBoxX = Math.max(0, minX - (viewBoxWidth - contentWidth) / 2 - 30);
-    const viewBoxY = Math.max(0, minY - actualPadding);
+    const viewBoxX = minX - pad;
+    const viewBoxY = minY - pad;
+    const viewBoxWidth = Math.max(1, contentWidth + pad * 2);
+    const viewBoxHeight = Math.max(1, contentHeight + pad * 2);
     const calculatedViewBox = `${viewBoxX} ${viewBoxY} ${viewBoxWidth} ${viewBoxHeight}`;
 
-    setSvgWidth(viewBoxWidth);
-    setSvgHeight(viewBoxHeight);
     setViewBox(calculatedViewBox);
 
-    // Render the graph
-    renderGraph(nodes, links, viewBoxWidth, calculatedViewBox, leftX);
+    const onNodeHover = (tooltipData, event) => {
+      if (tooltipData && event?.target) {
+        cancelHideTooltip();
+        setTooltip({ ...tooltipData, rect: event.target.getBoundingClientRect() });
+      } else {
+        scheduleHideTooltip();
+      }
+    };
+    renderGraph(nodes, links, viewBoxWidth, calculatedViewBox, leftX, onNodeHover);
   }, [graphData, currentSection, filteredGraphData, apiGraphData]);
 
-  const renderGraph = (nodes, links, width, viewBoxStr, leftX) => {
+  const renderGraph = (nodes, links, width, viewBoxStr, leftX, onNodeHover) => {
     if (!svgRef.current) return;
 
     const svg = d3.select(svgRef.current);
@@ -737,6 +801,14 @@ const ConnectedData = ({
         .style('position', 'relative')
         .style('overflow', 'hidden')
         .style('pointer-events', 'auto');
+
+      if (onNodeHover) {
+        nodeDiv.on('mouseenter', function(ev) {
+          if (node.tooltipData) onNodeHover(node.tooltipData, ev);
+          else onNodeHover(null);
+        });
+        nodeDiv.on('mouseleave', () => onNodeHover(null));
+      }
 
       // Add click handler for section nodes (monetary/action middle nodes)
       if (node.type === 'monetary' || node.type === 'action') {
@@ -928,16 +1000,55 @@ const ConnectedData = ({
             <span className="text-white text-[14px] font-medium">{StringConstants.HOMEPAGE.CONNECTED_DATA}</span>
           </div>
         </div>
-        <div className="w-full overflow-x-auto overflow-y-hidden">
+        <div className="w-full overflow-x-auto overflow-y-hidden relative">
           <svg
             ref={svgRef}
             width="100%"
-            height={svgHeight}
+            height="auto"
             viewBox={viewBox}
+            preserveAspectRatio="xMidYMid meet"
             fill="none"
             xmlns="http://www.w3.org/2000/svg"
             className="bg-transparent block pointer-events-auto"
           />
+          {tooltip && tooltip.rect && tooltip.rows?.length > 0 && (
+            <div
+              className="fixed z-[9999] min-w-[150px] max-w-[400px] max-h-[70vh] overflow-y-auto rounded-[5px] border border-[#404040]/30 bg-[#193D33]/50 p-2 shadow-md pointer-events-auto backdrop-blur-sm"
+              style={{
+                left: tooltip.rect.left + tooltip.rect.width / 2,
+                top: tooltip.rect.bottom + 2,
+                transform: 'translateX(-50%)'
+              }}
+              onMouseEnter={cancelHideTooltip}
+              onMouseLeave={hideTooltipImmediately}
+            >
+              <div className="space-y-1 text-left text-[12px] font-normal text-white">
+                {tooltip.rows.map((row, i) => (
+                  <div key={i}>
+                    <span className="text-[#8B949E]">{row.label}: </span>
+                    {row.isLink ? (
+                      <a
+                        href={row.value}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[#8cc5ff] hover:underline hover:text-[#b3ddff]"
+                      >
+                        {row.value}
+                      </a>
+                    ) : (
+                      <span className="text-[#eeeeee]">{row.value}</span>
+                    )}
+                  </div>
+                ))}
+                {tooltip.needWikidata && (
+                  <div>
+                    <span className="text-[#8B949E]">Wikipedia URL: </span>
+                    <span className="text-[#8B949E]">Loading…</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
