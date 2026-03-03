@@ -9,17 +9,18 @@ export const getNodeTypeColor = (nodeType) => {
   // Using normalized keys (lowercase with underscores)
   const colors = {
     // Primary entity types
-    'entity': '#034C92',           // Blue
-    'entity_gen': '#5C7CFA',       // Light blue
-    'relationship': '#016876',     // Red
-    'action': '#6F6600',           // Orange
+    'entity': '#193A5D',           // Blue
+    'entity_gen': '#1E2C4C',       // Light blue
+    'relationship': '#075876',     // Red
+    'action': '#87200B',           // Orange
     'process': '#20A4F3',          // Cyan
     'result': '#F38181',           // Pink
-    'event_attend': '#9775FA',     // Purple
-    'framework': '#4B7110', 
+    'event_attend': '#46215C',     // Purple
+    'framework': '#51341D', 
     'milestone': '#B82F2F',       // Green
     'incident': '#8C3C1E',         // Green
     'data': '#A138CE',         // Yellow
+    'purpose': '#2B4140',       // Orange
     
     // Financial types
     'funding': '#40C057',          // Green
@@ -35,9 +36,10 @@ export const getNodeTypeColor = (nodeType) => {
     'foundation': '#BE4BDB',       // Purple
     'committee': '#FA5252',        // Light red
     'council': '#FF6B6B',          // Coral
+    'exchange': '#266B07',          // Coral
     
     // Location types
-    'country': '#9775FA',          // Purple
+    'country': '#3E4645',          // Purple
     'location': '#6538CE',         // Sky blue
     'place_of_performance': '#845EF7',  // Violet
     'region': '#95E1D3',           // Mint
@@ -46,7 +48,7 @@ export const getNodeTypeColor = (nodeType) => {
     // Description/Document types
     'description': '#51CF66',      // Green
     'publication': '#FF922B',      // Amber
-    'article': '#FFA94D',          // Light orange                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             
+    'article': '#4B4338',          // Light orange                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             
     
     // People/Person types
     'person': '#4263EB',           // Blue
@@ -55,7 +57,7 @@ export const getNodeTypeColor = (nodeType) => {
     // Program/Event types
     'program': '#20A4F3',          // Cyan
     'event': '#7950F2',            // Purple
-    'concept': '#CE3880',          // Orange
+    'concept': '#193D33',          // Orange
     
     // University/Education
     'university': '#9775FA',       // Purple
@@ -78,52 +80,63 @@ export const getCategoryColor = (category) => {
   // Category color mappings (aligned with node type colors)
   const colors = {
     // Primary categories
-    'entity': '#4263EB',           // Blue
-    'entity_gen': '#5C7CFA',       // Light blue
-    'relationship': '#F03E3E',     // Red
-    'action': '#FD7E14',           // Orange
+    'entity': '#193A5D',           // Blue
+    'entity_gen': '#1E2C4C',       // Light blue
+    'relationship': '#075876',     // Red
+    'action': '#87200B',           // Orange
     'process': '#20A4F3',          // Cyan
     'result': '#F38181',           // Pink
-    'event_attend': '#9775FA',     // Purple
+    'event_attend': '#46215C',     // Purple
+    'event_historic': '#521D2E',            // Purple
+    'framework': '#51341D', 
+    'milestone': '#B82F2F',       // Green
+    'incident': '#8C3C1E',         // Green
+    'data': '#A138CE',         // Yellow
+    'purpose': '#2B4140',       // Orange
     
-    // People
+    // Financial types
+    'funding': '#40C057',          // Green
+    'amount': '#61d619',           // Bright green
+    'disb_or_trans': '#51CF66',    // Light green
+    
+    // Organizational types
+    'agency': '#7950F2',           // Dark purple
+    'recipient': '#4ECDC4',        // Teal
+    'dba': '#FF922B',              // Amber
+    'organization': '#6F6600',     // Red
+    'department': '#E64980',       // Magenta
+    'foundation': '#BE4BDB',       // Purple
+    'committee': '#FA5252',        // Light red
+    'council': '#FF6B6B',          // Coral
+    'exchange': '#266B07',          // Coral
+    
+    // Location types
+    'country': '#3E4645',          // Purple
+    'location': '#6538CE',         // Sky blue
+    'place_of_performance': '#845EF7',  // Violet
+    'region': '#95E1D3',           // Mint
+    'usaid_program_region': '#74C0FC',  // Light blue
+    
+    // Description/Document types
+    'description': '#51CF66',      // Green
+    'publication': '#FF922B',      // Amber
+    'article': '#4B4338',          // Light orange                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             
+    
+    // People/Person types
     'person': '#4263EB',           // Blue
     'individual': '#5C7CFA',       // Light blue
     
-    // Organizations
-    'organization': '#F03E3E',     // Red
-    'agency': '#7950F2',           // Dark purple
-    'committee': '#FA5252',        // Light red
-    'council': '#FF6B6B',          // Coral
-    'department': '#E64980',       // Magenta
-    'foundation': '#BE4BDB',       // Purple
+    // Program/Event types
+    'program': '#20A4F3',          // Cyan
+    'event': '#7950F2',            // Purple
+    'concept': '#193D33',          // Orange
+    
+    // University/Education
     'university': '#9775FA',       // Purple
     'institution': '#845EF7',      // Violet
     
-    // Locations
-    'location': '#339AF0',         // Sky blue
-    'country': '#9775FA',          // Purple
-    'region': '#95E1D3',           // Mint
-    'place': '#845EF7',            // Violet
-    
-    // Financial
-    'fund': '#40C057',             // Green
-    'funding': '#40C057',          // Green
-    'amount': '#61d619',           // Bright green
-    'financial': '#51CF66',        // Light green
-    
-    // Events/Programs
-    'event': '#7950F2',            // Purple
-    'program': '#20A4F3',          // Cyan
-    'concept': '#FD7E14',          // Orange
-    
-    // Documents/Publications
-    'publication': '#FF922B',      // Amber
-    'article': '#FFA94D',          // Light orange
-    'document': '#FFD43B',         // Yellow
-    
     // Default fallback
-    'default': '#495057'           // Dark gray
+    'default': '#495057'
   };
 
   return colors[normalizedCategory] || colors.default;
