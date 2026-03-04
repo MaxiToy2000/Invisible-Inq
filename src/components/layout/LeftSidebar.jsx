@@ -630,7 +630,7 @@ const LeftSidebar = ({
           </div>
         )}
       {}
-      <div className={`mt-auto pt-3 pb-3 px-3 hidden`}>
+      <div className={`mt-auto pb-3 px-3`}>
         {}
         {currentSectionId && (
           <div className="mb-4">
