@@ -166,6 +166,23 @@ const LeftSidebar = ({
       }
     }
     
+    // Third pass: events, frameworks, data — phrases like "X Report", "X Framework", "X Study", "X Data"
+    const eventFrameworkDataRegex = /\b([A-Z][a-zA-Z0-9_-]*(?:\s+[A-Z][a-zA-Z0-9_-]+)*\s+(?:Report|Study|Survey|Framework|Dataset|Data|Index|Registry))\b/g;
+    let efdMatch;
+    while ((efdMatch = eventFrameworkDataRegex.exec(brief)) !== null) {
+      const phrase = efdMatch[0];
+      const startIndex = efdMatch.index;
+      const endIndex = startIndex + phrase.length;
+      let overlaps = false;
+      for (let i = startIndex; i < endIndex; i++) {
+        if (usedIndices.has(i)) { overlaps = true; break; }
+      }
+      if (!overlaps) {
+        entities.push({ text: phrase, index: startIndex, isFullName: false, type: 'framework' });
+        for (let i = startIndex; i < endIndex; i++) usedIndices.add(i);
+      }
+    }
+    
     if (entities.length === 0) return [];
     
     // Sort by index to maintain text order
@@ -209,13 +226,14 @@ const LeftSidebar = ({
       }
     });
     
-    // Step 3: Pick up to 3 entities, prioritizing matched ones and spreading across text
+    // Step 3: Pick up to 6 terms (entities, events, frameworks, data), prioritizing matched ones and spreading across text
+    const maxPick = 6;
     const finalPick = [];
     const addedTexts = new Set();
     
     const addEntity = (entity) => {
       const lowerText = entity.text.toLowerCase();
-      if (!addedTexts.has(lowerText) && finalPick.length < 3) {
+      if (!addedTexts.has(lowerText) && finalPick.length < maxPick) {
         finalPick.push(entity.text);
         addedTexts.add(lowerText);
       }
@@ -223,27 +241,26 @@ const LeftSidebar = ({
     
     // Prioritize matched entities
     if (matchedEntities.length > 0) {
-      // Add first matched
       addEntity(matchedEntities[0]);
-      
-      // Add middle matched if available
       if (matchedEntities.length >= 2) {
         const midIndex = Math.floor(matchedEntities.length / 2);
         addEntity(matchedEntities[midIndex]);
       }
-      
-      // Add last matched if available
       if (matchedEntities.length >= 3) {
         addEntity(matchedEntities[matchedEntities.length - 1]);
+      }
+      // Add more matched if we have room
+      for (const e of matchedEntities) {
+        if (finalPick.length >= maxPick) break;
+        addEntity(e);
       }
     }
     
     // Fill remaining slots with unmatched entities if needed
-    if (finalPick.length < 3 && unmatchedEntities.length > 0) {
-      const remaining = 3 - finalPick.length;
+    if (finalPick.length < maxPick && unmatchedEntities.length > 0) {
+      const remaining = maxPick - finalPick.length;
       const step = Math.max(1, Math.floor(unmatchedEntities.length / remaining));
-      
-      for (let i = 0; i < unmatchedEntities.length && finalPick.length < 3; i += step) {
+      for (let i = 0; i < unmatchedEntities.length && finalPick.length < maxPick; i += step) {
         addEntity(unmatchedEntities[i]);
       }
     }
@@ -261,68 +278,12 @@ const LeftSidebar = ({
 
   const badgePillClass = 'inline-flex items-center py-0 px-1.5 mx-[1px] text-[14px] leading-[14px] rounded-[10px] text-white border shadow-sm';
 
-  // Find timing, event, and performer spans in a segment (non-overlapping, first match wins).
-  const getTimingEventPerformerSpans = (segment) => {
-    const spans = [];
-    const MONTHS = 'January|February|March|April|May|June|July|August|September|October|November|December';
-    const timingPatterns = [
-      new RegExp(`\\b((${MONTHS})\\s+\\d{1,2},?\\s+\\d{4})\\b`, 'g'),
-      new RegExp(`\\b((${MONTHS})\\s+\\d{4})\\b`, 'g'),
-      new RegExp('\\b((?:19|20)\\d{2})\\b', 'g'),
-      new RegExp('\\b(\\d{1,4}[-/]\\d{1,2}[-/]\\d{1,4})\\b', 'g'),
-      new RegExp(`\\b(in\\s+(?:early|late|mid)?\\s*(?:${MONTHS}|(?:19|20)\\d{2}))\\b`, 'gi'),
-      new RegExp('\\b(during\\s+(?:the\\s+)?(?:19|20)\\d{2})\\b', 'gi'),
-      new RegExp(`\\b(by\\s+(?:${MONTHS}|(?:19|20)\\d{2}))\\b`, 'gi'),
-    ];
-    timingPatterns.forEach((re) => {
-      let m;
-      re.lastIndex = 0;
-      while ((m = re.exec(segment)) !== null) {
-        const text = m[1] || m[0];
-        spans.push({ start: m.index, end: m.index + text.length, type: 'timing', text });
-      }
-    });
-    const eventPhrases = ['COVID-19 pandemic', 'COVID-19 outbreak', 'the outbreak of', 'global pandemic', 'the outbreak', 'the pandemic', 'the epidemic', 'the crisis', 'the incident', 'the event'];
-    const eventRe = new RegExp(`\\b(${eventPhrases.map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})\\b`, 'gi');
-    let em;
-    eventRe.lastIndex = 0;
-    while ((em = eventRe.exec(segment)) !== null) {
-      spans.push({ start: em.index, end: em.index + em[0].length, type: 'event', text: em[0] });
-    }
-    const performerRe = /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+(?:said|reported|announced|confirmed|stated|noted|found|discovered)\b/g;
-    let pm;
-    performerRe.lastIndex = 0;
-    while ((pm = performerRe.exec(segment)) !== null) {
-      spans.push({ start: pm.index, end: pm.index + pm[1].length, type: 'performer', text: pm[1] });
-    }
-    // Money / funding amounts: $1.5M, €2 million, £1,000,000, 500 thousand dollars, etc.
-    const moneyPatterns = [
-      new RegExp('([$€£]\\s*\\d{1,3}(?:,\\d{3})*(?:\\.\\d+)?)', 'g'),
-      new RegExp('([$€£]\\s*\\d+(?:\\.\\d+)?\\s*(?:million|billion|thousand|trillion|M|B|K|k)\\b)', 'gi'),
-      new RegExp('(\\b\\d+(?:\\.\\d+)?\\s*(?:million|billion|thousand|trillion)\\s*(?:dollars?|USD|euros?|EUR|pounds?|GBP)?)\\b', 'gi'),
-      new RegExp('(\\b\\d{1,3}(?:,\\d{3})+(?:\\.\\d+)?\\s*(?:dollars?|USD|euros?|EUR|pounds?|GBP)?)\\b', 'gi'),
-      new RegExp('(\\b\\d+(?:\\.\\d+)?\\s*(?:dollars?|USD|euros?|EUR|pounds?|GBP)\\b)', 'gi'),
-    ];
-    moneyPatterns.forEach((re) => {
-      let mm;
-      re.lastIndex = 0;
-      while ((mm = re.exec(segment)) !== null) {
-        const text = mm[1] || mm[0];
-        spans.push({ start: mm.index, end: mm.index + text.length, type: 'money', text });
-      }
-    });
-    spans.sort((a, b) => a.start - b.start);
-    const merged = [];
-    for (const s of spans) {
-      if (merged.length > 0 && s.start < merged[merged.length - 1].end) continue;
-      merged.push(s);
-    }
-    return merged;
-  };
+  // No longer highlight timing, event, performer, or money — only entities/events/frameworks/data via importantEntities.
+  const getTimingEventPerformerSpans = () => [];
 
-  // Split segment into parts: plain text vs timing/event/performer highlights.
+  // Split segment into parts: plain text vs special highlights (currently none; only entity badges).
   const splitSegmentByHighlights = (segment) => {
-    const spans = getTimingEventPerformerSpans(segment);
+    const spans = getTimingEventPerformerSpans();
     if (spans.length === 0) return [{ type: 'plain', text: segment }];
     const parts = [];
     let last = 0;
@@ -407,7 +368,7 @@ const LeftSidebar = ({
 
     for (let i = 0; i < parts.length; i++) {
       if (i % 2 === 1) {
-        // Content that was inside quotes: render colorful, no quote characters
+        // Content that was inside quotes: render as colored pill
         if (parts[i]) {
           const color = colors[quoteColorIndex % colors.length];
           quoteColorIndex += 1;
@@ -422,7 +383,7 @@ const LeftSidebar = ({
           );
         }
       } else {
-        // Outside quotes: timing/event/performer pills + entity badges in plain parts
+        // Outside quotes: entity badges in plain parts
         result.push(...renderSegment(parts[i], terms, `seg-${i}`));
       }
     }
