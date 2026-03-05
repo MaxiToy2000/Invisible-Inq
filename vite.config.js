@@ -13,7 +13,7 @@ export default defineConfig({
     },
   },
   server: {
-    port: 80,
+    port: 3000,
     strictPort: true,
     host: '0.0.0.0',
     allowedHosts: ['gva.invisibleinq.com', 'localhost'],
