@@ -133,6 +133,20 @@ const Header = ({
                 >
                   About
                 </Link>
+                <Link
+                  to="/tutorial"
+                  onClick={() => setShowMobileMenu(false)}
+                  className="block px-3 py-2 text-xs text-white hover:bg-[#18181B]"
+                >
+                  Tutorial
+                </Link>
+                <Link
+                  to="/terms"
+                  onClick={() => setShowMobileMenu(false)}
+                  className="block px-3 py-2 text-xs text-white hover:bg-[#18181B]"
+                >
+                  Terms of Use
+                </Link>
                 <button
                   type="button"
                   className="block w-full text-left px-3 py-2 text-xs text-white hover:bg-[#18181B]"
@@ -248,6 +262,24 @@ const Header = ({
             About
           </Link>
           <span className="mx-1 lg:mx-2 text-white text-xs lg:text-sm">-</span>
+          <Link
+            to="/tutorial"
+            className="text-white hover:text-gray-300 transition-colors text-xs lg:text-sm"
+            aria-label="Tutorial"
+            tabIndex={0}
+          >
+            Tutorial
+          </Link>
+          <span className="mx-1 lg:mx-2 text-white text-xs lg:text-sm">-</span>
+          <Link
+            to="/terms"
+            className="text-white hover:text-gray-300 transition-colors text-xs lg:text-sm"
+            aria-label="Terms of Use"
+            tabIndex={0}
+          >
+            Terms of Use
+          </Link>
+          <span className="mx-1 lg:mx-2 text-white text-xs lg:text-sm">-</span>
           <button
             type="button"
             className="text-white hover:text-gray-300 transition-colors text-xs lg:text-sm bg-transparent border-none p-0 cursor-pointer"
@@ -310,12 +342,29 @@ const Header = ({
                     About
                   </Link>
                   <Link
-                    to="/contact"
+                    to="/tutorial"
                     onClick={() => setShowMobileMenu(false)}
                     className="block px-3 py-2 text-xs text-white hover:bg-[#18181B]"
                   >
-                    Contact
+                    Tutorial
                   </Link>
+                  <Link
+                    to="/terms"
+                    onClick={() => setShowMobileMenu(false)}
+                    className="block px-3 py-2 text-xs text-white hover:bg-[#18181B]"
+                  >
+                    Terms of Use
+                  </Link>
+                  <button
+                    type="button"
+                    className="block w-full text-left px-3 py-2 text-xs text-white hover:bg-[#18181B]"
+                    onClick={() => {
+                      setShowMobileMenu(false);
+                      setShowContactPopup(true);
+                    }}
+                  >
+                    Contact
+                  </button>
                   <button
                     className="block w-full text-left px-3 py-2 text-xs text-white hover:bg-[#18181B]"
                     onClick={() => {
