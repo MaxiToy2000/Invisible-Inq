@@ -6,7 +6,6 @@ import DonationPopup from '../common/DonationPopup';
 import ContactPopup from '../common/ContactPopup';
 import CombinedStoryDropdown from '../story/CombinedStoryDropdown';
 import { useAuth } from '../../contexts/AuthContext';
-import HomePage from '../../pages/HomePage';
 
 const Header = ({
   stories = [],
@@ -97,26 +96,6 @@ const Header = ({
             </button>
             {showMobileMenu && (
               <div className="absolute left-0 top-full mt-1 w-40 bg-[#09090B] border border-[#27272A] rounded-md shadow-lg z-40">
-                {onHomePageClick ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowMobileMenu(false);
-                      onHomePageClick();
-                    }}
-                    className="block w-full text-left px-3 py-2 text-xs text-white hover:bg-[#18181B]"
-                  >
-                    Home Page
-                  </button>
-                ) : (
-                  <Link
-                    to="/"
-                    onClick={() => setShowMobileMenu(false)}
-                    className="block px-3 py-2 text-xs text-white hover:bg-[#18181B]"
-                  >
-                    Home Page
-                  </Link>
-                )}
                 <Link
                   to="/about"
                   onClick={() => setShowMobileMenu(false)}
@@ -226,27 +205,6 @@ const Header = ({
 
         {}
         <nav className="hidden xl:flex absolute left-1/2 transform -translate-x-1/2 items-center">
-          {onHomePageClick ? (
-            <button
-              type="button"
-              onClick={onHomePageClick}
-              className="text-white hover:text-gray-300 transition-colors text-xs lg:text-sm bg-transparent border-none p-0 cursor-pointer"
-              aria-label="Home page"
-              tabIndex={0}
-            >
-              Home Page
-            </button>
-          ) : (
-            <Link
-              to="/"
-              className="text-white hover:text-gray-300 transition-colors text-xs lg:text-sm"
-              aria-label="Home page"
-              tabIndex={0}
-            >
-              Home Page
-            </Link>
-          )}
-          <span className="mx-1 lg:mx-2 text-white text-xs lg:text-sm">-</span>
           <Link
             to="/about"
             className="text-white hover:text-gray-300 transition-colors text-xs lg:text-sm"
@@ -319,26 +277,6 @@ const Header = ({
               </button>
               {showMobileMenu && (
                 <div className="absolute left-0 top-full mt-1 w-40 bg-[#09090B] border border-[#27272A] rounded-md shadow-lg z-40">
-                  {onHomePageClick ? (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowMobileMenu(false);
-                        onHomePageClick();
-                      }}
-                      className="block w-full text-left px-3 py-2 text-xs text-white hover:bg-[#18181B]"
-                    >
-                      Home Page
-                    </button>
-                  ) : (
-                    <Link
-                      to="/"
-                      onClick={() => setShowMobileMenu(false)}
-                      className="block px-3 py-2 text-xs text-white hover:bg-[#18181B]"
-                    >
-                      Home Page
-                    </Link>
-                  )}
                   <Link
                     to="/about"
                     onClick={() => setShowMobileMenu(false)}
