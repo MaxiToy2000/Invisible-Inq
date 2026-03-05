@@ -55,27 +55,18 @@ const Header = ({
       {}
       {/* xs, sm & md: single bar = Logo | Selection tab | Hamburger | User avatar (first line disappears) */}
       <div className="relative flex lg:hidden h-10 bg-[#09090B] border-b border-[#707070] items-center px-2 gap-2">
-        <Link to="/" className="flex-shrink-0 flex items-center">
+        <button type="button" onClick={onHomePageClick} className="flex-shrink-0 flex items-center cursor-pointer">
           {/* xs: icon only; sm/md: full logo with label */}
           <img
             src="/images/logo-without-text.png"
             alt="Invisible Inquiry"
-            className="h-8 w-8 object-contain sm:hidden"
-            onClick={onHomePageClick}
-            onError={(e) => {
-              e.target.classList.add('hidden');
-            }}
-          />
+            className="h-8 w-8 object-contain sm:hidden"/>
           <img
             src="/images/logo-with-text.png"
             alt="Invisible Inquiry Logo"
-            onClick={onHomePageClick}
            className="h-6 w-auto min-w-[2rem] object-contain hidden sm:block"
-            onError={(e) => {
-              e.target.classList.add('hidden');
-            }}
            />
-        </Link>
+        </button>
         {showStoryDropdown ? (
           <div className="flex-1 min-w-0">
             <CombinedStoryDropdown
@@ -224,18 +215,13 @@ const Header = ({
 
         {}
         <div className={`h-full flex items-center ${showStoryDropdown ? 'ml-2' : 'ml-2 pl-1'}`}>
-          <Link to="/" className="h-full flex items-center">
+          <button type="button" onClick={onHomePageClick} className="h-full flex items-center cursor-pointer">
             <img
               src='/images/logo-with-text.png'
               alt="Invisible Inqury Logo"
               className="h-6 object-contain ml-1"
-              onClick={onHomePageClick}
-              onError={(e) => {
-                console.error("Image failed to load");
-                e.target.classList.add('hidden');
-              }}
               />
-          </Link>
+          </button>
         </div>
 
         {}

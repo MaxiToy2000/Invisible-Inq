@@ -1254,7 +1254,6 @@ const HomePage = () => {
     const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
     const schedule = typeof requestIdleCallback !== 'undefined' ? requestIdleCallback : (fn) => setTimeout(fn, 0);
     const cancel = typeof cancelIdleCallback !== 'undefined' ? cancelIdleCallback : clearTimeout;
-    console.log("stories is like this:", stories);
     const run = () => {
       const fetchStatistics = async () => {
       const statsPromises = stories.map(async (story) => {
