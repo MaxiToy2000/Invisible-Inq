@@ -1,88 +1,131 @@
 import { Link } from 'react-router-dom';
 import Header from '../components/layout/Header';
-import EditableContent from '../components/common/EditableContent';
 
 const AboutPage = () => {
-  const defaultTitle = 'About Graph Explorer';
-  const defaultOverview = `<p class="mb-4 text-gray-300">
-Graph Explorer is an interactive web application designed to visualize and explore relational graphs.
-It allows users to interact with nodes and edges, view their properties, and navigate through complex
-relationship networks.
-</p>
-<p class="mb-4 text-gray-300">
-This tool is particularly useful for researchers, data analysts, and anyone interested in understanding
-the connections between different entities in a dataset.
-</p>`;
-
-  const defaultFeatures = `<ul class="list-disc pl-6 space-y-2 text-gray-300">
-<li>Interactive 2D and 3D graph visualization</li>
-<li>Node and edge property inspection</li>
-<li>Customizable graph appearance with sliders for force strength, node size, and label size</li>
-<li>Story-based navigation through different datasets</li>
-<li>Entity highlighting for quick access to important nodes</li>
-<li>Responsive design for desktop, tablet, and mobile devices</li>
-</ul>`;
-
-  const defaultHowToUse = `<ol class="list-decimal pl-6 space-y-2 text-gray-300">
-<li>Select a story from the dropdown menu in the left sidebar</li>
-<li>Explore the graph by dragging, zooming, and rotating</li>
-<li>Click on nodes or edges to view their properties in the right sidebar</li>
-<li>Use the UI controls to adjust the graph appearance</li>
-<li>Click on entity highlights to quickly focus on important nodes</li>
-<li>Use the Previous/Next buttons to navigate through related stories</li>
-</ol>`;
-
   return (
     <div className="flex flex-col min-h-screen bg-black text-white">
-      <Header
-        showStoryDropdown={false}
-      />
+      <Header showStoryDropdown={false} />
+
       <main className="flex-1 container mx-auto px-4 pt-6 pb-8 bg-black relative z-10">
         <div className="max-w-3xl mx-auto bg-black">
-          <div className="relative group mb-6">
-            <EditableContent
-              content={defaultTitle}
-              storageKey="about-page-title"
-              className="text-3xl font-bold text-white"
-              tag="h1"
-            />
-          </div>
-
-          <section className="mb-8">
-            <h2 className="text-2xl font-semibold mb-4 text-white">Project Overview</h2>
-            <EditableContent
-              content={defaultOverview}
-              storageKey="about-page-overview"
-              className="text-gray-300"
-              tag="div"
-            />
+          <section className="mb-24">
+            <h2 className="text-2xl font-semibold mb-4 text-white underline">
+              About This App
+            </h2>
+            <div className="text-gray-300 space-y-4">
+              <p>
+                Graph Explorer is an interactive web application that organizes, visualizes, and connects
+                complex data across people, organizations, money, events, and more. It is designed to
+                simplify the process of accessing and creating sophisticated data investigations—bringing
+                intelligence-grade research capabilities to the public.
+              </p>
+              <p style={{ color: '#D4AF37' , fontStyle: 'italic'}}>
+                Why? Powerful algorithms, corporations, and governments are tracking your every movement
+                and sharing your data. What if you had the same power to track them back?
+              </p>
+              <p>
+                To achieve this, we ingest data from news articles, government databases, court documents,
+                police reports, FOIA documents, biographical records, and affiliated websites. An
+                AI-driven pipeline extracts structure from these sources—including digitized government
+                PDFs—and converts them into connected, searchable nodes and relationships.
+              </p>
+              <p>
+                Users can explore entity properties, trace money flows, navigate relationship networks,
+                follow cause-and-effect chains, and view hierarchies, timelines, and geographic data.
+                Every node links back to source material.
+              </p>
+              <p>
+                The platform supports both crowd-sourced public research and private investigations. No
+                code required.
+              </p>
+              <p>
+                Built for political researchers, journalists, data analysts, and anyone working to
+                understand the structures behind power, money, and influence. We intend to price our
+                tools at a level that ensures anyone can become an expert researcher.
+              </p>
+              <p>
+                This app is in early development. Follow us as we deploy more ways for you to search,
+                view, understand, and create your own investigations. For early access and updates, visit{' '}
+                <a
+                  href="https://invisibleinq.com"
+                  className="underline text-gray-200"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  invisibleinq.com
+                </a>
+                .
+              </p>
+            </div>
           </section>
 
-          <section className="mb-8">
-            <h2 className="text-2xl font-semibold mb-4 text-white">Features</h2>
-            <EditableContent
-              content={defaultFeatures}
-              storageKey="about-page-features"
-              className="text-gray-300"
-              tag="div"
-            />
+          <section className="mb-24">
+            <h2 className="text-2xl font-semibold mb-4 text-white underline">Data Transparency</h2>
+            <div className="text-gray-300 space-y-4">
+              <p className="font-semibold" style={{ color: '#D4AF37' , fontStyle: 'italic'}}>
+                Your data is yours. We do not sell, share, or provide user data to third parties. Period.
+              </p>
+              <p>
+                We collect only what is necessary to secure the platform, improve the tools, and
+                understand basic user demographics and behavior. Nothing more. Our sources are yours.
+                Every connection in the graph is cited. Every node links back to its original source
+                material. We never hide where our data comes from—if it is in the graph, you can trace
+                it.
+              </p>
+              <p>
+                No outside editorial influence. We take no funding that comes with editorial conditions.
+                No advertiser, sponsor, or investor has input on what we investigate, publish, or how we
+                present it.
+              </p>
+              <p>
+                No censorship. We do not suppress, shift, or selectively omit data to serve a narrative.
+                The graph reflects what the sources say. We protect your privacy. Your viewing habits,
+                search history, saved investigations, and research activity are private. We do not track
+                what you read or investigate for the purpose of profiling, advertising, or disclosure to
+                any outside party.
+              </p>
+              <p>
+                Open methodology. As we grow, we are committed to documenting and publishing our
+                ingestion methods, data standards, and editorial processes so that our work can be
+                scrutinized and verified.
+              </p>
+            </div>
           </section>
 
-          <section className="mb-8">
-            <h2 className="text-2xl font-semibold mb-4 text-white">How to Use</h2>
-            <EditableContent
-              content={defaultHowToUse}
-              storageKey="about-page-how-to-use"
-              className="text-gray-300"
-              tag="div"
-            />
+          <section className="mb-24">
+            <h2 className="text-2xl font-semibold mb-4 text-white underline">A Message from the Founder</h2>
+            <div className="text-gray-300 space-y-4">
+              <p>
+                My interest in investigative research started in 1998, when the U.S. bombed
+                pharmaceutical facilities in Sudan. It raised a simple question: how are decisions like
+                this connected to power, money, and institutions? That question never went away.
+              </p>
+              <p>
+                Always interested in investigative stories, I kept searching for deeper connections
+                between sources, numbers, names, and events, and I realized my brain and notebook could
+                not hold it all. That led me to design an early prototype of a data network tool. But the
+                technology was not ready, so I shifted to other projects.
+              </p>
+              <p>
+                Now that technology has matured, I have built a platform to map relational structures in
+                a way that is accessible, explainable, and expandable. I have long wondered what it would
+                look like if investigative and public data could live inside one connected system—instead
+                of being scattered across the internet.
+              </p>
+              <p style={{ color: '#D4AF37' , fontStyle: 'italic'}}>This is my answer.</p>
+              <p>
+                If you believe independent infrastructure for deeper insights matters, I am asking for
+                your support to take this to the next stage—to build a foundational model for
+                investigative research, and to keep it independent. Follow this project and we will keep
+                you updated while we grow.
+              </p>
+              <p>— Andrew Arnold, Founder</p>
+            </div>
           </section>
 
-          <div className="mt-8">
             <Link to="/" className="text-gray-300 hover:text-white transition-colors">
               &larr; Back to Graph Explorer
             </Link>
-          </div>
         </div>
       </main>
 
