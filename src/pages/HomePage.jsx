@@ -561,6 +561,23 @@ const HomePage = () => {
     selectSection(sectionId);
   }, [selectSection, updateURLWithSelections, currentStoryId, currentChapterId, currentStory, currentChapter]);
 
+  // Wrap prev/next so URL is updated when navigating by section buttons (prevents URL-sync effect from reverting)
+  const handlePreviousSection = useCallback(() => {
+    isReadingFromURL.current = false;
+    weRestoredStoryFromSessionRef.current = false;
+    goToPreviousSection((storyId, chapterId, sectionId) => {
+      updateURLWithSelections(storyId ?? currentStoryId, chapterId ?? currentChapterId, sectionId);
+    });
+  }, [goToPreviousSection, updateURLWithSelections, currentStoryId, currentChapterId]);
+
+  const handleNextSection = useCallback(() => {
+    isReadingFromURL.current = false;
+    weRestoredStoryFromSessionRef.current = false;
+    goToNextSection((storyId, chapterId, sectionId) => {
+      updateURLWithSelections(storyId ?? currentStoryId, chapterId ?? currentChapterId, sectionId);
+    });
+  }, [goToNextSection, updateURLWithSelections, currentStoryId, currentChapterId]);
+
   // Update URL when view mode or scene container changes
   // Defined after useGraphData so it can access currentStoryId, currentChapterId, etc.
   const updateURL = useCallback((updates) => {
@@ -2189,8 +2206,8 @@ const HomePage = () => {
       onStorySelect={handleStorySelect}
       onChapterSelect={handleChapterSelect}
       onSectionSelect={handleSectionSelect}
-      onPrevious={goToPreviousSection}
-      onNext={goToNextSection}
+      onPrevious={handlePreviousSection}
+      onNext={handleNextSection}
       selectedNode={selectedNode}
       selectedEdge={selectedEdge}
       forceStrength={forceStrength}

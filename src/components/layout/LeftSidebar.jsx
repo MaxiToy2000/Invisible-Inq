@@ -591,7 +591,7 @@ const LeftSidebar = ({
           </div>
         )}
       {}
-      <div className={`mt-auto pt-3 pb-3 px-3 hidden`}>
+      <div className={`mt-auto pb-3 px-3`}>
         {}
         {currentSectionId && (
           <div className="mb-4">
@@ -627,7 +627,7 @@ const LeftSidebar = ({
         )}
 
         {/* Bottom Ask AI Section */}
-        <div className="w-full relative">
+        <div className="w-full relative hidden">
           <textarea
             value={bottomQuery}
             onChange={(e) => setBottomQuery(e.target.value)}
