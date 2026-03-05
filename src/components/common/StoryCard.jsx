@@ -68,13 +68,15 @@ const StoryCard = ({ story, onClick, onChapterSelect, onMouseEnter, totalNodes =
     }
   };
 
+  // Prefer detail.name for display, fall back to title
+  const displayName = story?.detail?.name || story?.title || 'Untitled Story';
   const displayText = selectedChapter 
-    ? `${selectedChapter.title} → ${story?.title || 'Untitled Story'}`
-    : story?.title || 'Untitled Story';
+    ? `${selectedChapter.title} → ${displayName}`
+    : displayName;
 
   return (
     <div 
-      className="flex flex-col w-full cursor-pointer group transition-all duration-300 ease-in-out hover:scale-[1.02] hover:shadow-md hover:shadow-white/10 gap-[15px] p-[1px] relative min-h-0 border border-[#d3d3d3] rounded-[5px]"
+      className="flex flex-col w-full max-h-[440px] overflow-hidden cursor-pointer group transition-all duration-300 ease-in-out hover:scale-[1.02] hover:shadow-md hover:shadow-white/10 gap-[15px] p-[1px] relative min-h-0 border border-[#d3d3d3] rounded-[5px]"
       onClick={onClick}
       onMouseEnter={onMouseEnter}
     >
@@ -125,7 +127,7 @@ const StoryCard = ({ story, onClick, onChapterSelect, onMouseEnter, totalNodes =
                   className="px-2 py-1 font-bold bg-[#2C2C90] text-[#F4F4F5] sticky top-0 z-10 text-sm"
                   role="presentation"
                 >
-                  {story?.title || 'Untitled Story'}
+                  {displayName}
                 </li>
                 {/* Chapter Options */}
                 {story.chapters.map((chapter) => (
@@ -136,7 +138,7 @@ const StoryCard = ({ story, onClick, onChapterSelect, onMouseEnter, totalNodes =
                     role="option"
                     aria-selected={selectedChapter?.id === chapter.id}
                   >
-                    {chapter.title} → {story.title} ({formatNumber(chapter.total_nodes || 0)} nodes)
+                    {chapter.title} → {displayName} ({formatNumber(chapter.total_nodes || 0)} nodes)
                   </li>
                 ))}
               </ul>
@@ -148,11 +150,11 @@ const StoryCard = ({ story, onClick, onChapterSelect, onMouseEnter, totalNodes =
       <div
         className="w-full transition-all duration-300 group-hover:bg-[#0A0A0A] group-hover:shadow-inner bg-black pt-1 rounded-lg flex-1 px-2 pb-2 min-h-0"
       >
-        {/* Introduction paragraph */}
+        {/* Introduction paragraph - prefer detail.description, then brief, then placeholder. Limited to 3 lines. */}
         <p
-          className="transition-colors duration-300 group-hover:text-gray-200 text-white text-sm leading-[1.6] mb-3"
+          className="transition-colors duration-300 group-hover:text-gray-200 text-white text-sm leading-[1.6] mb-3 line-clamp-3"
         >
-          {story?.brief ? story.brief : 'Explore this investigative story to uncover connections and insights.'}
+          {story?.detail?.description || story?.brief || 'Explore this investigative story to uncover connections and insights.'}
         </p>
 
         {/* Statistics */}
@@ -197,6 +199,10 @@ StoryCard.propTypes = {
     headline: PropTypes.string,
     brief: PropTypes.string,
     img_url: PropTypes.string,
+    detail: PropTypes.shape({
+      name: PropTypes.string,
+      description: PropTypes.string
+    }),
     chapters: PropTypes.arrayOf(PropTypes.shape({
       id: PropTypes.string,
       title: PropTypes.string,

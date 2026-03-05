@@ -10,6 +10,7 @@ class Section(BaseModel):
     brief: str
     graphPath: Optional[str] = None
     section_query: Optional[str] = None
+    chapter_number: Optional[int] = None
     section_number: Optional[int] = None  # from Postgres gr_id (id match), overrides Neo4j
 
 class Chapter(BaseModel):
@@ -21,6 +22,20 @@ class Chapter(BaseModel):
     total_nodes: Optional[int] = 0
     chapter_number: Optional[int] = None  # from Postgres gr_id (id match), overrides Neo4j
 
+class StoryDetail(BaseModel):
+    """Postgres gr_id row fields for story/chapter/section enrichment."""
+    name: Optional[str] = None
+    story: Optional[str] = None
+    description: Optional[str] = None
+    chapter: Optional[str] = None
+    location: Optional[str] = None
+    date_start: Optional[str] = None
+    date_end: Optional[str] = None
+    status: Optional[str] = None
+    chapter_number: Optional[int] = None
+    section_number: Optional[int] = None
+
+
 class Story(BaseModel):
     id: str
     title: str
@@ -29,6 +44,7 @@ class Story(BaseModel):
     path: str
     chapters: List[Chapter]
     img_url: Optional[str] = None
+    detail: Optional[StoryDetail] = None  # Postgres gr_id row matched by id
 
 class Node(BaseModel):
     id: str

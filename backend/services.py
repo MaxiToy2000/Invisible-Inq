@@ -14,7 +14,7 @@ from queries import (
     get_calendar_data_by_section_query,
     get_cluster_data_query
 )
-from models import Story, Chapter, Section, Node, Link, GraphData
+from models import Story, Chapter, Section, Node, Link, GraphData, StoryDetail
 
 logger = logging.getLogger(__name__)
 
@@ -218,6 +218,24 @@ def get_all_stories() -> List[Story]:
         # Get exact section_number and chapter_number from Postgres gr_id (match by id), replace Neo4j values
         order_map = _get_gr_id_order_map(all_gr_ids)
 
+        # Collect story ids and fetch gr_id details from Postgres for each story
+        story_ids_for_gr = []
+        for record in results:
+            story_data = record.get("story", {})
+            if not story_data:
+                continue
+            story_id_raw = story_data.get("story_id")
+            story_gid = story_data.get("story_gid")
+            story_title = story_data.get("story_title", "")
+            sid = (
+                str(story_id_raw).strip()
+                if story_id_raw
+                else (str(story_gid or "").strip() or generate_id_from_title(story_title))
+            )
+            if sid:
+                story_ids_for_gr.append(sid)
+        gr_id_details_map = _get_gr_id_details_map(story_ids_for_gr)
+
         def _chapter_sort_key(cid: str) -> float:
             n = order_map.get(str(cid), {}).get("chapter_number")
             if n is not None:
@@ -290,6 +308,15 @@ def get_all_stories() -> List[Story]:
                     else:
                         section_number = section_data.get("section_number") or section_data.get("section_num", 0)
 
+                    pg_cha = order_map.get(section_id, {}).get("chapter_number")
+                    if pg_cha is not None:
+                        try:
+                            chapter_number = int(pg_cha)
+                        except (TypeError, ValueError):
+                            chapter_number = section_data.get("chapter_number")
+                    else:
+                        chapter_number = section_data.get("chapter_number")
+
                     sections.append(Section(
                         id=section_id,
                         title=section_title or f"Section {section_number}",
@@ -297,6 +324,7 @@ def get_all_stories() -> List[Story]:
                         brief=section_data.get("brief") or "",
                         graphPath=None,
                         section_query=section_data.get("section_query"),
+                        chapter_number=chapter_number,
                         section_number=section_number
                     ))
 
@@ -312,7 +340,16 @@ def get_all_stories() -> List[Story]:
                     chapter_number=chapter_number
                 ))
 
-            chapters.sort(key=lambda c: (c.title or "").lower())
+            # Sort by chapter_number ASC (from chapter or first section); fallback to title for tie-break
+            def _chapter_sort_num(ch):
+                if ch.chapter_number is not None:
+                    return ch.chapter_number
+                if ch.sections:
+                    first = next((s for s in ch.sections if s.chapter_number is not None), None)
+                    if first is not None:
+                        return first.chapter_number
+                return 999999
+            chapters.sort(key=lambda c: (_chapter_sort_num(c), (c.title or "").lower()))
 
             story_img_url = story_data.get("story_img_url")
             if story_img_url is not None and str(story_img_url).strip() == "":
@@ -320,6 +357,7 @@ def get_all_stories() -> List[Story]:
             elif story_img_url is not None:
                 story_img_url = str(story_img_url).strip() or None
 
+            detail = gr_id_details_map.get(story_id)
             stories.append(Story(
                 id=story_id,
                 title=story_title,
@@ -327,7 +365,8 @@ def get_all_stories() -> List[Story]:
                 brief=story_brief,  # Already processed above
                 path=generate_id_from_title(story_title),
                 chapters=chapters,
-                img_url=story_img_url
+                img_url=story_img_url,
+                detail=detail
             ))
         logger.info(f"Successfully processed {len(stories)} stories")
         return stories
@@ -459,6 +498,80 @@ def _get_gr_id_order_map(ids: List[str]) -> Dict[str, Dict[str, Any]]:
         return order_map
     except Exception as e:
         logger.debug(f"gr_id order from Postgres not available: {e}")
+        return {}
+
+
+def _get_gr_id_details_map(ids: List[str]) -> Dict[str, StoryDetail]:
+    """
+    Fetch full gr_id row details from Postgres for given ids.
+    Returns id -> GrIdDetails. Used to enrich story data with Postgres gr_id fields.
+    """
+    if not ids:
+        return {}
+    try:
+        from neon_database import neon_db
+        if not neon_db.is_configured():
+            return {}
+        id_list = list({str(i).strip() for i in ids if i})
+        if not id_list:
+            return {}
+        results = neon_db.execute_query(
+            "SELECT id, name, description, story, chapter, location, date_start, date_end, "
+            "status, created_at, updated_at, chapter_number, db_name, section_number "
+            "FROM gr_id WHERE id = ANY(%s)",
+            (id_list,)
+        )
+        details_map = {}
+        for row in (results or []):
+            if not row or row.get("id") is None:
+                continue
+            key = str(row["id"]).strip()
+            # Serialize datetime to ISO string for JSON
+            created_at = row.get("created_at")
+            if created_at is not None and hasattr(created_at, "isoformat"):
+                created_at = created_at.isoformat()
+            elif created_at is not None:
+                created_at = str(created_at)
+            updated_at = row.get("updated_at")
+            if updated_at is not None and hasattr(updated_at, "isoformat"):
+                updated_at = updated_at.isoformat()
+            elif updated_at is not None:
+                updated_at = str(updated_at)
+            ch_num, sec_num = row.get("chapter_number"), row.get("section_number")
+            if ch_num is not None and hasattr(ch_num, "__float__"):
+                try:
+                    ch_num = int(ch_num) if float(ch_num) == int(float(ch_num)) else float(ch_num)
+                except (TypeError, ValueError):
+                    ch_num = None
+            if sec_num is not None and hasattr(sec_num, "__float__"):
+                try:
+                    sec_num = int(sec_num) if float(sec_num) == int(float(sec_num)) else float(sec_num)
+                except (TypeError, ValueError):
+                    sec_num = None
+            def _str_or_none(val):
+                if val is None:
+                    return None
+                s = str(val).strip()
+                return s if s else None
+
+            details_map[key] = StoryDetail(
+                name=_str_or_none(row.get("name")),
+                description=_str_or_none(row.get("description")),
+                story=_str_or_none(row.get("story")),
+                chapter=_str_or_none(row.get("chapter")),
+                location=_str_or_none(row.get("location")),
+                date_start=_str_or_none(row.get("date_start")),
+                date_end=_str_or_none(row.get("date_end")),
+                status=_str_or_none(row.get("status")),
+                created_at=created_at,
+                updated_at=updated_at,
+                chapter_number=int(ch_num) if ch_num is not None else None,
+                db_name=_str_or_none(row.get("db_name")),
+                section_number=int(sec_num) if sec_num is not None else None,
+            )
+        return details_map
+    except Exception as e:
+        logger.debug(f"gr_id details from Postgres not available: {e}")
         return {}
 
 
