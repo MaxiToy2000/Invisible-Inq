@@ -98,175 +98,26 @@ const LeftSidebar = ({
     return graphData.nodes.filter(node => node.highlight === true);
   }, [graphData, currentSectionId]);
 
-  const importantEntities = useMemo(() => {
-    const brief = currentSection?.brief || '';
-    if (!brief) return [];
-    
-    const stopWords = new Set([
-      'the','and','for','with','that','this','from','they','them','their','into','were','have','has','had','about','after','before','will','would','could','should','while','when','what','where','which','who','whom','whose','our','your','yours','yourself','ours','ourselves','its','itself','his','her','hers','him','he','she','you','we','are','was','is','be','been','being','of','to','in','on','at','by','an','a','as'
-    ]);
-    
-    // Step 1: Find full names (consecutive capitalized words)
-    // Pattern: [A-Z][a-z]+ followed by one or more [A-Z][a-z]+
-    const fullNameRegex = /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\b/g;
-    const singleWordRegex = /\b[A-Z][a-zA-Z0-9_-]{3,}\b/g;
-    
-    const entities = [];
-    const usedIndices = new Set(); // Track which character indices are already used
-    
-    // First pass: Extract full names (e.g., "John Smith", "Mary Jane Watson")
-    let fullNameMatch;
-    while ((fullNameMatch = fullNameRegex.exec(brief)) !== null) {
-      const fullName = fullNameMatch[0];
-      const startIndex = fullNameMatch.index;
-      const endIndex = startIndex + fullName.length;
-      
-      // Check if this is a valid name (not all stop words)
-      const nameParts = fullName.split(/\s+/);
-      const validParts = nameParts.filter(part => !stopWords.has(part.toLowerCase()));
-      
-      if (validParts.length >= 2) { // At least 2 valid parts for a name
-        entities.push({ 
-          text: fullName, 
-          index: startIndex,
-          isFullName: true,
-          type: 'name'
-        });
-        
-        // Mark these indices as used
-        for (let i = startIndex; i < endIndex; i++) {
-          usedIndices.add(i);
-        }
-      }
+  // Saved list of entity, event, and framework names from the graph. Only these are highlighted in the section description.
+  const highlightTermNames = useMemo(() => {
+    const nodes = graphData?.nodes || [];
+    const allowedTypes = new Set(['entity', 'event', 'framework']);
+    const seen = new Set();
+    const names = [];
+    for (const node of nodes) {
+      const type = String(node.node_type || node.type || node.category || '').toLowerCase().trim();
+      if (!allowedTypes.has(type)) continue;
+      const name = (node.name || node.id || '').toString().trim();
+      if (!name) continue;
+      const key = name.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      names.push(name);
     }
-    
-    // Second pass: Extract single capitalized words not part of full names
-    let singleWordMatch;
-    while ((singleWordMatch = singleWordRegex.exec(brief)) !== null) {
-      const word = singleWordMatch[0];
-      const startIndex = singleWordMatch.index;
-      const endIndex = startIndex + word.length;
-      
-      // Skip if this word is part of a full name we already captured
-      let isPartOfFullName = false;
-      for (let i = startIndex; i < endIndex; i++) {
-        if (usedIndices.has(i)) {
-          isPartOfFullName = true;
-          break;
-        }
-      }
-      
-      if (!isPartOfFullName && !stopWords.has(word.toLowerCase())) {
-        entities.push({ 
-          text: word, 
-          index: startIndex,
-          isFullName: false,
-          type: 'entity'
-        });
-      }
-    }
-    
-    // Third pass: events, frameworks, data — phrases like "X Report", "X Framework", "X Study", "X Data"
-    const eventFrameworkDataRegex = /\b([A-Z][a-zA-Z0-9_-]*(?:\s+[A-Z][a-zA-Z0-9_-]+)*\s+(?:Report|Study|Survey|Framework|Dataset|Data|Index|Registry))\b/g;
-    let efdMatch;
-    while ((efdMatch = eventFrameworkDataRegex.exec(brief)) !== null) {
-      const phrase = efdMatch[0];
-      const startIndex = efdMatch.index;
-      const endIndex = startIndex + phrase.length;
-      let overlaps = false;
-      for (let i = startIndex; i < endIndex; i++) {
-        if (usedIndices.has(i)) { overlaps = true; break; }
-      }
-      if (!overlaps) {
-        entities.push({ text: phrase, index: startIndex, isFullName: false, type: 'framework' });
-        for (let i = startIndex; i < endIndex; i++) usedIndices.add(i);
-      }
-    }
-    
-    if (entities.length === 0) return [];
-    
-    // Sort by index to maintain text order
-    entities.sort((a, b) => a.index - b.index);
-    
-    // Step 2: Match entities with graph nodes for validation
-    const graphNodes = graphData?.nodes || [];
-    const nodeNameMap = new Map();
-    
-    graphNodes.forEach(node => {
-      const nodeName = node.name || node.id;
-      if (nodeName) {
-        nodeNameMap.set(nodeName.toLowerCase(), nodeName);
-      }
-    });
-    
-    // Prioritize entities that match actual graph nodes
-    const matchedEntities = [];
-    const unmatchedEntities = [];
-    
-    entities.forEach(entity => {
-      const lowerText = entity.text.toLowerCase();
-      
-      // Check for exact match or partial match in graph nodes
-      let matched = false;
-      for (const [nodeKey, nodeValue] of nodeNameMap.entries()) {
-        if (nodeKey.includes(lowerText) || lowerText.includes(nodeKey)) {
-          matched = true;
-          // Use the actual node name if it's a better match
-          if (nodeKey.length >= lowerText.length) {
-            entity.text = nodeValue;
-          }
-          break;
-        }
-      }
-      
-      if (matched) {
-        matchedEntities.push(entity);
-      } else {
-        unmatchedEntities.push(entity);
-      }
-    });
-    
-    // Step 3: Pick up to 6 terms (entities, events, frameworks, data), prioritizing matched ones and spreading across text
-    const maxPick = 6;
-    const finalPick = [];
-    const addedTexts = new Set();
-    
-    const addEntity = (entity) => {
-      const lowerText = entity.text.toLowerCase();
-      if (!addedTexts.has(lowerText) && finalPick.length < maxPick) {
-        finalPick.push(entity.text);
-        addedTexts.add(lowerText);
-      }
-    };
-    
-    // Prioritize matched entities
-    if (matchedEntities.length > 0) {
-      addEntity(matchedEntities[0]);
-      if (matchedEntities.length >= 2) {
-        const midIndex = Math.floor(matchedEntities.length / 2);
-        addEntity(matchedEntities[midIndex]);
-      }
-      if (matchedEntities.length >= 3) {
-        addEntity(matchedEntities[matchedEntities.length - 1]);
-      }
-      // Add more matched if we have room
-      for (const e of matchedEntities) {
-        if (finalPick.length >= maxPick) break;
-        addEntity(e);
-      }
-    }
-    
-    // Fill remaining slots with unmatched entities if needed
-    if (finalPick.length < maxPick && unmatchedEntities.length > 0) {
-      const remaining = maxPick - finalPick.length;
-      const step = Math.max(1, Math.floor(unmatchedEntities.length / remaining));
-      for (let i = 0; i < unmatchedEntities.length && finalPick.length < maxPick; i += step) {
-        addEntity(unmatchedEntities[i]);
-      }
-    }
-    
-    return finalPick;
-  }, [currentSection, graphData]);
+    // Sort by length descending so longer phrases match before shorter substrings
+    names.sort((a, b) => b.length - a.length);
+    return names;
+  }, [graphData]);
 
   const colors = ['#9B5629', '#2C649D', '#2E7302'];
   const highlightColors = {
@@ -278,7 +129,7 @@ const LeftSidebar = ({
 
   const badgePillClass = 'inline-flex items-center py-0 px-1.5 mx-[1px] text-[14px] leading-[14px] rounded-[10px] text-white border shadow-sm';
 
-  // No longer highlight timing, event, performer, or money — only entities/events/frameworks/data via importantEntities.
+  // No timing/event/performer/money highlights — only entity/event/framework names from highlightTermNames.
   const getTimingEventPerformerSpans = () => [];
 
   // Split segment into parts: plain text vs special highlights (currently none; only entity badges).
@@ -323,8 +174,8 @@ const LeftSidebar = ({
             type="button"
             className={`${badgePillClass} hover:opacity-80 transition-opacity cursor-pointer`}
             style={{ background: badgeColor, borderColor: badgeColor }}
-            onClick={() => onEntityHighlight?.(part)}
-            title={`Highlight ${part} in graph`}
+            onClick={() => onEntityHighlight?.(matched)}
+            title={`Highlight ${matched} in graph`}
           >
             {part}
           </button>
@@ -358,36 +209,10 @@ const LeftSidebar = ({
     return out;
   };
 
+  // Only entity, event, framework names (from highlightTermNames) get pills; everything else is plain text.
   const renderBriefWithBadges = (brief, terms) => {
     if (!brief) return null;
-
-    // Split by double-quoted strings; odd indices are the content inside quotes (without the quotes)
-    const parts = brief.split(/"([^"]*)"/g);
-    const result = [];
-    let quoteColorIndex = 0;
-
-    for (let i = 0; i < parts.length; i++) {
-      if (i % 2 === 1) {
-        // Content that was inside quotes: render as colored pill
-        if (parts[i]) {
-          const color = colors[quoteColorIndex % colors.length];
-          quoteColorIndex += 1;
-          result.push(
-            <span
-              key={`quote-${i}-${parts[i]}`}
-              className={badgePillClass}
-              style={{ background: color, borderColor: color }}
-            >
-              {parts[i]}
-            </span>
-          );
-        }
-      } else {
-        // Outside quotes: entity badges in plain parts
-        result.push(...renderSegment(parts[i], terms, `seg-${i}`));
-      }
-    }
-
+    const result = renderSegment(brief, terms, 'brief');
     return result.length === 0 ? null : result;
   };
 
@@ -556,7 +381,7 @@ const LeftSidebar = ({
               <div
                 className="text-[#B4B4B4] mb-3 mt-4 font-normal text-[14px] leading-[18px] tracking-[0px]"
               >
-                {renderBriefWithBadges(graphDescription ?? sectionDescription ?? currentSection?.brief ?? '', importantEntities)}
+                {renderBriefWithBadges(graphDescription ?? sectionDescription ?? currentSection?.brief ?? '', highlightTermNames)}
               </div>
             </div>
           )}
@@ -660,6 +485,9 @@ const LeftSidebar = ({
       </div>
 
       {}
+      <div className="mt-auto flex-shrink-0 pt-2 pb-8 lg:pb-2 px-3 text-center text-xs text-[#71717A]">
+        © 2026 INVINQ Inc
+      </div>
       <div className="lg:hidden absolute bottom-0 left-0 right-0 flex justify-center z-10">
         <button
           onClick={toggleCollapse}
