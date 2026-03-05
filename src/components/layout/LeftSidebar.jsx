@@ -666,7 +666,7 @@ const LeftSidebar = ({
         )}
 
         {/* Bottom Ask AI Section */}
-        <div className="w-full relative">
+        <div className="w-full relative hidden">
           <textarea
             value={bottomQuery}
             onChange={(e) => setBottomQuery(e.target.value)}
