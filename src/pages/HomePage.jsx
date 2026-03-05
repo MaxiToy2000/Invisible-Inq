@@ -3,12 +3,12 @@ import { useLocation, Link, useNavigate } from 'react-router-dom';
 import { useToast } from '../contexts/ToastContext';
 import { useAuth } from '../contexts/AuthContext';
 import Layout from '../components/layout/Layout';
+import Header from '../components/layout/Header';
 import ThreeGraphVisualization from '../components/graph/ThreeGraphVisualization';
 import GraphControls from '../components/graph/GraphControls';
 import CombinedStoryDropdown from '../components/story/CombinedStoryDropdown';
 import useGraphData from '../hooks/useGraphData';
 import { useActivityTracking } from '../hooks/useActivityTracking';
-import DonationPopup from '../components/common/DonationPopup';
 import AISearchModal from '../components/common/AISearchModal';
 import AISummaryModal from '../components/common/AISummaryModal';
 import StringConstants from '../components/StringConstants';
@@ -43,7 +43,6 @@ const HomePage = () => {
   const [labelSize, setLabelSize] = useState(50);
   const [edgeLength, setEdgeLength] = useState(50);
   const [edgeThickness, setEdgeThickness] = useState(50);
-  const [showDonationPopup, setShowDonationPopup] = useState(false);
   const [viewMode, setViewMode] = useState('Graph');
   const [showRightSidebar, setShowRightSidebar] = useState(true);
   const [showSearch, setShowSearch] = useState(false);
@@ -2058,174 +2057,8 @@ const HomePage = () => {
         {/* Background Overlay */}
         <BackgroundOverlay opacity={0.15} gradient={true} className="z-0 fixed inset-0" />
         {}
-        <header className="bg-[#09090B]/80 backdrop-blur-sm text-white shadow-md sticky top-0 z-50 flex h-8 items-center relative">
-          {}
-          <div className="h-full flex items-center ml-8 pl-2">
-            <img
-              src="/images/logo-with-text.png"
-              alt="Invisible Inqury Logo"
-              className="h-8 object-contain"
-            />
-          </div>
-
-          {}
-          <div className="flex-1 flex justify-center items-center select-none cursor-default">
-            <nav className="flex items-center">
-              <Link
-                to="/"
-                className="text-white hover:text-gray-300 transition-colors text-xs lg:text-sm focus:outline-none outline-none cursor-default"
-                aria-label="Home page"
-                tabIndex={0}
-              >
-                Home Page
-              </Link>
-              <span className="mx-1 lg:mx-2 text-white text-xs lg:text-sm select-none cursor-default">-</span>
-              <Link
-                to="/about"
-                className="text-white hover:text-gray-300 transition-colors text-xs lg:text-sm focus:outline-none outline-none cursor-default"
-                aria-label="About page"
-                tabIndex={0}
-              >
-                About
-              </Link>
-              <span className="mx-1 lg:mx-2 text-white text-xs lg:text-sm select-none cursor-default">-</span>
-              <Link
-                to="/contact"
-                className="text-white hover:text-gray-300 transition-colors text-xs lg:text-sm focus:outline-none outline-none cursor-default"
-                aria-label="Contact page"
-                tabIndex={0}
-              >
-                Contact
-              </Link>
-              <span className="mx-1 lg:mx-2 text-white text-xs lg:text-sm select-none cursor-default">-</span>
-              <button
-                className="text-white hover:text-gray-300 transition-colors bg-transparent border-none p-0 cursor-pointer text-xs lg:text-sm focus:outline-none outline-none"
-                aria-label="Donate page"
-                tabIndex={0}
-                onClick={() => setShowDonationPopup(true)}
-              >
-                Donate
-              </button>
-            </nav>
-          </div>
-
-          {}
-          {/* User Menu and Version Info - Desktop */}
-          <div className="hidden lg:flex items-center gap-4 mr-4">
-            {isAuthenticated() ? (
-              <div className="relative" ref={userMenuRef}>
-                <button
-                  onClick={() => setShowUserMenu(!showUserMenu)}
-                  className="flex items-center gap-2 text-white hover:text-gray-300 transition-colors"
-                >
-                  {user?.profile_picture ? (
-                    <img
-                      src={user.profile_picture}
-                      alt={user.full_name || user.email}
-                      className="w-6 h-6 rounded-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-6 h-6 rounded-full bg-indigo-600 flex items-center justify-center">
-                      <FiUser className="w-3 h-3" />
-                    </div>
-                  )}
-                  <span className="text-xs">
-                    {user?.full_name || user?.email?.split('@')[0]}
-                  </span>
-                  <FiChevronDown className="w-3 h-3" />
-                </button>
-
-                {showUserMenu && (
-                  <div className="absolute right-0 mt-2 w-48 bg-[#18181B] border border-[#27272A] rounded-md shadow-lg py-1 z-50">
-                    <div className="px-4 py-2 border-b border-[#27272A]">
-                      <p className="text-sm font-medium text-white truncate">
-                        {user?.full_name || 'User'}
-                      </p>
-                      <p className="text-xs text-gray-400 truncate">{user?.email}</p>
-                    </div>
-                    <button
-                      onClick={handleLogout}
-                      className="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-[#27272A] flex items-center gap-2"
-                    >
-                      <FiLogOut className="w-4 h-4" />
-                      Sign out
-                    </button>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="flex items-center gap-2">
-                <Link
-                  to="/login"
-                  className="text-white hover:text-gray-300 transition-colors text-xs"
-                >
-                  Sign in
-                </Link>
-                <span className="text-white text-xs">|</span>
-                <Link
-                  to="/register"
-                  className="bg-indigo-600 text-white px-2 py-1 rounded-md hover:bg-indigo-700 transition-colors text-xs"
-                >
-                  Sign up
-                </Link>
-              </div>
-            )}
-            <span className="text-white text-xs">Graph Viewer 1.0</span>
-          </div>
-
-          {/* Mobile - Show auth */}
-          <div className="lg:hidden flex items-center gap-2 mr-4">
-            {isAuthenticated() ? (
-              <div className="relative" ref={userMenuRef}>
-                <button
-                  onClick={() => setShowUserMenu(!showUserMenu)}
-                  className="flex items-center text-white hover:text-gray-300 transition-colors"
-                >
-                  {user?.profile_picture ? (
-                    <img
-                      src={user.profile_picture}
-                      alt={user.full_name || user.email}
-                      className="w-6 h-6 rounded-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-6 h-6 rounded-full bg-indigo-600 flex items-center justify-center">
-                      <FiUser className="w-3 h-3" />
-                    </div>
-                  )}
-                </button>
-
-                {showUserMenu && (
-                  <div className="absolute right-0 mt-2 w-48 bg-[#18181B] border border-[#27272A] rounded-md shadow-lg py-1 z-50">
-                    <div className="px-4 py-2 border-b border-[#27272A]">
-                      <p className="text-sm font-medium text-white truncate">
-                        {user?.full_name || 'User'}
-                      </p>
-                      <p className="text-xs text-gray-400 truncate">{user?.email}</p>
-                    </div>
-                    <button
-                      onClick={handleLogout}
-                      className="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-[#27272A] flex items-center gap-2"
-                    >
-                      <FiLogOut className="w-4 h-4" />
-                      Sign out
-                    </button>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <Link
-                to="/login"
-                className="text-white hover:text-gray-300 transition-colors text-xs"
-              >
-                Sign in
-              </Link>
-            )}
-          </div>
-        </header>
-        {}
-        {showDonationPopup && (
-          <DonationPopup onClose={() => setShowDonationPopup(false)} />
-        )}
+        {/* Reuse global Header so style stays consistent across pages */}
+        <Header />
         {}
         <main className="flex-1 flex flex-col bg-transparent w-full relative z-10">
           {}

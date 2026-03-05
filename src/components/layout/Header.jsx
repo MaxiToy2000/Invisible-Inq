@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { FiUser, FiLogOut, FiChevronDown } from 'react-icons/fi';
 import { FaBars } from 'react-icons/fa';
 import DonationPopup from '../common/DonationPopup';
+import ContactPopup from '../common/ContactPopup';
 import CombinedStoryDropdown from '../story/CombinedStoryDropdown';
 import { useAuth } from '../../contexts/AuthContext';
 import HomePage from '../../pages/HomePage';
@@ -20,6 +21,7 @@ const Header = ({
   onHomePageClick = null,
 }) => {
   const [showDonationPopup, setShowDonationPopup] = useState(false);
+  const [showContactPopup, setShowContactPopup] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const { user, logout, isAuthenticated } = useAuth();
@@ -131,13 +133,16 @@ const Header = ({
                 >
                   About
                 </Link>
-                <Link
-                  to="/contact"
-                  onClick={() => setShowMobileMenu(false)}
-                  className="block px-3 py-2 text-xs text-white hover:bg-[#18181B]"
+                <button
+                  type="button"
+                  className="block w-full text-left px-3 py-2 text-xs text-white hover:bg-[#18181B]"
+                  onClick={() => {
+                    setShowMobileMenu(false);
+                    setShowContactPopup(true);
+                  }}
                 >
                   Contact
-                </Link>
+                </button>
                 <button
                   className="block w-full text-left px-3 py-2 text-xs text-white hover:bg-[#18181B]"
                   onClick={() => {
@@ -243,14 +248,15 @@ const Header = ({
             About
           </Link>
           <span className="mx-1 lg:mx-2 text-white text-xs lg:text-sm">-</span>
-          <Link
-            to="/contact"
-            className="text-white hover:text-gray-300 transition-colors text-xs lg:text-sm"
-            aria-label="Contact page"
+          <button
+            type="button"
+            className="text-white hover:text-gray-300 transition-colors text-xs lg:text-sm bg-transparent border-none p-0 cursor-pointer"
+            aria-label="Contact"
             tabIndex={0}
+            onClick={() => setShowContactPopup(true)}
           >
             Contact
-          </Link>
+          </button>
           <span className="mx-1 lg:mx-2 text-white text-xs lg:text-sm">-</span>
           <button
             className="text-white hover:text-gray-300 transition-colors bg-transparent border-none p-0 cursor-pointer text-xs lg:text-sm"
@@ -263,114 +269,67 @@ const Header = ({
         </nav>
 
         {/* Mobile - Logo + Hamburger + User Avatar (xs / sm / md / lg) */}
-        <div className="xl:hidden ml-4 flex items-center gap-2 mr-auto mr-2">
-          <div className="relative">
-            <button
-              type="button"
-              onClick={toggleMobileMenu}
-              className="p-1 text-white hover:text-gray-300 focus:outline-none"
-              aria-label="Toggle navigation menu"
-            >
-              <FaBars className="w-5 h-5" />
-            </button>
-            {showMobileMenu && (
-              <div className="absolute left-0 top-full mt-1 w-40 bg-[#09090B] border border-[#27272A] rounded-md shadow-lg z-40">
-                {onHomePageClick ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowMobileMenu(false);
-                      onHomePageClick();
-                    }}
-                    className="block w-full text-left px-3 py-2 text-xs text-white hover:bg-[#18181B]"
-                  >
-                    Home Page
-                  </button>
-                ) : (
+        {showStoryDropdown && (
+          <div className="xl:hidden ml-4 flex items-center gap-2 mr-auto mr-2">
+            <div className="relative">
+              <button
+                type="button"
+                onClick={toggleMobileMenu}
+                className="p-1 text-white hover:text-gray-300 focus:outline-none"
+                aria-label="Toggle navigation menu"
+              >
+                <FaBars className="w-5 h-5" />
+              </button>
+              {showMobileMenu && (
+                <div className="absolute left-0 top-full mt-1 w-40 bg-[#09090B] border border-[#27272A] rounded-md shadow-lg z-40">
+                  {onHomePageClick ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowMobileMenu(false);
+                        onHomePageClick();
+                      }}
+                      className="block w-full text-left px-3 py-2 text-xs text-white hover:bg-[#18181B]"
+                    >
+                      Home Page
+                    </button>
+                  ) : (
+                    <Link
+                      to="/"
+                      onClick={() => setShowMobileMenu(false)}
+                      className="block px-3 py-2 text-xs text-white hover:bg-[#18181B]"
+                    >
+                      Home Page
+                    </Link>
+                  )}
                   <Link
-                    to="/"
+                    to="/about"
                     onClick={() => setShowMobileMenu(false)}
                     className="block px-3 py-2 text-xs text-white hover:bg-[#18181B]"
                   >
-                    Home Page
+                    About
                   </Link>
-                )}
-                <Link
-                  to="/about"
-                  onClick={() => setShowMobileMenu(false)}
-                  className="block px-3 py-2 text-xs text-white hover:bg-[#18181B]"
-                >
-                  About
-                </Link>
-                <Link
-                  to="/contact"
-                  onClick={() => setShowMobileMenu(false)}
-                  className="block px-3 py-2 text-xs text-white hover:bg-[#18181B]"
-                >
-                  Contact
-                </Link>
-                <button
-                  className="block w-full text-left px-3 py-2 text-xs text-white hover:bg-[#18181B]"
-                  onClick={() => {
-                    setShowMobileMenu(false);
-                    setShowDonationPopup(true);
-                  }}
-                >
-                  Donate
-                </button>
-              </div>
-            )}
-          </div>
-          {!showStoryDropdown && (
-            <>
-              {isAuthenticated() ? (
-                <div className="relative" ref={userMenuRef}>
-                  <button
-                    onClick={() => setShowUserMenu(!showUserMenu)}
-                    className="flex items-center text-white hover:text-gray-300 transition-colors"
+                  <Link
+                    to="/contact"
+                    onClick={() => setShowMobileMenu(false)}
+                    className="block px-3 py-2 text-xs text-white hover:bg-[#18181B]"
                   >
-                    {user?.profile_picture ? (
-                      <img
-                        src={user.profile_picture}
-                        alt={user.full_name || user.email}
-                        className="w-7 h-7 rounded-full object-cover"
-                      />
-                    ) : (
-                      <div className="w-7 h-7 rounded-full bg-indigo-600 flex items-center justify-center">
-                        <FiUser className="w-4 h-4" />
-                      </div>
-                    )}
+                    Contact
+                  </Link>
+                  <button
+                    className="block w-full text-left px-3 py-2 text-xs text-white hover:bg-[#18181B]"
+                    onClick={() => {
+                      setShowMobileMenu(false);
+                      setShowDonationPopup(true);
+                    }}
+                  >
+                    Donate
                   </button>
-
-                  {showUserMenu && (
-                    <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-50 border border-gray-200">
-                      <div className="px-4 py-2 border-b border-gray-200">
-                        <p className="text-sm font-medium text-gray-900 truncate">
-                          {user?.full_name || 'User'}
-                        </p>
-                        <p className="text-xs text-gray-500 truncate">{user?.email}</p>
-                      </div>
-                      <button
-                        onClick={handleLogout}
-                        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
-                      >
-                        <FiLogOut className="w-4 h-4" />
-                        Sign out
-                      </button>
-                    </div>
-                  )}
                 </div>
-              ) : (
-                <Link
-                  to="/login"
-                  className="text-white hover:text-gray-300 transition-colors text-sm"
-                >
-                  Sign in
-                </Link>
               )}
-            </>
-          )}
-        </div>
+            </div>
+          </div>
+        )}
 
         <div className="hidden lg:flex items-center gap-4 ml-auto mr-4">
           {isAuthenticated() ? (
@@ -438,6 +397,9 @@ const Header = ({
         {}
         {showDonationPopup && (
           <DonationPopup onClose={() => setShowDonationPopup(false)} />
+        )}
+        {showContactPopup && (
+          <ContactPopup onClose={() => setShowContactPopup(false)} />
         )}
       </header>
 
