@@ -479,7 +479,7 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
     setCurrentSectionId(sectionId);
   }, [currentStoryId, currentChapterId, stories]);
 
-  const goToPreviousSection = useCallback(() => {
+  const goToPreviousSection = useCallback((onNavigated) => {
 
     setGraphError(null);
 
@@ -500,7 +500,9 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
           const firstChapter = story.chapters[0];
           selectChapter(firstChapter.id);
           if (firstChapter.sections && firstChapter.sections.length > 0) {
-            selectSection(firstChapter.sections[0].id);
+            const newSectionId = firstChapter.sections[0].id;
+            selectSection(newSectionId);
+            onNavigated?.(currentStoryId, firstChapter.id, newSectionId);
           }
         }
         return;
@@ -516,18 +518,24 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
       if (currentIndex === -1) {
         console.warn(`Section with ID ${currentSectionId} not found in chapter ${currentChapterId}`);
 
-        selectSection(chapter.sections[0].id);
+        const newSectionId = chapter.sections[0].id;
+        selectSection(newSectionId);
+        onNavigated?.(currentStoryId, currentChapterId, newSectionId);
         return;
       }
 
       if (currentIndex > 0) {
-        selectSection(chapter.sections[currentIndex - 1].id);
+        const newSectionId = chapter.sections[currentIndex - 1].id;
+        selectSection(newSectionId);
+        onNavigated?.(currentStoryId, currentChapterId, newSectionId);
       } else {
         if (chapterIndex > 0) {
           const prevChapter = story.chapters[chapterIndex - 1];
           if (prevChapter.sections && prevChapter.sections.length > 0) {
+            const newSectionId = prevChapter.sections[prevChapter.sections.length - 1].id;
             selectChapter(prevChapter.id);
-            selectSection(prevChapter.sections[prevChapter.sections.length - 1].id);
+            selectSection(newSectionId);
+            onNavigated?.(currentStoryId, prevChapter.id, newSectionId);
           }
         } else {
           const currentStoryIndex = stories.findIndex(s => s.id === currentStoryId);
@@ -536,13 +544,15 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
             if (prevStory.chapters && prevStory.chapters.length > 0) {
               const lastChapter = prevStory.chapters[prevStory.chapters.length - 1];
               if (lastChapter.sections && lastChapter.sections.length > 0) {
+                const newSectionId = lastChapter.sections[lastChapter.sections.length - 1].id;
                 selectStory(prevStory.id);
 
                 setTimeout(() => {
                   selectChapter(lastChapter.id);
 
                   setTimeout(() => {
-                    selectSection(lastChapter.sections[lastChapter.sections.length - 1].id);
+                    selectSection(newSectionId);
+                    onNavigated?.(prevStory.id, lastChapter.id, newSectionId);
                   }, 50);
                 }, 50);
               }
@@ -553,13 +563,15 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
               if (lastStory.chapters && lastStory.chapters.length > 0) {
                 const lastChapter = lastStory.chapters[lastStory.chapters.length - 1];
                 if (lastChapter.sections && lastChapter.sections.length > 0) {
+                  const newSectionId = lastChapter.sections[lastChapter.sections.length - 1].id;
                   selectStory(lastStory.id);
 
                   setTimeout(() => {
                     selectChapter(lastChapter.id);
 
                     setTimeout(() => {
-                      selectSection(lastChapter.sections[lastChapter.sections.length - 1].id);
+                      selectSection(newSectionId);
+                      onNavigated?.(lastStory.id, lastChapter.id, newSectionId);
                     }, 50);
                   }, 50);
                 }
@@ -573,7 +585,7 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
     }
   }, [stories, currentStoryId, currentChapterId, currentSectionId, selectStory, selectChapter, selectSection]);
 
-  const goToNextSection = useCallback(() => {
+  const goToNextSection = useCallback((onNavigated) => {
 
     setGraphError(null);
 
@@ -594,7 +606,9 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
           const firstChapter = story.chapters[0];
           selectChapter(firstChapter.id);
           if (firstChapter.sections && firstChapter.sections.length > 0) {
-            selectSection(firstChapter.sections[0].id);
+            const newSectionId = firstChapter.sections[0].id;
+            selectSection(newSectionId);
+            onNavigated?.(currentStoryId, firstChapter.id, newSectionId);
           }
         }
         return;
@@ -610,18 +624,24 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
       if (currentIndex === -1) {
         console.warn(`Section with ID ${currentSectionId} not found in chapter ${currentChapterId}`);
 
-        selectSection(chapter.sections[0].id);
+        const newSectionId = chapter.sections[0].id;
+        selectSection(newSectionId);
+        onNavigated?.(currentStoryId, currentChapterId, newSectionId);
         return;
       }
 
       if (currentIndex < chapter.sections.length - 1) {
-        selectSection(chapter.sections[currentIndex + 1].id);
+        const newSectionId = chapter.sections[currentIndex + 1].id;
+        selectSection(newSectionId);
+        onNavigated?.(currentStoryId, currentChapterId, newSectionId);
       } else {
         if (chapterIndex < story.chapters.length - 1) {
           const nextChapter = story.chapters[chapterIndex + 1];
           if (nextChapter.sections && nextChapter.sections.length > 0) {
+            const newSectionId = nextChapter.sections[0].id;
             selectChapter(nextChapter.id);
-            selectSection(nextChapter.sections[0].id);
+            selectSection(newSectionId);
+            onNavigated?.(currentStoryId, nextChapter.id, newSectionId);
           }
         } else {
           const currentStoryIndex = stories.findIndex(s => s.id === currentStoryId);
@@ -630,13 +650,15 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
             if (nextStory.chapters && nextStory.chapters.length > 0) {
               const firstChapter = nextStory.chapters[0];
               if (firstChapter.sections && firstChapter.sections.length > 0) {
+                const newSectionId = firstChapter.sections[0].id;
                 selectStory(nextStory.id);
 
                 setTimeout(() => {
                   selectChapter(firstChapter.id);
 
                   setTimeout(() => {
-                    selectSection(firstChapter.sections[0].id);
+                    selectSection(newSectionId);
+                    onNavigated?.(nextStory.id, firstChapter.id, newSectionId);
                   }, 50);
                 }, 50);
               }
@@ -647,13 +669,15 @@ const useGraphData = (apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://
               if (firstStory.chapters && firstStory.chapters.length > 0) {
                 const firstChapter = firstStory.chapters[0];
                 if (firstChapter.sections && firstChapter.sections.length > 0) {
+                  const newSectionId = firstChapter.sections[0].id;
                   selectStory(firstStory.id);
 
                   setTimeout(() => {
                     selectChapter(firstChapter.id);
 
                     setTimeout(() => {
-                      selectSection(firstChapter.sections[0].id);
+                      selectSection(newSectionId);
+                      onNavigated?.(firstStory.id, firstChapter.id, newSectionId);
                     }, 50);
                   }, 50);
                 }

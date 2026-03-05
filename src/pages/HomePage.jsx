@@ -66,7 +66,12 @@ const HomePage = () => {
   const [aiSummaryQuery, setAiSummaryQuery] = useState('');
   const [showAddNodeModal, setShowAddNodeModal] = useState(false);
   const [rightSidebarActiveTab, setRightSidebarActiveTab] = useState('node-properties');
-  const [hiddenCategories, setHiddenCategories] = useState(new Set());
+  // Default: hide Article, Country, Purpose in the graph; show other nodes normally
+  const [hiddenCategories, setHiddenCategories] = useState(() => {
+    const defaultHidden = new Set();
+    ['Article', 'article', 'Country', 'country', 'Purpose', 'purpose'].forEach((t) => defaultHidden.add(t));
+    return defaultHidden;
+  });
   const [mapView, setMapView] = useState(null); // null, 'flat', 'spherical'
   const [selectedClusterType, setSelectedClusterType] = useState('');
   const [clusterMethod, setClusterMethod] = useState(''); // Clustering method/category
@@ -555,6 +560,23 @@ const HomePage = () => {
     updateURLWithSelections(currentStoryId, currentChapterId, sectionId);
     selectSection(sectionId);
   }, [selectSection, updateURLWithSelections, currentStoryId, currentChapterId, currentStory, currentChapter]);
+
+  // Wrap prev/next so URL is updated when navigating by section buttons (prevents URL-sync effect from reverting)
+  const handlePreviousSection = useCallback(() => {
+    isReadingFromURL.current = false;
+    weRestoredStoryFromSessionRef.current = false;
+    goToPreviousSection((storyId, chapterId, sectionId) => {
+      updateURLWithSelections(storyId ?? currentStoryId, chapterId ?? currentChapterId, sectionId);
+    });
+  }, [goToPreviousSection, updateURLWithSelections, currentStoryId, currentChapterId]);
+
+  const handleNextSection = useCallback(() => {
+    isReadingFromURL.current = false;
+    weRestoredStoryFromSessionRef.current = false;
+    goToNextSection((storyId, chapterId, sectionId) => {
+      updateURLWithSelections(storyId ?? currentStoryId, chapterId ?? currentChapterId, sectionId);
+    });
+  }, [goToNextSection, updateURLWithSelections, currentStoryId, currentChapterId]);
 
   // Update URL when view mode or scene container changes
   // Defined after useGraphData so it can access currentStoryId, currentChapterId, etc.
@@ -2184,8 +2206,8 @@ const HomePage = () => {
       onStorySelect={handleStorySelect}
       onChapterSelect={handleChapterSelect}
       onSectionSelect={handleSectionSelect}
-      onPrevious={goToPreviousSection}
-      onNext={goToNextSection}
+      onPrevious={handlePreviousSection}
+      onNext={handleNextSection}
       selectedNode={selectedNode}
       selectedEdge={selectedEdge}
       forceStrength={forceStrength}

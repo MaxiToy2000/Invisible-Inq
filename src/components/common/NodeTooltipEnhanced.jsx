@@ -7,6 +7,7 @@ import {
   FaBriefcase, FaGraduationCap, FaAward, FaExternalLinkAlt
 } from 'react-icons/fa';
 import Loader from './Loader';
+import { getNodeTypeColor } from '../../utils/colorUtils';
 
 /**
  * NodeTooltipEnhanced - Comprehensive tooltip component for Three.js graph nodes
@@ -45,28 +46,10 @@ const getNodeIcon = (nodeType) => {
   return FaLink; // Default icon
 };
 
-// Color scheme for different node types - matched to colorUtils.js
-const getNodeColor = (nodeType) => {
-  const type = nodeType?.toLowerCase() || '';
-
-  if (type.includes('entity')) return '#034C92';
-  if (type.includes('relationship')) return '#016876';
-  if (type.includes('funding')) return '#40C057';
-  if (type.includes('amount')) return '#61d619';
-  if (type.includes('framework')) return '#4B7110';
-  if (type.includes('agency')) return '#7950F2';
-  if (type.includes('action')) return '#6F6600';
-  if (type.includes('country')) return '#9775FA';
-  if (type.includes('dba')) return '#FF922B';
-  if (type.includes('description')) return '#51CF66';
-  if (type.includes('location')) return '#339AF0';
-  if (type.includes('place of performance') || type.includes('placeofperformance')) return '#845EF7';
-  if (type.includes('process')) return '#20A4F3';
-  if (type.includes('recipient')) return '#4ECDC4';
-  if (type.includes('region')) return '#95E1D3';
-  if (type.includes('result')) return '#F38181';
-
-  return '#495057'; // Default
+// Resolve tooltip color to match the graph node (same as ThreeGraphVisualization)
+const getTooltipNodeColor = (node) => {
+  const nodeType = node?.node_type || node?.type || node?.category || '';
+  return node?.color || (nodeType ? getNodeTypeColor(nodeType) : '#1f77b4');
 };
 
 // Base tooltip layout - Show only Type, Date, Description (name as title)
@@ -871,7 +854,7 @@ const NodeTooltipEnhanced = ({ node, position, graphData }) => {
   if (!node || !position) return null;
 
   const nodeType = node.node_type || node.type || node.category || '';
-  const color = getNodeColor(nodeType);
+  const color = getTooltipNodeColor(node); // same as graph node background (colorUtils.getNodeTypeColor / node.color)
   const TooltipLayout = getTooltipLayout(nodeType);
 
   return (

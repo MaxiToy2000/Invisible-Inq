@@ -16,6 +16,7 @@ export default defineConfig({
     port: 3000,
     strictPort: true,
     host: '0.0.0.0',
+    allowedHosts: ['gva.invisibleinq.com', 'localhost'],
   },
   optimizeDeps: {
     include: ['three', '3d-force-graph', 'three-spritetext'],

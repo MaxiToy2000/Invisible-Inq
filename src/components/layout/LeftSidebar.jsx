@@ -132,7 +132,7 @@ const LeftSidebar = ({
   // No timing/event/performer/money highlights — only entity/event/framework names from highlightTermNames.
   const getTimingEventPerformerSpans = () => [];
 
-  // Split segment into parts: plain text vs timing/event/performer highlights.
+  // Split segment into parts: plain text vs special highlights (currently none; only entity badges).
   const splitSegmentByHighlights = (segment) => {
     const spans = getTimingEventPerformerSpans();
     if (spans.length === 0) return [{ type: 'plain', text: segment }];
@@ -416,7 +416,7 @@ const LeftSidebar = ({
           </div>
         )}
       {}
-      <div className={`mt-auto pt-3 pb-3 px-3 hidden`}>
+      <div className={`mt-auto pb-3 px-3`}>
         {}
         {currentSectionId && (
           <div className="mb-4">
@@ -452,7 +452,7 @@ const LeftSidebar = ({
         )}
 
         {/* Bottom Ask AI Section */}
-        <div className="w-full relative">
+        <div className="w-full relative hidden">
           <textarea
             value={bottomQuery}
             onChange={(e) => setBottomQuery(e.target.value)}
