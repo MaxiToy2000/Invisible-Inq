@@ -70,12 +70,14 @@ const DonationPopup = ({ onClose }) => {
         </div>
 
         <div className="text-center pb-1">
-          <button
+          <a
+            href="https://invisibleinq.com"
+            target="_blank"
+            rel="noopener noreferrer"
             className="text-[#0089FF] hover:underline text-[10px] sm:text-xs"
-            onClick={() => window.open('https://example.com/about', '_blank')}
           >
-            I'd like to learn more about your bigger plans.
-          </button>
+            I'd like to learn more about Invisible Inquiry.
+          </a>
         </div>
       </div>
     </div>

@@ -139,7 +139,7 @@ const Layout = ({
       </div>
 
       {}
-      <div className="flex flex-col flex-1 min-w-0 bg-[red] order-first lg:order-none">
+      <div className="flex flex-col flex-1 min-w-0 order-first lg:order-none">
         {}
         <Header
           stories={stories}
