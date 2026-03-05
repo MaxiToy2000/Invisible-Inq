@@ -647,7 +647,9 @@ const HomePage = () => {
   const handleHomePageClick = useCallback(() => {
     setShowGraphView(false);
     selectStory(null); // clear selection so dashboard shows cards (no story selected)
-    navigate('/', { replace: true });
+    // Navigate to clean / with no query params (explicit pathname + search to avoid preserving ?section= etc.)
+    lastURLWeSet.current = '/';
+    navigate({ pathname: '/', search: '' }, { replace: true });
   }, [navigate, selectStory]);
 
   // Handle selection mode changes (must be after useGraphData to access selectNode/selectEdge)
