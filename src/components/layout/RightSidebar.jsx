@@ -1445,7 +1445,7 @@ const RightSidebar = forwardRef(({
                 </div>
 
                 {/* Sort By Section */}
-                <div className="p-2">
+                <div className="p-2 hidden">
                   <h3 className="text-[13px] font-semibold text-[#ffffff] mb-[4px]">{StringConstants.RIGHT_SIDEBAR.SORT_BY}</h3>
                   <div className="flex gap-2">
                     <button
@@ -1524,7 +1524,7 @@ const RightSidebar = forwardRef(({
                 </div>
 
                 {/* Node Selection Section */}
-                <div className="p-2">
+                <div className="p-2 hidden">
                   <div className="space-y-2">
                     <select
                       value={sortNodeCategory}
@@ -1608,7 +1608,7 @@ const RightSidebar = forwardRef(({
                 </div>
 
                 {/* Calendar Section */}
-                <div className="p-2">
+                <div className="p-2 hidden">
                   <h3 className="text-[13px] font-semibold text-[#ffffff] mb-[4px] flex items-center gap-2">
                     <span>{StringConstants.RIGHT_SIDEBAR.CALENDAR}</span>
                     <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -1800,7 +1800,7 @@ const RightSidebar = forwardRef(({
                 </div>
 
                 {/* Cluster Nodes Section */}
-                <div className="p-2 mb-[8px]">
+                <div className="p-2 mb-[8px] hidden">
                   <h3 className="text-sm font-semibold text-[#ffffff] mb-[4px] flex items-center gap-2">
                     {StringConstants.RIGHT_SIDEBAR.CLUSTER_NODES}
                     <svg width="13" height="12" viewBox="0 0 13 12" fill="none" xmlns="http://www.w3.org/2000/svg">

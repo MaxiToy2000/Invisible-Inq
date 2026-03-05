@@ -565,7 +565,7 @@ const LeftSidebar = ({
 
         {/* Save / Reset XYZ position - when graph is shown (showSavePositionButton) and at least one handler provided */}
         {showSavePositionButton && (typeof onSavePositionClick === 'function' || typeof onResetPositionClick === 'function') && (
-          <div className="pt-3 pl-3 pr-3 flex flex-col gap-2 pb-3">
+          <div className="pt-3 pl-3 pr-3 flex flex-col gap-2 pb-3 hidden">
             {typeof onSavePositionClick === 'function' && (
               <button
                 type="button"

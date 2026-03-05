@@ -6,6 +6,8 @@ import { StoriesProvider } from './contexts/StoriesContext';
 import HomePage from './pages/HomePage';
 import AboutPage from './pages/AboutPage';
 import ContactPage from './pages/ContactPage';
+import TutorialPage from './pages/TutorialPage';
+import TermsPage from './pages/TermsPage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import SubmissionPage from './pages/SubmissionPage';
@@ -35,6 +37,16 @@ function App() {
               <Route path="/about" element={
                 <ProtectedRoute>
                   <AboutPage />
+                </ProtectedRoute>
+              } />
+              <Route path="/tutorial" element={
+                <ProtectedRoute>
+                  <TutorialPage />
+                </ProtectedRoute>
+              } />
+              <Route path="/terms" element={
+                <ProtectedRoute>
+                  <TermsPage />
                 </ProtectedRoute>
               } />
               <Route path="/contact" element={

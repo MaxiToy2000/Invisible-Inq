@@ -55,27 +55,18 @@ const Header = ({
       {}
       {/* xs, sm & md: single bar = Logo | Selection tab | Hamburger | User avatar (first line disappears) */}
       <div className="relative flex lg:hidden h-10 bg-[#09090B] border-b border-[#707070] items-center px-2 gap-2">
-        <Link to="/" className="flex-shrink-0 flex items-center">
+        <button type="button" onClick={onHomePageClick} className="flex-shrink-0 flex items-center cursor-pointer">
           {/* xs: icon only; sm/md: full logo with label */}
           <img
             src="/images/logo-without-text.png"
             alt="Invisible Inquiry"
-            className="h-8 w-8 object-contain sm:hidden"
-            onClick={onHomePageClick}
-            onError={(e) => {
-              e.target.classList.add('hidden');
-            }}
-          />
+            className="h-8 w-8 object-contain sm:hidden"/>
           <img
             src="/images/logo-with-text.png"
             alt="Invisible Inquiry Logo"
-            onClick={onHomePageClick}
-            className="h-6 w-auto min-w-[2rem] object-contain hidden sm:block"
-            onError={(e) => {
-              e.target.classList.add('hidden');
-            }}
-          />
-        </Link>
+           className="h-6 w-auto min-w-[2rem] object-contain hidden sm:block"
+           />
+        </button>
         {showStoryDropdown ? (
           <div className="flex-1 min-w-0">
             <CombinedStoryDropdown
@@ -133,6 +124,20 @@ const Header = ({
                 >
                   About
                 </Link>
+                <Link
+                  to="/tutorial"
+                  onClick={() => setShowMobileMenu(false)}
+                  className="block px-3 py-2 text-xs text-white hover:bg-[#18181B]"
+                >
+                  Tutorial
+                </Link>
+                <Link
+                  to="/terms"
+                  onClick={() => setShowMobileMenu(false)}
+                  className="block px-3 py-2 text-xs text-white hover:bg-[#18181B]"
+                >
+                  Terms of Use
+                </Link>
                 <button
                   type="button"
                   className="block w-full text-left px-3 py-2 text-xs text-white hover:bg-[#18181B]"
@@ -144,7 +149,7 @@ const Header = ({
                   Contact
                 </button>
                 <button
-                  className="block w-full text-left px-3 py-2 text-xs text-white hover:bg-[#18181B]"
+                  className="block w-full text-left px-3 py-2 text-xs text-white hover:bg-[#18181B] hidden"
                   onClick={() => {
                     setShowMobileMenu(false);
                     setShowDonationPopup(true);
@@ -152,6 +157,14 @@ const Header = ({
                 >
                   Donate
                 </button>
+                <a
+                  href="https://invisibleinq.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block px-3 py-2 text-xs text-white hover:bg-[#18181B]"
+                >
+                  Blogs
+                </a>
               </div>
             )}
           </div>
@@ -202,18 +215,13 @@ const Header = ({
 
         {}
         <div className={`h-full flex items-center ${showStoryDropdown ? 'ml-2' : 'ml-2 pl-1'}`}>
-          <Link to="/" className="h-full flex items-center">
+          <button type="button" onClick={onHomePageClick} className="h-full flex items-center cursor-pointer">
             <img
               src='/images/logo-with-text.png'
               alt="Invisible Inqury Logo"
               className="h-6 object-contain ml-1"
-              onClick={onHomePageClick}
-              onError={(e) => {
-                console.error("Image failed to load");
-                e.target.classList.add('hidden');
-              }}
-            />
-          </Link>
+              />
+          </button>
         </div>
 
         {}
@@ -248,6 +256,24 @@ const Header = ({
             About
           </Link>
           <span className="mx-1 lg:mx-2 text-white text-xs lg:text-sm">-</span>
+          <Link
+            to="/tutorial"
+            className="text-white hover:text-gray-300 transition-colors text-xs lg:text-sm"
+            aria-label="Tutorial"
+            tabIndex={0}
+          >
+            Tutorial
+          </Link>
+          <span className="mx-1 lg:mx-2 text-white text-xs lg:text-sm">-</span>
+          <Link
+            to="/terms"
+            className="text-white hover:text-gray-300 transition-colors text-xs lg:text-sm"
+            aria-label="Terms of Use"
+            tabIndex={0}
+          >
+            Terms of Use
+          </Link>
+          <span className="mx-1 lg:mx-2 text-white text-xs lg:text-sm">-</span>
           <button
             type="button"
             className="text-white hover:text-gray-300 transition-colors text-xs lg:text-sm bg-transparent border-none p-0 cursor-pointer"
@@ -259,13 +285,24 @@ const Header = ({
           </button>
           <span className="mx-1 lg:mx-2 text-white text-xs lg:text-sm">-</span>
           <button
-            className="text-white hover:text-gray-300 transition-colors bg-transparent border-none p-0 cursor-pointer text-xs lg:text-sm"
+            className="text-white hover:text-gray-300 transition-colors bg-transparent border-none p-0 cursor-pointer text-xs lg:text-sm hidden"
             aria-label="Donate page"
             tabIndex={0}
             onClick={() => setShowDonationPopup(true)}
           >
             Donate
           </button>
+          <span className="mx-1 lg:mx-2 text-white text-xs lg:text-sm hidden">-</span>
+          <a
+            href="https://invisibleinq.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-white hover:text-gray-300 transition-colors text-xs lg:text-sm"
+            aria-label="Blogs"
+            tabIndex={0}
+          >
+            Blogs
+          </a>
         </nav>
 
         {/* Mobile - Logo + Hamburger + User Avatar (xs / sm / md / lg) */}
@@ -310,14 +347,31 @@ const Header = ({
                     About
                   </Link>
                   <Link
-                    to="/contact"
+                    to="/tutorial"
                     onClick={() => setShowMobileMenu(false)}
                     className="block px-3 py-2 text-xs text-white hover:bg-[#18181B]"
                   >
-                    Contact
+                    Tutorial
+                  </Link>
+                  <Link
+                    to="/terms"
+                    onClick={() => setShowMobileMenu(false)}
+                    className="block px-3 py-2 text-xs text-white hover:bg-[#18181B]"
+                  >
+                    Terms of Use
                   </Link>
                   <button
+                    type="button"
                     className="block w-full text-left px-3 py-2 text-xs text-white hover:bg-[#18181B]"
+                    onClick={() => {
+                      setShowMobileMenu(false);
+                      setShowContactPopup(true);
+                    }}
+                  >
+                    Contact
+                  </button>
+                  <button
+                    className="block w-full text-left px-3 py-2 text-xs text-white hover:bg-[#18181B] hidden"
                     onClick={() => {
                       setShowMobileMenu(false);
                       setShowDonationPopup(true);
@@ -325,6 +379,14 @@ const Header = ({
                   >
                     Donate
                   </button>
+                  <a
+                    href="https://invisibleinq.com"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block px-3 py-2 text-xs text-white hover:bg-[#18181B]"
+                  >
+                    Blogs
+                  </a>
                 </div>
               )}
             </div>
