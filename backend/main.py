@@ -14,7 +14,7 @@ import os
 import aiofiles
 from config import Config
 from services import get_all_stories, get_graph_data, get_graph_data_by_section_and_country, get_gr_id_description, search_with_ai, get_story_statistics, get_all_node_types, get_calendar_data, get_cluster_data, get_entity_wikidata, get_wikidata_by_id, search_entity_wikidata, get_article_details_by_node_id
-from models import GraphData, UserCreate, UserLogin, Token, UserResponse, GoogleAuthRequest, UserActivityCreate, UserActivityResponse, AdminLoginRequest, SubmissionCreate, SubmissionResponse, UserSubscriptionResponse, SubmissionUpdateRequest, GraphCameraPositionSave, GraphCameraPositionResponse, UserSessionSave, UserSessionResponse
+from models import GraphData, UserCreate, UserLogin, Token, UserResponse, GoogleAuthRequest, UserActivityCreate, UserActivityResponse, AdminLoginRequest, SubmissionCreate, SubmissionResponse, UserSubscriptionResponse, SubmissionUpdateRequest, GraphCameraPositionSave, GraphCameraPositionResponse, UserSessionSave, UserSessionResponse, ContactSubmit
 from pydantic import BaseModel
 from auth import create_access_token, verify_google_token, get_current_user, get_current_admin_user
 from user_service import create_user, authenticate_user, get_user_by_email, create_or_update_google_user, get_user_by_id, get_all_users, get_user_statistics
@@ -23,6 +23,7 @@ from submission_service import create_submission, process_submission, get_submis
 from subscription_service import get_user_subscription, update_user_subscription, get_subscription_plan, SUBSCRIPTION_PLANS
 from graph_camera_service import save_camera_position, get_camera_position
 from user_session_service import save_user_session, get_latest_user_session, delete_user_session
+from contact_service import save_contact_submission
 from rate_limit_service import check_rate_limit, record_request
 from datetime import timedelta, datetime
 
@@ -746,6 +747,33 @@ async def get_graph_camera_position_endpoint(
         raise
     except Exception as e:
         logger.exception("Error getting graph camera position: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============== Contact form (Contact us – save to Postgres when sign up for updates) ==============
+
+@app.post("/api/contact")
+async def contact_submit(body: ContactSubmit):
+    """
+    Submit Contact us form. Saves first name, last name, email, phone, and message to PostgreSQL.
+    sign_up_for_updates indicates whether to add them to the mailing list (inquiryinvisible@gmail.com).
+    """
+    try:
+        ok = save_contact_submission(
+            first_name=body.first_name,
+            last_name=body.last_name,
+            email=body.email,
+            phone=body.phone if body.phone is not None else "",
+            content=body.message if body.message is not None else "",
+            sign_up_for_updates=body.sign_up_for_updates,
+        )
+        if not ok:
+            raise HTTPException(status_code=500, detail="Failed to save your contact details.")
+        return {"message": "Thank you for your message! We'll get back to you soon."}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Error submitting contact form: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 

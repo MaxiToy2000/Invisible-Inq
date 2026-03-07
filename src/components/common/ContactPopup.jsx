@@ -2,8 +2,10 @@ import { useState } from 'react';
 import { FaTimes } from 'react-icons/fa';
 import { useToast } from '../../contexts/ToastContext';
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+
 const ContactPopup = ({ onClose }) => {
-  const { showSuccess } = useToast();
+  const { showSuccess, showError } = useToast();
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -13,6 +15,7 @@ const ContactPopup = ({ onClose }) => {
     signUpForUpdates: false
   });
   const [formStatus, setFormStatus] = useState(null);
+  const [submitError, setSubmitError] = useState(null);
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -20,14 +23,43 @@ const ContactPopup = ({ onClose }) => {
       ...prev,
       [name]: type === 'checkbox' ? checked : value
     }));
+    setSubmitError(null);
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setFormStatus('submitting');
-    setTimeout(() => {
-      setFormStatus(null);
-      showSuccess('Thank you for your message! We\'ll get back to you soon.', 'Message Sent');
+    setSubmitError(null);
+    try {
+      const body = {
+        first_name: formData.firstName.trim(),
+        last_name: formData.lastName.trim(),
+        email: formData.email.trim(),
+        phone: formData.phone != null ? String(formData.phone).trim() : '',
+        message: formData.message != null ? String(formData.message).trim() : '',
+        sign_up_for_updates: Boolean(formData.signUpForUpdates)
+      };
+      const response = await fetch(`${API_BASE_URL}/api/contact`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        let detail = data.detail;
+        if (Array.isArray(detail) && detail.length > 0) {
+          detail = detail.map((d) => d.msg || d.message).filter(Boolean).join(' ') || 'Validation failed.';
+        } else if (typeof detail !== 'string') {
+          detail = 'Failed to send message.';
+        }
+        throw new Error(detail);
+      }
+      showSuccess(
+        formData.signUpForUpdates
+          ? "Thank you! Your message was sent and you're signed up for story and site updates."
+          : "Thank you for your message! We'll get back to you soon.",
+        'Message Sent'
+      );
       setFormData({
         firstName: '',
         lastName: '',
@@ -37,12 +69,18 @@ const ContactPopup = ({ onClose }) => {
         signUpForUpdates: false
       });
       onClose();
-    }, 1500);
+    } catch (err) {
+      const msg = err.message || 'Failed to send. Please try again.';
+      setSubmitError(msg);
+      showError(msg, 'Error');
+    } finally {
+      setFormStatus(null);
+    }
   };
 
   const inputClass =
     'w-full px-3 py-2 border border-white/60 rounded bg-black text-white placeholder-gray-500 focus:outline-none focus:border-white';
-  const labelClass = 'block text-sm font-medium text-white mb-1';
+  const labelClass = 'block text-sm font-medium text-white mb-3';
 
   return (
     <div
@@ -69,7 +107,7 @@ const ContactPopup = ({ onClose }) => {
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-5">
+        <form onSubmit={handleSubmit} className="space-y-2">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label htmlFor="contact-firstName" className={labelClass}>
@@ -164,6 +202,12 @@ const ContactPopup = ({ onClose }) => {
             />
             <span className="text-sm">sign me up for story and site updates</span>
           </label>
+
+          {submitError && (
+            <p className="text-red-400 text-sm" role="alert">
+              {submitError}
+            </p>
+          )}
 
           <div className="flex justify-center pt-2">
             <button

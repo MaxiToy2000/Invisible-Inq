@@ -243,3 +243,16 @@ class UserSessionResponse(BaseModel):
     user_email: str
     session_data: dict
     saved_at: datetime
+
+
+# Contact form (Contact us – saved to contact_submissions; sign_up_for_updates = mailing list)
+class ContactSubmit(BaseModel):
+    first_name: str = Field(..., min_length=1, max_length=255)
+    last_name: str = Field(..., min_length=1, max_length=255)
+    email: EmailStr
+    phone: Optional[str] = Field(None, max_length=100)
+    message: Optional[str] = Field(None, max_length=10000)
+    sign_up_for_updates: bool = False
+
+    class Config:
+        str_strip_whitespace = True
